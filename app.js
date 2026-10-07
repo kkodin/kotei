@@ -862,6 +862,8 @@ function seedDemo() {
 }
 
 /* ---------- 起動 ---------- */
+// 版の表示（公開するとき tools\公開する.py が __VER__ を「Vr001 10/07 19:15」のように書き換える）
+if ($("ver").textContent === "__VER__") $("ver").textContent = "開発中";
 async function start() {
   try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
   if (!S.view.from) S.view.from = todayKey().slice(0, 7);

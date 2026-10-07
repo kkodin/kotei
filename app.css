@@ -178,3 +178,4 @@ select.pick { width: 7.5em; flex: none; font-size: 14px; }
   header .right { margin-left: 0; }
   .help { display: none; }
 }
+header .ver { font-size: 11px; opacity: .75; white-space: nowrap; }
