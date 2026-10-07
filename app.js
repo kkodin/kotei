@@ -220,6 +220,15 @@ function resolveName(n, list) {
   const c = list.filter(x => nk(x).startsWith(nk(n)));
   return c.length === 1 ? c[0] : n;
 }
+// 前の作りで「吉成　直也」が「吉成」「直也」に分かれて保存されたものを、マスタの氏名に戻す
+function joinSplit(names, list) {
+  const out = [];
+  for (let i = 0; i < names.length; i++) {
+    const two = i + 1 < names.length && list.find(x => nk(x) === nk(names[i] + names[i + 1]));
+    if (two) { out.push(two); i++; } else out.push(names[i]);
+  }
+  return out;
+}
 // バーに入っている名前（マスタに無い人も出す）
 function usedNames(field) {
   const set = new Set();
@@ -490,8 +499,8 @@ function openBar(site, b, init) {
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
-  $("bStaff").value = (v.社員 || []).join("、");
-  $("bEmp").value = (v.従業員 || []).join("、");
+  $("bStaff").value = joinSplit(v.社員 || [], M().社員 || []).join("、");
+  $("bEmp").value = joinSplit(v.従業員 || [], M().従業員 || []).join("、");
   $("bNum").value = v.人数 || "";
   autoNum = !v.人数 || v.人数 === (v.従業員 || []).length;
   drawPick("社員"); drawPick("従業員");
