@@ -394,7 +394,12 @@ function renderChart() {
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
       const { pos, rows } = packLane(bars);
       h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab" data-act="site" title="${esc(ln.名前 + "\n" + laneRuleText(ln))}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
-      days.forEach((k, i) => { if (!isRest(k) && !laneWorks(ln, k)) h.push(`<div class="off" style="left:${i * dw}px"></div>`); });
+      // 段の休みの日に薄い斜線。日曜・祝日は赤い色で分かるので斜線は付けない（2026-10-07 ユーザー指定）。右クリックで休みにした日は付ける
+      days.forEach((k, i) => {
+        if (isRest(k) || laneWorks(ln, k)) return;
+        if ((dayDow(k) === 0 || holidayOf(k)) && !(ln.休み || []).includes(k)) return;
+        h.push(`<div class="off" style="left:${i * dw}px"></div>`);
+      });
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
