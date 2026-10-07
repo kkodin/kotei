@@ -412,6 +412,7 @@ function renderChart() {
         }
         h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
           `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
           `<span class="h l"></span><span class="lbl">${barLabel(b)}</span><span class="h r"></span></div>`);
       }

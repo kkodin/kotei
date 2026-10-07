@@ -179,11 +179,19 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 /* その段が作業しない日：薄い斜線（バーの下に敷く。バーの上は .gap で白く抜く） */
 .off { position: absolute; top: 0; bottom: 0; width: var(--dw); z-index: 1; pointer-events: none;
   background: repeating-linear-gradient(45deg, rgba(110,115,122,.20) 0 2px, transparent 2px 7px); }
-.bar { background: var(--bc); }
+/* 工程のバー：細い帯（.stripe）を行の上に引き、文字（.lbl）は帯の下に黒で出す（2026-10-07 ユーザー：文字が白抜きに重なって見えない） */
+.bar:not(.sumbar):not(.ghost) { background: transparent; box-shadow: none; overflow: visible; color: #222; }
+.bar .stripe { position: absolute; left: 0; right: 0; top: 0; height: 9px; background: var(--bc); border-radius: 3px; box-shadow: 0 1px 1px rgba(0,0,0,.2); }
+.bar.cut-l .stripe { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.bar.cut-r .stripe { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 /* 休みの日：外枠だけ残して中を白く抜く */
-.bar .gap { position: absolute; top: 0; bottom: 0; z-index: 1; pointer-events: none; background: #fff; border: 2px solid var(--bc); }
+.bar .gap { position: absolute; top: 0; height: 9px; z-index: 1; pointer-events: none; background: #fff; border: 1.5px solid var(--bc); }
 .bar:not(.dark) .gap { border-color: var(--bc); }
-.bar .lbl { position: relative; z-index: 2; background: var(--bc); padding-right: 3px; border-radius: 3px; }
+.bar .lbl { position: absolute; left: 1px; top: 10px; z-index: 2; font-size: 12px; line-height: 14px; white-space: nowrap; color: #222;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 2px #fff; pointer-events: none; }
+.bar .lbl .st { color: #555; }
+.bar.drag .stripe { outline: 2px solid #000; }
+.bar.drag { outline: none; }
 .bar .h { z-index: 3; }
 
 .pickrow { display: flex; gap: 6px; }
