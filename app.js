@@ -9,6 +9,7 @@ const SCOPES = ["User.Read", "Files.ReadWrite.All"];
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const DEMO = new URLSearchParams(location.search).has("demo");
 const POLL_MS = 30000;
+const SHOW_EMP = false;   // 従業員の名前を入れる（将来の仕様。いまは作業員は人数だけ）
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -183,9 +184,9 @@ function showSync() {
 }
 
 // ほかの人の書き込みを取り込む（自分の未保存の変更があるファイルは、保存のときに重ねるので飛ばす）
-let pulling = false;
+let pulling = false, ready = false;   // ready：サインインが済んで読み込みを始めてよい
 async function pull() {
-  if (pulling) return;
+  if (pulling || !ready) return;
   pulling = true;
   try {
     const items = await store.list();
@@ -240,11 +241,6 @@ function namesFor(field) {
   const extra = [...usedNames(field)].filter(n => !base.includes(n)).sort((a, b) => a.localeCompare(b, "ja"));
   return [...base, ...extra];
 }
-// ボタンに出す短い名前（名字。同じ名字が2人以上なら名前まで）
-function shortName(n, list) {
-  const sn = surname(n);
-  return list.filter(x => surname(x) === sn).length > 1 ? n : sn;
-}
 
 /* ---------- 表示する期間 ---------- */
 function range() {
@@ -268,7 +264,7 @@ function barLabel(b) {
   const parts = [];
   if (b.作業) parts.push(esc(b.作業));
   if (b.人数) parts.push(esc(b.人数) + "名");
-  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.map(surname).join("・"))}</span>`);
+  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.join("・"))}</span>`);
   return parts.join(" ");
 }
 function barTitle(s, b) {
@@ -327,10 +323,10 @@ function renderList() {
   }
   rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
   const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
-  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th><th>従業員</th><th>作業員</th><th>メモ</th><th>更新</th></tr>` +
+  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員</th><th>メモ</th><th>更新</th></tr>` +
     rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? ln.名前 : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
-      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td><td>${esc((b.従業員 || []).join("・"))}</td><td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
@@ -382,11 +378,13 @@ function renderFlow() {
   for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.社員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
   h.push(`</tr>`);
 
-  h.push(`<tr class="sec"><th colspan="${cols}">従業員の行き先（${emps.length}人）</th></tr>`);
-  personRows("従業員", emps);
-  h.push(`<tr class="tot"><th class="nm">従業員 計</th>`);
-  for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.従業員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
-  h.push(`</tr>`);
+  if (SHOW_EMP) {
+    h.push(`<tr class="sec"><th colspan="${cols}">従業員の行き先（${emps.length}人）</th></tr>`);
+    personRows("従業員", emps);
+    h.push(`<tr class="tot"><th class="nm">従業員 計</th>`);
+    for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.従業員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
+    h.push(`</tr>`);
+  }
 
   // 2. 作業員の人数（現場ごと・昼夜）
   h.push(`<tr class="sec"><th colspan="${cols}">作業員の人数（工程表のバーの「作業員」の合計。段の名前に「夜」があれば夜間）</th></tr>`);
@@ -502,7 +500,8 @@ function openBar(site, b, init) {
   $("bStaff").value = joinSplit(v.社員 || [], M().社員 || []).join("、");
   $("bEmp").value = joinSplit(v.従業員 || [], M().従業員 || []).join("、");
   $("bNum").value = v.人数 || "";
-  autoNum = !v.人数 || v.人数 === (v.従業員 || []).length;
+  autoNum = SHOW_EMP && (!v.人数 || v.人数 === (v.従業員 || []).length);
+  document.querySelectorAll("#dBar .emp").forEach(el => { el.hidden = !SHOW_EMP; });
   drawPick("社員"); drawPick("従業員");
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
@@ -556,20 +555,22 @@ $("bBarCopy").onclick = () => {
 };
 $("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; autoNum = false; });
 
-// 社員・従業員を名前のボタンで選ぶ
+// 社員・従業員を名簿の一覧（フルネーム）から選ぶ。選んである人は ✓。もう一度選ぶと外す
 let autoNum = true;
 const PICK = { 社員: ["bStaff", "bStaffPick"], 従業員: ["bEmp", "bEmpPick"] };
 function drawPick(field) {
   const [inp, box] = PICK[field], list = namesFor(field);
   const cur = splitNames($(inp).value).map(x => resolveName(x, list));
-  $(box).innerHTML = list.map(n => `<button type="button" class="${cur.includes(n) ? "on" : ""}" data-n="${esc(n)}" title="${esc(n)}">${esc(shortName(n, list))}</button>`).join("");
+  $(box).innerHTML = `<option value="">＋ 選ぶ</option>` +
+    list.map(n => `<option value="${esc(n)}">${cur.includes(n) ? "✓ " : "　 "}${esc(n)}</option>`).join("");
+  $(box).value = "";
 }
 function afterPick(field) {
   if (field === "従業員" && autoNum) { const c = splitNames($("bEmp").value).length; $("bNum").value = c || ""; }
 }
 Object.entries(PICK).forEach(([field, [inp, box]]) => {
-  $(box).addEventListener("click", e => {
-    const n = e.target.dataset.n;
+  $(box).addEventListener("change", e => {
+    const n = e.target.value;
     if (!n) return;
     const list = namesFor(field);
     let cur = splitNames($(inp).value).map(x => resolveName(x, list));
@@ -757,6 +758,7 @@ async function start() {
     $("who").textContent = me.name;
   }
   $("loading").hidden = false;
+  ready = true;
   await pull();
   $("loading").hidden = true;
   showSync();

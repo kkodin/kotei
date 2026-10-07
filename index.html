@@ -73,9 +73,10 @@
       <label for="bWork">作業</label><input type="text" id="bWork" placeholder="例：布設工">
       <label for="bFrom">開始</label><input type="date" id="bFrom" required>
       <label for="bTo">終了</label><input type="date" id="bTo" required>
-      <label for="bStaff">社員</label><div><input type="text" id="bStaff" placeholder="下の名前を押して選ぶ（手で書くときは「、」で区切る）"><div id="bStaffPick" class="pick"></div></div>
-      <label for="bEmp">従業員</label><div><input type="text" id="bEmp" placeholder="名前を押して選ぶ（決まっていなければ空で人数だけ）"><div id="bEmpPick" class="pick"></div></div>
-      <label for="bNum">作業員</label><span><input type="text" id="bNum" inputmode="numeric" class="num"> 名 <span class="note">従業員を選ぶと人数が入ります。外注などは足してください</span></span>
+      <label for="bStaff">社員</label><div class="pickrow"><input type="text" id="bStaff" placeholder="右の「選ぶ」から（手で書くときは「、」で区切る）"><select id="bStaffPick" class="pick" title="名簿から選ぶ。もう一度選ぶと外す"></select></div>
+      <!-- 従業員の名前は将来の仕様（2026-10-07 ユーザー指定：いまは何人必要かだけ）。SHOW_EMP で出す -->
+      <label for="bEmp" class="emp">従業員</label><div class="pickrow emp"><input type="text" id="bEmp" placeholder="決まっていなければ空で、人数だけ"><select id="bEmpPick" class="pick" title="名簿から選ぶ。もう一度選ぶと外す"></select></div>
+      <label for="bNum">作業員</label><span><input type="text" id="bNum" inputmode="numeric" class="num"> 名 <span class="note">何人必要か</span></span>
       <label>色</label><div id="bColors" class="colors"></div>
       <label for="bMemo">メモ</label><textarea id="bMemo" rows="2"></textarea>
     </div>
