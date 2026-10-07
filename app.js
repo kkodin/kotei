@@ -264,6 +264,37 @@ function toggleRest(k) {
   toast(`${md(k)}（${WD[dayDow(k)]}）を${on ? "会社の休みにしました" : "休みから外しました"}`);
 }
 
+/* 段ごとの作業日（2026-10-07 ユーザー：現場ごとに土曜・日曜・祝日に作業するかが違う。昼夜で違うこともある）
+   段.土／日／祝 … その曜日も作業するか（決めていなければ 土＝する・日＝しない・祝＝しない）
+   段.休み／出勤 … その日だけの例外（段の上の日付を右クリックで切り替え） */
+function ruleWorks(ln, k) {
+  if (holidayOf(k)) return ln.祝 === true;
+  const w = dayDow(k);
+  if (w === 0) return ln.日 === true;
+  if (w === 6) return ln.土 !== false;
+  return true;
+}
+function laneWorks(ln, k) {
+  if (!ln || isRest(k)) return false;
+  if ((ln.休み || []).includes(k)) return false;
+  if ((ln.出勤 || []).includes(k)) return true;
+  return ruleWorks(ln, k);
+}
+function toggleLaneDay(siteId, laneId, k) {
+  const s = S.files[fileOfSite(siteId)].doc, ln = s.段.find(l => l.id === laneId);
+  if (isRest(k)) { toast("この日は会社の休みです（日付の見出しを押すと戻せます）"); return; }
+  const on = !laneWorks(ln, k);   // 押したあと作業する日になるか
+  mutate(fileOfSite(siteId), d => {
+    const l = d.段.find(x => x.id === laneId);
+    if (!l) return;
+    l.休み = (l.休み || []).filter(x => x !== k);
+    l.出勤 = (l.出勤 || []).filter(x => x !== k);
+    if (on && !ruleWorks(l, k)) l.出勤.push(k);
+    if (!on && ruleWorks(l, k)) l.休み.push(k);
+  });
+  toast(`${s.名前}（${ln.名前}）${md(k)}（${WD[dayDow(k)]}）を${on ? "作業する日" : "休み"}にしました`);
+}
+
 function dayClass(k) {
   if (isRest(k)) return "rest";
   if (k === todayKey()) return "today";
@@ -307,7 +338,8 @@ function renderChart() {
     h.push(`<div class="site" data-site="${esc(s.id)}"><div class="sname" data-act="site">${esc(s.名前)}` +
       (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "") + `</div><div class="lanes">`);
     for (const ln of s.段) {
-      h.push(`<div class="lane"><div class="llab" data-act="site" title="${esc(ln.名前)}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      h.push(`<div class="lane"><div class="llab" data-act="site" title="${esc(ln.名前 + "\n" + laneRuleText(ln))}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      days.forEach((k, i) => { if (!isRest(k) && !laneWorks(ln, k)) h.push(`<div class="off" style="left:${i * dw}px"></div>`); });
       for (const b of s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end)) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
@@ -357,7 +389,7 @@ function renderFlow() {
   for (const s of sites()) for (const b of s.バー) {
     if (b.終了 < from || b.開始 > end) continue;
     const ln = s.段.find(l => l.id === b.段);
-    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (!isRest(k)) (at[k] = at[k] || []).push({ s, b, ln });
+    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (laneWorks(ln, k)) (at[k] = at[k] || []).push({ s, b, ln });
   }
   const staff = namesFor("社員"), emps = namesFor("従業員");
   const head = `<thead><tr><th class="nm"></th>` +
@@ -492,6 +524,12 @@ window.addEventListener("pointerup", e => {
   const id = d.b.id, a = d.a, z = d.z;
   mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
 });
+$("wrap").addEventListener("contextmenu", e => {
+  const track = e.target.closest(".track");
+  if (!track) return;
+  e.preventDefault();
+  toggleLaneDay(track.dataset.site, track.dataset.lane, dayAdd(range().from, dayAt(track, e.clientX)));
+});
 $("wrap").addEventListener("click", e => {
   const hd = e.target.closest(".hd[data-day]");
   if (hd) { toggleRest(hd.dataset.day); return; }
@@ -600,8 +638,12 @@ Object.entries(PICK).forEach(([field, [inp, box]]) => {
 
 /* ---------- 現場の小窓 ---------- */
 let siteCtx = null;
+const laneRuleText = ln => "作業：平日" + (ln.土 !== false ? "・土" : "") + (ln.日 === true ? "・日" : "") + (ln.祝 === true ? "・祝" : "") +
+  ((ln.休み || []).length ? `／その日だけ休み ${ln.休み.length}日` : "") + ((ln.出勤 || []).length ? `／その日だけ出勤 ${ln.出勤.length}日` : "");
 function laneRow(l) {
+  const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
   return `<div class="ln" data-id="${esc(l.id)}"><input type="text" value="${esc(l.名前)}">` +
+    ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
     `<button type="button" class="sub small" data-mv="-1" title="上へ">▲</button><button type="button" class="sub small" data-mv="1" title="下へ">▼</button>` +
     `<button type="button" class="danger small" data-del>✕</button></div>`;
 }
@@ -644,10 +686,16 @@ $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
-  const lanes = [...$("sLanes").children].map(r => ({ id: r.dataset.id, 名前: r.querySelector("input").value.trim() || "（名前なし）" }));
+  const lanes = [...$("sLanes").children].map(r => {
+    const l = { id: r.dataset.id, 名前: r.querySelector("input[type=text]").value.trim() || "（名前なし）" };
+    r.querySelectorAll("input[data-k]").forEach(c => { l[c.dataset.k] = c.checked; });
+    return l;
+  });
+  // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
+  const keepDays = (doc, l) => { const o = (doc.段 || []).find(x => x.id === l.id); return { ...l, 休み: o ? o.休み || [] : [], 出勤: o ? o.出勤 || [] : [] }; };
   const v = { 名前: name, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
   if (siteCtx.id) {
-    mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes; });
+    mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes.map(l => keepDays(doc, l)); });
   } else {
     const id = newId("s"), file = fileOfSite(id);
     const maxOrd = Math.max(0, ...sites().map(s => s.並び ?? 0));

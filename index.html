@@ -43,7 +43,7 @@
 
 <main id="pChart" hidden>
   <div id="help" class="help">
-    バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。
+    バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。段の上を右クリック＝その日だけ休み・出勤／日付を押す＝会社の休み。
     現場名を押すと現場の設定（段の追加・並べ替え）。
   </div>
   <div id="wrap"><div id="chart"></div></div>
@@ -104,7 +104,8 @@
       <div>
         <div id="sLanes"></div>
         <button type="button" id="bLaneAdd" class="sub small">＋ 段を足す</button>
-        <div class="note">段は工程表の1行です（例：昼間・夜間・25t夜間）。バーのある段は消せません。</div>
+        <div class="note">段は工程表の1行です（例：昼間・夜間・25t夜間）。昼夜の現場は昼間と夜間の2段にします。<br>
+          土・日・祝にチェック＝その曜日も作業する。その日だけの休み／出勤は、工程表の段の上を右クリック。バーのある段は消せません。</div>
       </div>
       <label>並び</label>
       <div><button type="button" id="bSiteUp" class="sub small">▲ 上へ</button> <button type="button" id="bSiteDown" class="sub small">▼ 下へ</button></div>
