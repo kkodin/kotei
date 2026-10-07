@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/07 19:02">
+<link rel="stylesheet" href="app.css?v=Vr001 10/07 19:28">
 </head>
 <body>
 <header id="top">
@@ -31,7 +31,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/07 19:02</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/07 19:28</span>
   </span>
 </header>
 
@@ -75,6 +75,7 @@
       <label for="bWork">作業</label><input type="text" id="bWork" placeholder="例：布設工">
       <label for="bFrom">開始</label><input type="date" id="bFrom" required>
       <label for="bTo">終了</label><input type="date" id="bTo" required>
+      <label>休工日</label><div><button type="button" id="bOffBtn" class="sub small">休工日を設定</button> <span id="bOffInfo" class="note"></span></div>
       <label for="bStaff">社員</label><div class="pickrow"><input type="text" id="bStaff" placeholder="右の「選ぶ」から（手で書くときは「、」で区切る）"><select id="bStaffPick" class="pick" title="名簿から選ぶ。もう一度選ぶと外す"></select></div>
       <!-- 従業員の名前は将来の仕様（2026-10-07 ユーザー指定：いまは何人必要かだけ）。SHOW_EMP で出す -->
       <label for="bEmp" class="emp">従業員</label><div class="pickrow emp"><input type="text" id="bEmp" placeholder="決まっていなければ空で、人数だけ"><select id="bEmpPick" class="pick" title="名簿から選ぶ。もう一度選ぶと外す"></select></div>
@@ -122,12 +123,29 @@
   </form>
 </dialog>
 
+<!-- 休工日のカレンダー（この工程だけの休み。作業する日は色、押すと色が消えて休工） -->
+<dialog id="dCal">
+  <form method="dialog" id="fCal">
+    <h3 id="dCalTtl">休工日を設定</h3>
+    <div class="calhelp">色の付いた日＝作業する日。<b>日にちを押すと色が消えて休工日</b>、もう一度押すと元に戻ります。<br>
+      <span class="note">はじめから白い日は、現場の段の決まり（土・日・祝）や会社の休みで休みの日です。押すとこの工程だけ作業する日にできます（会社の休みは変えられません）。</span></div>
+    <div id="calBody"></div>
+    <div id="calSum" class="calsum"></div>
+    <div class="btns">
+      <button type="button" id="bCalReset" class="sub">この工程の休工日を全部取り消す</button>
+      <span class="sp"></span>
+      <button type="button" id="bCalCancel" class="sub">やめる</button>
+      <button type="submit">決める</button>
+    </div>
+  </form>
+</dialog>
+
 <datalist id="staffList"></datalist>
 <datalist id="siteList"></datalist>
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/07 19:02"></script>
-<script src="app.js?v=Vr001 10/07 19:02"></script>
+<script src="config.js?v=Vr001 10/07 19:28"></script>
+<script src="app.js?v=Vr001 10/07 19:28"></script>
 </body>
 </html>

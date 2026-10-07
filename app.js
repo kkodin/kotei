@@ -284,6 +284,13 @@ function laneWorks(ln, k) {
   if ((ln.出勤 || []).includes(k)) return true;
   return ruleWorks(ln, k);
 }
+// 工程（バー）ごとの休工日（バーの小窓の「休工日を設定」）。段の決まりの上にかける
+function barWorks(ln, b, k) {
+  if (isRest(k)) return false;
+  if (b && (b.休み || []).includes(k)) return false;
+  if (b && (b.出勤 || []).includes(k)) return true;
+  return laneWorks(ln, k);
+}
 function toggleLaneDay(siteId, laneId, k) {
   const s = S.files[fileOfSite(siteId)].doc, ln = s.段.find(l => l.id === laneId);
   if (isRest(k)) { toast("この日は会社の休みです（日付の見出しを押すと戻せます）"); return; }
@@ -320,7 +327,7 @@ function barLabel(b) {
 function barTitle(s, b) {
   const ln = s.段.find(l => l.id === b.段);
   let work = 0;
-  for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (laneWorks(ln, k)) work++;
+  for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
   return `${s.名前}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
     (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (b.人数 ? "\n作業員：" + b.人数 + "名" : "") + (b.メモ ? "\n" + b.メモ : "");
 }
@@ -394,7 +401,7 @@ function renderChart() {
         // 1本のバーの中で、その段が休む日は白く抜いて細い線でつなぐ（「8〜23日、この日とこの日は休み」を1本で書けるように）
         const gaps = [];
         for (let k = a, i = 0; k <= z; k = dayAdd(k, 1), i++) {
-          if (laneWorks(ln, k)) continue;
+          if (barWorks(ln, b, k)) continue;
           const g = gaps[gaps.length - 1];
           if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
         }
@@ -447,7 +454,7 @@ function renderFlow() {
   for (const s of sites()) for (const b of s.バー) {
     if (b.終了 < from || b.開始 > end) continue;
     const ln = s.段.find(l => l.id === b.段);
-    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (laneWorks(ln, k)) (at[k] = at[k] || []).push({ s, b, ln });
+    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) (at[k] = at[k] || []).push({ s, b, ln });
   }
   const staff = namesFor("社員"), emps = namesFor("従業員");
   const head = `<thead><tr><th class="nm"></th>` +
@@ -608,7 +615,7 @@ const splitNames = s => s.split(/[、,，・\n]+/).map(x => x.trim()).filter(Boo
 const toHalf = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 
 function openBar(site, b, init) {
-  barCtx = { siteId: site.id, barId: b ? b.id : null };
+  barCtx = { siteId: site.id, barId: b ? b.id : null, 休み: [...((b && b.休み) || [])], 出勤: [...((b && b.出勤) || [])] };
   const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
   $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
   $("dBarSite").textContent = site.名前;
@@ -626,7 +633,8 @@ function openBar(site, b, init) {
   $("bMemo").value = v.メモ || "";
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
   $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
-  $("dBar").showModal();
+  openDlg($("dBar"));
+  showOffInfo();
   if (!b) $("bWork").focus();
 }
 let lastColor = "青";
@@ -638,9 +646,101 @@ function readBarForm() {
     段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
     社員: [...new Set(splitNames($("bStaff").value).map(x => resolveName(x, namesFor("社員"))))],
     従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: isNaN(n) ? "" : n,
-    色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim()
+    色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim(),
+    // 期間の外になった休工日は捨てる
+    休み: (barCtx.休み || []).filter(k => k >= a && k <= z).sort(), 出勤: (barCtx.出勤 || []).filter(k => k >= a && k <= z).sort()
   };
 }
+
+/* ---------- 休工日のカレンダー ---------- */
+let calWork = null;   // カレンダーで直している途中の { 休み:Set, 出勤:Set }
+function calLane() { const s = S.files[fileOfSite(barCtx.siteId)].doc; return s.段.find(l => l.id === $("bLane").value); }
+function showOffInfo() {
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (!a || !z) { $("bOffInfo").textContent = ""; return; }
+  if (z < a) [a, z] = [z, a];
+  const ln = calLane(), b = { 休み: barCtx.休み, 出勤: barCtx.出勤 };
+  let n = 0, w = 0;
+  for (let k = a; k <= z; k = dayAdd(k, 1)) { n++; if (barWorks(ln, b, k)) w++; }
+  const own = barCtx.休み.filter(k => k >= a && k <= z).length;
+  $("bOffInfo").textContent = `${n}日のうち作業 ${w}日・休み ${n - w}日` + (own ? `（この工程だけの休工 ${own}日）` : "");
+}
+["bFrom", "bTo", "bLane"].forEach(id => $(id).addEventListener("change", showOffInfo));
+function drawCal() {
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (z < a) [a, z] = [z, a];
+  const ln = calLane(), b = { 休み: [...calWork.休み], 出勤: [...calWork.出勤] };
+  const color = colorOf((document.querySelector("#bColors input:checked") || {}).value || "青");
+  const h = [];
+  let n = 0, w = 0;
+  // 期間にかかる月を、日曜はじまりのカレンダーで並べる
+  for (let m = a.slice(0, 7) + "-01"; m <= z; m = keyOf(new Date(+m.slice(0, 4), +m.slice(5, 7), 1))) {
+    h.push(`<div class="cal"><div class="calm">${+m.slice(0, 4)}年${+m.slice(5, 7)}月</div><div class="calg">` +
+      [...WD].map((x, i) => `<div class="calw ${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${x}</div>`).join("") +
+      `<div></div>`.repeat(dayDow(m)));
+    for (let k = m; k.slice(0, 7) === m.slice(0, 7); k = dayAdd(k, 1)) {
+      const hol = holidayOf(k), wd = dayDow(k), num = `<span class="${hol || wd === 0 ? "red" : wd === 6 ? "blue" : ""}">${+k.slice(8)}</span>`;
+      if (k < a || k > z) { h.push(`<div class="cald out">${num}</div>`); continue; }
+      n++;
+      if (isRest(k)) { h.push(`<div class="cald rest" title="会社の休み">${num}<i>休</i></div>`); continue; }
+      const on = barWorks(ln, b, k);
+      if (on) w++;
+      h.push(`<div class="cald ${on ? "con" : "coff"}" data-k="${k}" style="--bc:${color}" title="${esc((hol ? hol + "\n" : "") + (on ? "作業する日（押すと休工）" : "休み（押すと作業する日）"))}">${num}</div>`);
+    }
+    h.push(`</div></div>`);
+  }
+  $("calBody").innerHTML = h.join("");
+  $("calSum").textContent = `期間 ${n}日　作業 ${w}日　休み ${n - w}日`;
+}
+$("bOffBtn").onclick = () => {
+  if (!$("bFrom").value || !$("bTo").value) { alert("先に開始と終了を入れてください。"); return; }
+  calWork = { 休み: new Set(barCtx.休み), 出勤: new Set(barCtx.出勤) };
+  $("dCalTtl").textContent = "休工日を設定　" + ($("bWork").value || "（作業名なし）");
+  drawCal();
+  openDlg($("dCal"));
+};
+$("calBody").addEventListener("click", e => {
+  const c = e.target.closest(".cald[data-k]");
+  if (!c) return;
+  const k = c.dataset.k, ln = calLane();
+  const nowOn = c.classList.contains("con"), base = laneWorks(ln, k);
+  calWork.休み.delete(k); calWork.出勤.delete(k);
+  if (nowOn && base) calWork.休み.add(k);        // 作業する日 → この工程だけ休工
+  if (!nowOn && !base) calWork.出勤.add(k);      // 段の休みの日 → この工程だけ作業
+  drawCal();
+});
+$("bCalReset").onclick = () => { calWork = { 休み: new Set(), 出勤: new Set() }; drawCal(); };
+$("bCalCancel").onclick = () => $("dCal").close();
+$("fCal").addEventListener("submit", e => {
+  e.preventDefault();
+  barCtx.休み = [...calWork.休み].sort(); barCtx.出勤 = [...calWork.出勤].sort();
+  $("dCal").close();
+  showOffInfo();
+});
+
+/* ---------- 小窓：見出しをつかんで動かす。枠の外を押しても閉じない（閉じるのは ボタン か Esc） ---------- */
+function openDlg(d) {
+  d.style.margin = ""; d.style.left = ""; d.style.top = "";
+  d.showModal();
+}
+document.querySelectorAll("dialog h3").forEach(h3 => {
+  h3.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    const d = h3.closest("dialog"), r = d.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    d.style.margin = "0"; d.style.left = r.left + "px"; d.style.top = r.top + "px";
+    try { h3.setPointerCapture(e.pointerId); } catch (x) { }
+    const mv = ev => {
+      d.style.left = Math.min(Math.max(0, ev.clientX - dx), innerWidth - 80) + "px";
+      d.style.top = Math.min(Math.max(0, ev.clientY - dy), innerHeight - 40) + "px";
+    };
+    const up = () => { h3.removeEventListener("pointermove", mv); h3.removeEventListener("pointerup", up); };
+    h3.addEventListener("pointermove", mv); h3.addEventListener("pointerup", up);
+    e.preventDefault();
+  });
+});
+// 枠の外（背景）を押しても閉じない：背景で始まった押し下げは何もしない
+document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) e.stopPropagation(); }));
 $("fBar").addEventListener("submit", e => {
   e.preventDefault();
   if (!$("bFrom").value || !$("bTo").value) return;
@@ -723,7 +823,7 @@ function openSite(id) {
   const lanes = s ? s.段 : [{ id: newId("l"), 名前: "昼間" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
   $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
-  $("dSite").showModal();
+  openDlg($("dSite"));
   if (!s) $("sName").focus();
 }
 $("sLanes").addEventListener("click", e => {
