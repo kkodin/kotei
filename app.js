@@ -208,6 +208,35 @@ async function pull() {
   } finally { pulling = false; }
 }
 
+/* ---------- マスタ（工程データ\マスタ.json。配置表入力の名簿から tools\マスタを書き出す.py で作る） ---------- */
+const M = () => (S.files["マスタ.json"] && S.files["マスタ.json"].doc) || { 社員: [], 従業員: [], 現場: [] };
+const nk = n => String(n).replace(/[\s　]+/g, "");
+const surname = n => String(n).split(/[\s　]+/)[0];
+// 打った名前をマスタの書き方に寄せる（「吉成」→「吉成　直也」。名字が同じ人が2人いるときは寄せない）
+function resolveName(n, list) {
+  if (!n) return n;
+  const hit = list.find(x => x === n) || list.find(x => nk(x) === nk(n));
+  if (hit) return hit;
+  const c = list.filter(x => nk(x).startsWith(nk(n)));
+  return c.length === 1 ? c[0] : n;
+}
+// バーに入っている名前（マスタに無い人も出す）
+function usedNames(field) {
+  const set = new Set();
+  sites().forEach(s => { if (field === "社員" && s.担当) set.add(s.担当); s.バー.forEach(b => (b[field] || []).forEach(n => set.add(n))); });
+  return set;
+}
+function namesFor(field) {
+  const base = M()[field] || [];
+  const extra = [...usedNames(field)].filter(n => !base.includes(n)).sort((a, b) => a.localeCompare(b, "ja"));
+  return [...base, ...extra];
+}
+// ボタンに出す短い名前（名字。同じ名字が2人以上なら名前まで）
+function shortName(n, list) {
+  const sn = surname(n);
+  return list.filter(x => surname(x) === sn).length > 1 ? n : sn;
+}
+
 /* ---------- 表示する期間 ---------- */
 function range() {
   const from = S.view.from + "-01";
@@ -230,7 +259,7 @@ function barLabel(b) {
   const parts = [];
   if (b.作業) parts.push(esc(b.作業));
   if (b.人数) parts.push(esc(b.人数) + "名");
-  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.join("・"))}</span>`);
+  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.map(surname).join("・"))}</span>`);
   return parts.join(" ");
 }
 function barTitle(s, b) {
@@ -283,16 +312,16 @@ function renderList() {
   for (const s of sites()) for (const b of s.バー) {
     if (only && (b.終了 < from || b.開始 > end)) continue;
     const ln = s.段.find(l => l.id === b.段);
-    const text = [s.名前, ln && ln.名前, b.作業, (b.社員 || []).join(" "), b.メモ].join(" ");
+    const text = [s.名前, ln && ln.名前, b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
     if (q && !q.split(/\s+/).every(w => text.includes(w))) continue;
     rows.push({ s, b, ln });
   }
   rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
   const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
-  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th><th>作業員</th><th>メモ</th><th>更新</th></tr>` +
+  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th><th>従業員</th><th>作業員</th><th>メモ</th><th>更新</th></tr>` +
     rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? ln.名前 : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
-      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td><td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td><td>${esc((b.従業員 || []).join("・"))}</td><td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
@@ -310,23 +339,18 @@ function renderFlow() {
     const ln = s.段.find(l => l.id === b.段);
     for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) (at[k] = at[k] || []).push({ s, b, ln });
   }
-  // 社員：バーに出てくる名前（担当だけの人も出す）
-  const names = new Set();
-  sites().forEach(s => { if (s.担当) names.add(s.担当); s.バー.forEach(b => (b.社員 || []).forEach(n => names.add(n))); });
-  const staff = [...names].sort((a, b) => a.localeCompare(b, "ja"));
+  const staff = namesFor("社員"), emps = namesFor("従業員");
   const head = `<thead><tr><th class="nm"></th>` +
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
     `</tr><tr><th class="nm"></th>` + days.map(k => `<th class="${dayClass(k)}">${WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
   const cols = days.length + 1;
   const h = [`<table class="fl">`, head, `<tbody>`];
 
-  // 1. 社員の行き先
-  h.push(`<tr class="sec"><th colspan="${cols}">社員の行き先（${staff.length}人）</th></tr>`);
-  if (!staff.length) h.push(`<tr><th class="nm note">（工程に社員が入っていません）</th></tr>`);
-  for (const n of staff) {
+  // 1. 社員・従業員の行き先（1人1行。マスタの全員を出すので、空いている人も分かる）
+  const personRows = (field, list) => { for (const n of list) {
     h.push(`<tr><th class="nm">${esc(n)}</th>`);
     for (const k of days) {
-      const hits = (at[k] || []).filter(x => (x.b.社員 || []).includes(n));
+      const hits = (at[k] || []).filter(x => (x.b[field] || []).includes(n));
       const siteIds = [...new Set(hits.map(x => x.s.id))];
       if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
       else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
@@ -334,7 +358,10 @@ function renderFlow() {
         h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + x.s.名前 + "／" + (x.b.作業 || "") + (x.ln ? "（" + x.ln.名前 + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
     }
     h.push(`</tr>`);
-  }
+  } };
+  h.push(`<tr class="sec"><th colspan="${cols}">社員の行き先（${staff.length}人）</th></tr>`);
+  if (!staff.length) h.push(`<tr><th class="nm note">（社員がいません）</th></tr>`);
+  personRows("社員", staff);
   // 社員の入っていない工程
   h.push(`<tr><th class="nm" style="color:#c62828">社員 未定</th>`);
   for (const k of days) {
@@ -344,6 +371,12 @@ function renderFlow() {
   }
   h.push(`</tr><tr class="tot"><th class="nm">社員 計</th>`);
   for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.社員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
+  h.push(`</tr>`);
+
+  h.push(`<tr class="sec"><th colspan="${cols}">従業員の行き先（${emps.length}人）</th></tr>`);
+  personRows("従業員", emps);
+  h.push(`<tr class="tot"><th class="nm">従業員 計</th>`);
+  for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.従業員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
   h.push(`</tr>`);
 
   // 2. 作業員の人数（現場ごと・昼夜）
@@ -362,10 +395,9 @@ function renderFlow() {
 
 function render() {
   if (S.tab === "chart") renderChart(); else if (S.tab === "flow") renderFlow(); else renderList();
-  // 社員名の候補（入力済みのものから）
-  const names = new Set();
-  sites().forEach(s => { if (s.担当) names.add(s.担当); s.バー.forEach(b => (b.社員 || []).forEach(n => names.add(n))); });
-  $("staffList").innerHTML = [...names].sort((a, b) => a.localeCompare(b, "ja")).map(n => `<option value="${esc(n)}">`).join("");
+  // 候補（マスタ＋入力済み）
+  $("staffList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
+  $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? "配置表：" + x.略称 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
 }
 
 /* ---------- ドラッグ（動かす・延ばす・作る） ---------- */
@@ -445,7 +477,8 @@ $("wrap").addEventListener("click", e => {
 /* ---------- バーの小窓 ---------- */
 let barCtx = null;
 $("bColors").innerHTML = COLORS.map(([n, c], i) => `<input type="radio" name="bColor" id="bc${i}" value="${n}"><label for="bc${i}" style="background:${c}" title="${n}"></label>`).join("");
-const splitNames = s => s.split(/[、,，・\s]+/).map(x => x.trim()).filter(Boolean);
+// 名前は「名字　名前」と全角空白を含むので、空白では区切らない
+const splitNames = s => s.split(/[、,，・\n]+/).map(x => x.trim()).filter(Boolean);
 const toHalf = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 
 function openBar(site, b, init) {
@@ -458,7 +491,10 @@ function openBar(site, b, init) {
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
   $("bStaff").value = (v.社員 || []).join("、");
+  $("bEmp").value = (v.従業員 || []).join("、");
   $("bNum").value = v.人数 || "";
+  autoNum = !v.人数 || v.人数 === (v.従業員 || []).length;
+  drawPick("社員"); drawPick("従業員");
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
@@ -473,7 +509,8 @@ function readBarForm() {
   const n = parseInt(toHalf($("bNum").value), 10);
   return {
     段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
-    社員: splitNames($("bStaff").value), 人数: isNaN(n) ? "" : n,
+    社員: [...new Set(splitNames($("bStaff").value).map(x => resolveName(x, namesFor("社員"))))],
+    従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: isNaN(n) ? "" : n,
     色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim()
   };
 }
@@ -503,11 +540,36 @@ $("bBarCopy").onclick = () => {
   const site = S.files[fileOfSite(barCtx.siteId)].doc;
   $("dBar").close();
   openBar(site, null, { 段: v.段, 開始: dayAdd(v.終了, 1), 終了: dayAdd(v.終了, 1 + len) });
-  $("bWork").value = v.作業; $("bStaff").value = v.社員.join("、"); $("bNum").value = v.人数; $("bMemo").value = v.メモ;
+  $("bWork").value = v.作業; $("bStaff").value = v.社員.join("、"); $("bEmp").value = v.従業員.join("、"); $("bNum").value = v.人数; $("bMemo").value = v.メモ;
+  drawPick("社員"); drawPick("従業員");
   (document.querySelector(`#bColors input[value="${v.色}"]`) || {}).checked = true;
   $("bFrom").focus();
 };
-$("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; });
+$("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; autoNum = false; });
+
+// 社員・従業員を名前のボタンで選ぶ
+let autoNum = true;
+const PICK = { 社員: ["bStaff", "bStaffPick"], 従業員: ["bEmp", "bEmpPick"] };
+function drawPick(field) {
+  const [inp, box] = PICK[field], list = namesFor(field);
+  const cur = splitNames($(inp).value).map(x => resolveName(x, list));
+  $(box).innerHTML = list.map(n => `<button type="button" class="${cur.includes(n) ? "on" : ""}" data-n="${esc(n)}" title="${esc(n)}">${esc(shortName(n, list))}</button>`).join("");
+}
+function afterPick(field) {
+  if (field === "従業員" && autoNum) { const c = splitNames($("bEmp").value).length; $("bNum").value = c || ""; }
+}
+Object.entries(PICK).forEach(([field, [inp, box]]) => {
+  $(box).addEventListener("click", e => {
+    const n = e.target.dataset.n;
+    if (!n) return;
+    const list = namesFor(field);
+    let cur = splitNames($(inp).value).map(x => resolveName(x, list));
+    cur = cur.includes(n) ? cur.filter(x => x !== n) : [...cur, n];
+    $(inp).value = cur.join("、");
+    drawPick(field); afterPick(field);
+  });
+  $(inp).addEventListener("input", () => { drawPick(field); afterPick(field); });
+});
 
 /* ---------- 現場の小窓 ---------- */
 let siteCtx = null;
@@ -543,13 +605,20 @@ $("sLanes").addEventListener("click", e => {
     row.remove();
   }
 });
+$("sName").addEventListener("change", () => {
+  const n = $("sName").value.trim(), x = M().現場.find(s => s.名前 === n) || M().現場.find(s => s.略称 === n);
+  if (!x) return;
+  if (!$("sCode").value) $("sCode").value = x.コード || "";
+  if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
+  if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
+});
 $("bLaneAdd").onclick = () => { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 名前: "" })); $("sLanes").lastElementChild.querySelector("input").focus(); };
 $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
   const lanes = [...$("sLanes").children].map(r => ({ id: r.dataset.id, 名前: r.querySelector("input").value.trim() || "（名前なし）" }));
-  const v = { 名前: name, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: $("sTanto").value.trim() };
+  const v = { 名前: name, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
   if (siteCtx.id) {
     mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes; });
   } else {
@@ -645,6 +714,8 @@ function seedDemo() {
    mk(2, "B現場 道路改良", ["昼間"], [[0, "舗装", 8, 12, 5, "緑"]]),
    mk(3, "C現場 下水", ["昼間"], [[0, "推進工", 1, 25, 4, "紫"]])]
     .forEach(([f, d]) => { a[f] = { data: d, eTag: "d0" }; });
+  a["マスタ.json"] = { eTag: "d0", data: { 社員: ["試し　太郎", "試し　次郎", "例題　花子"], 従業員: ["見本　一郎", "見本　二郎", "見本　三郎"],
+    現場: [{ 名前: "E現場 新設工事", 略称: "E新設", コード: "520009", 担当: "試し" }] } };
   DemoStore.save(a);
 }
 
