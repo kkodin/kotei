@@ -250,7 +250,22 @@ function range() {
   for (let k = from; k <= end; k = dayAdd(k, 1)) days.push(k);
   return { from, end, days };
 }
+/* 会社の休み（工程データ\休日.json。日付の見出しを押して切り替える。全員で共有） */
+const REST_FILE = "休日.json";
+const isRest = k => { const f = S.files[REST_FILE]; return !!(f && f.doc && (f.doc.休み || []).includes(k)); };
+function toggleRest(k) {
+  if (!S.files[REST_FILE]) S.files[REST_FILE] = { doc: { 休み: [] }, eTag: null, pending: [], saving: false, timer: null, err: null };
+  const on = !isRest(k);
+  mutate(REST_FILE, d => {
+    const set = new Set(d.休み || []);
+    if (on) set.add(k); else set.delete(k);
+    d.休み = [...set].sort();
+  });
+  toast(`${md(k)}（${WD[dayDow(k)]}）を${on ? "会社の休みにしました" : "休みから外しました"}`);
+}
+
 function dayClass(k) {
+  if (isRest(k)) return "rest";
   if (k === todayKey()) return "today";
   if (holidayOf(k)) return "hol";
   const w = dayDow(k);
@@ -281,9 +296,9 @@ function renderChart() {
   h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年</div>` +
     days.map(k => `<div class="hd ${k.endsWith("-01") ? "mon" : ""}">${k.endsWith("-01") ? (+k.slice(5, 7)) + "月" : ""}</div>`).join("") + "</div>");
   h.push(`<div class="hrow d"><div class="corner"></div>` +
-    days.map(k => `<div class="hd ${dayClass(k)}" title="${esc(holidayOf(k))}">${+k.slice(8)}</div>`).join("") + "</div>");
+    days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
   h.push(`<div class="hrow w"><div class="corner">現場／段</div>` +
-    days.map(k => `<div class="hd ${dayClass(k)}">${WD[dayDow(k)]}</div>`).join("") + "</div>");
+    days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="押すと会社の休みにする／戻す">${isRest(k) ? "休" : WD[dayDow(k)]}</div>`).join("") + "</div>");
   // 本体
   h.push(`<div id="body">`);
   const left = `calc(var(--sw) + var(--lw))`;
@@ -342,12 +357,12 @@ function renderFlow() {
   for (const s of sites()) for (const b of s.バー) {
     if (b.終了 < from || b.開始 > end) continue;
     const ln = s.段.find(l => l.id === b.段);
-    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) (at[k] = at[k] || []).push({ s, b, ln });
+    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (!isRest(k)) (at[k] = at[k] || []).push({ s, b, ln });
   }
   const staff = namesFor("社員"), emps = namesFor("従業員");
   const head = `<thead><tr><th class="nm"></th>` +
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
-    `</tr><tr><th class="nm"></th>` + days.map(k => `<th class="${dayClass(k)}">${WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
+    `</tr><tr><th class="nm"></th>` + days.map(k => `<th class="${dayClass(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
   const cols = days.length + 1;
   const h = [`<table class="fl">`, head, `<tbody>`];
 
@@ -478,6 +493,8 @@ window.addEventListener("pointerup", e => {
   mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
 });
 $("wrap").addEventListener("click", e => {
+  const hd = e.target.closest(".hd[data-day]");
+  if (hd) { toggleRest(hd.dataset.day); return; }
   if (e.target.closest("[data-act=site]")) openSite(e.target.closest(".site").dataset.site);
 });
 
