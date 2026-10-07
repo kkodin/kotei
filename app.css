@@ -47,6 +47,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #chart { position: relative; display: inline-block; min-width: 100%; }
 .hrow { display: flex; position: sticky; z-index: 6; background: #fff; }
 .hrow.m { top: 0; }
+.hrow.m .corner { white-space: nowrap; overflow: hidden; }
 .hrow.d { top: 22px; }
 .hrow.w { top: 44px; border-bottom: 2px solid #888; }
 .hrow > div { height: 22px; line-height: 22px; font-size: 12px; text-align: center; flex: none; }
@@ -72,6 +73,13 @@ table.fl .rest { background: repeating-linear-gradient(45deg, #d5d8dc 0 3px, #f3
 .site { display: flex; border-bottom: 1px solid #9aa3ad; position: relative; }
 .sname { position: sticky; left: 0; z-index: 4; width: var(--sw); flex: none; background: #fff; border-right: 1px solid var(--line); padding: 4px 6px; font-weight: bold; font-size: 14px; cursor: pointer; overflow: hidden; }
 .sname:hover { background: #eef4fb; }
+.sname .tg { display: inline-block; width: 1.2em; color: var(--head); cursor: pointer; font-size: 13px; }
+.sname .tg:hover { background: #d6e4f2; border-radius: 3px; }
+.site.folded .sname { padding-top: 6px; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.site.folded .llab { color: #666; cursor: pointer; }
+.track.sum { cursor: default; }
+.bar.sumbar { background: #9fb3c8; color: #1f2d3a; cursor: pointer; box-shadow: none; }
+.corner .fold { font-size: 11px; padding: 0 5px; margin-left: 4px; }
 .sname .code, .sname .tanto { display: block; font-weight: normal; font-size: 12px; color: #666; }
 .lanes { flex: none; }
 .lane { display: flex; height: var(--rh); border-bottom: 1px dotted var(--line); }

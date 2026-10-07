@@ -318,13 +318,41 @@ function barTitle(s, b) {
     (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (b.人数 ? "\n作業員：" + b.人数 + "名" : "") + (b.メモ ? "\n" + b.メモ : "");
 }
 
+/* 同じ段で日が重なるバー（複数の工種）は、下に行を足して並べる。開始の早い順に、空いている一番上の行へ */
+function packLane(bars) {
+  const ends = [], pos = {};
+  [...bars].sort((a, b) => a.開始.localeCompare(b.開始) || b.終了.localeCompare(a.終了)).forEach(b => {
+    let r = ends.findIndex(e => e < b.開始);
+    if (r < 0) { r = ends.length; ends.push(""); }
+    ends[r] = b.終了; pos[b.id] = r;
+  });
+  return { pos, rows: Math.max(1, ends.length) };
+}
+/* 現場のたたみ（その人のブラウザだけに覚える） */
+const FOLD_KEY = "kotei_fold";
+let folded = new Set();
+try { folded = new Set(JSON.parse(localStorage.getItem(FOLD_KEY)) || []); } catch (e) { }
+function setFold(ids, on) {
+  ids.forEach(id => on ? folded.add(id) : folded.delete(id));
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (e) { }
+  render();
+}
+// たたんだ現場の帯：工事のある日をつないだ期間
+function spansOf(s, from, end) {
+  const ks = new Set();
+  s.バー.forEach(b => { for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) ks.add(k); });
+  const out = [];
+  [...ks].sort().forEach(k => { const last = out[out.length - 1]; if (last && dayAdd(last.z, 1) === k) last.z = k; else out.push({ a: k, z: k }); });
+  return out;
+}
+
 function renderChart() {
   const { from, end, days } = range();
-  const dw = DW();
+  const dw = DW(), rh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rh"));
   const width = days.length * dw;
   const h = [];
   // 見出し：月・日・曜
-  h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年</div>` +
+  h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年 <button type="button" class="sub small fold" data-fold="all">▸ 全部たたむ</button><button type="button" class="sub small fold" data-fold="none">▾ 全部ひらく</button></div>` +
     days.map(k => `<div class="hd ${k.endsWith("-01") ? "mon" : ""}">${k.endsWith("-01") ? (+k.slice(5, 7)) + "月" : ""}</div>`).join("") + "</div>");
   h.push(`<div class="hrow d"><div class="corner"></div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
@@ -335,16 +363,29 @@ function renderChart() {
   const left = `calc(var(--sw) + var(--lw))`;
   days.forEach((k, i) => { const c = dayClass(k); if (c) h.push(`<div class="col ${c}" style="left:calc(${left} + ${i * dw}px)"></div>`); });
   for (const s of sites()) {
-    h.push(`<div class="site" data-site="${esc(s.id)}"><div class="sname" data-act="site">${esc(s.名前)}` +
-      (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "") + `</div><div class="lanes">`);
-    for (const ln of s.段) {
-      h.push(`<div class="lane"><div class="llab" data-act="site" title="${esc(ln.名前 + "\n" + laneRuleText(ln))}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+    const fold = folded.has(s.id);
+    h.push(`<div class="site ${fold ? "folded" : ""}" data-site="${esc(s.id)}"><div class="sname" data-act="site"><span class="tg" title="${fold ? "ひらく" : "たたむ"}">${fold ? "▸" : "▾"}</span>${esc(s.名前)}` +
+      (fold ? "" : (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "")) + `</div><div class="lanes">`);
+    if (fold) {
+      // たたんだ現場：1行に、工事のある期間だけを帯で出す
+      const inR = s.バー.filter(b => b.終了 >= from && b.開始 <= end);
+      const works = [...new Set(inR.map(b => b.作業).filter(Boolean))];
+      h.push(`<div class="lane"><div class="llab" data-act="fold" title="押すとひらく">${inR.length ? works.length + "工種" : "―"}</div><div class="track sum" style="width:${width}px">`);
+      for (const p of spansOf(s, from, end)) {
+        const x = dayDiff(from, p.a) * dw, w = (dayDiff(p.a, p.z) + 1) * dw;
+        h.push(`<div class="bar sumbar" data-act="fold" style="left:${x}px;width:${w}px" title="${esc(md(p.a) + "〜" + md(p.z) + "\n" + works.join("・") + "\n押すとひらく")}">${esc(works.join("・"))}</div>`);
+      }
+      h.push(`</div></div>`);
+    } else for (const ln of s.段) {
+      const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
+      const { pos, rows } = packLane(bars);
+      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab" data-act="site" title="${esc(ln.名前 + "\n" + laneRuleText(ln))}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
       days.forEach((k, i) => { if (!isRest(k) && !laneWorks(ln, k)) h.push(`<div class="off" style="left:${i * dw}px"></div>`); });
-      for (const b of s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end)) {
+      for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
         h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
-          `style="left:${x}px;width:${w}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="h l"></span>${barLabel(b)}<span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
@@ -463,7 +504,7 @@ function dayAt(track, clientX) {
 $("wrap").addEventListener("pointerdown", e => {
   if (e.button !== 0) return;
   const barEl = e.target.closest(".bar"), track = e.target.closest(".track");
-  if (!track) return;
+  if (!track || track.classList.contains("sum")) return;
   const site = S.files[fileOfSite(track.dataset.site)].doc;
   const { from } = range();
   const d0 = dayAt(track, e.clientX);
@@ -526,13 +567,19 @@ window.addEventListener("pointerup", e => {
 });
 $("wrap").addEventListener("contextmenu", e => {
   const track = e.target.closest(".track");
-  if (!track) return;
+  if (!track || track.classList.contains("sum")) return;
   e.preventDefault();
   toggleLaneDay(track.dataset.site, track.dataset.lane, dayAdd(range().from, dayAt(track, e.clientX)));
 });
 $("wrap").addEventListener("click", e => {
+  const fb = e.target.closest("[data-fold]");
+  if (fb) { setFold(sites().map(s => s.id), fb.dataset.fold === "all"); return; }
   const hd = e.target.closest(".hd[data-day]");
   if (hd) { toggleRest(hd.dataset.day); return; }
+  if (e.target.closest(".tg") || e.target.closest("[data-act=fold]")) {
+    const id = e.target.closest(".site").dataset.site;
+    setFold([id], !folded.has(id)); return;
+  }
   if (e.target.closest("[data-act=site]")) openSite(e.target.closest(".site").dataset.site);
 });
 
