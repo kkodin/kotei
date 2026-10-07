@@ -106,6 +106,7 @@ dialog h3 { margin: 0; padding: 10px 16px; background: var(--head); color: #fff;
 .frm { display: grid; grid-template-columns: 5em 1fr; gap: 8px 10px; padding: 14px 16px 4px; align-items: center; }
 .frm > label { text-align: right; color: #444; font-size: 14px; }
 .frm input[type=text], .frm textarea, .frm select { width: 100%; }
+.frm input.num { width: 7em; }
 .colors { display: flex; gap: 6px; flex-wrap: wrap; }
 .colors label { width: 26px; height: 26px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
 .colors input { display: none; }
