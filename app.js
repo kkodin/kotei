@@ -318,7 +318,10 @@ function barLabel(b) {
   return parts.join(" ");
 }
 function barTitle(s, b) {
-  return `${s.名前}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日）` +
+  const ln = s.段.find(l => l.id === b.段);
+  let work = 0;
+  for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (laneWorks(ln, k)) work++;
+  return `${s.名前}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
     (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (b.人数 ? "\n作業員：" + b.人数 + "名" : "") + (b.メモ ? "\n" + b.メモ : "");
 }
 
@@ -388,9 +391,17 @@ function renderChart() {
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
+        // 1本のバーの中で、その段が休む日は白く抜いて細い線でつなぐ（「8〜23日、この日とこの日は休み」を1本で書けるように）
+        const gaps = [];
+        for (let k = a, i = 0; k <= z; k = dayAdd(k, 1), i++) {
+          if (laneWorks(ln, k)) continue;
+          const g = gaps[gaps.length - 1];
+          if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
+        }
         h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
-          `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
-          `<span class="h l"></span>${barLabel(b)}<span class="h r"></span></div>`);
+          `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
+          `<span class="h l"></span><span class="lbl">${barLabel(b)}</span><span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
     }
