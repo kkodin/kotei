@@ -11,6 +11,7 @@
   <span class="ttl">全体工程表</span>
   <nav id="tabs">
     <button data-tab="chart" class="on">工程表</button>
+    <button data-tab="flow">人の流れ</button>
     <button data-tab="list">一覧</button>
   </nav>
   <span class="grp">
@@ -46,6 +47,12 @@
     現場名を押すと現場の設定（段の追加・並べ替え）。
   </div>
   <div id="wrap"><div id="chart"></div></div>
+</main>
+
+<main id="pFlow" hidden>
+  <div class="help">社員がどの日にどの現場にいるか、作業員が日ごとに何人要るかを、工程表のバーから自動で出します。
+    <b class="ngb">赤</b>＝同じ日に2つ以上の現場に入っている。マスを押すとその工程を開きます。</div>
+  <div id="flow"></div>
 </main>
 
 <main id="pList" hidden>
@@ -88,6 +95,7 @@
     <h3 id="dSiteTtl">現場</h3>
     <div class="frm">
       <label for="sName">現場名</label><input type="text" id="sName" required>
+      <label for="sShort">略称</label><input type="text" id="sShort" placeholder="人の流れの表に出す短い名前（例：浄明寺）">
       <label for="sCode">現場コード</label><input type="text" id="sCode" inputmode="numeric" class="num" placeholder="例：510015">
       <label for="sTanto">担当</label><input type="text" id="sTanto" list="staffList">
       <label>段</label>

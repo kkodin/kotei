@@ -297,8 +297,71 @@ function renderList() {
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
 
+/* ---------- 人の流れ（工程表のバーから、社員の行き先と作業員の日ごとの人数を出す） ---------- */
+const shortOf = s => s.略称 || String(s.名前).slice(0, 4);
+const isNight = ln => /夜/.test(ln ? ln.名前 : "");
+
+function renderFlow() {
+  const { from, end, days } = range();
+  // 日ごとに、その日にかかっているバーを集める
+  const at = {};   // day -> [{s, b, ln}]
+  for (const s of sites()) for (const b of s.バー) {
+    if (b.終了 < from || b.開始 > end) continue;
+    const ln = s.段.find(l => l.id === b.段);
+    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) (at[k] = at[k] || []).push({ s, b, ln });
+  }
+  // 社員：バーに出てくる名前（担当だけの人も出す）
+  const names = new Set();
+  sites().forEach(s => { if (s.担当) names.add(s.担当); s.バー.forEach(b => (b.社員 || []).forEach(n => names.add(n))); });
+  const staff = [...names].sort((a, b) => a.localeCompare(b, "ja"));
+  const head = `<thead><tr><th class="nm"></th>` +
+    days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
+    `</tr><tr><th class="nm"></th>` + days.map(k => `<th class="${dayClass(k)}">${WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
+  const cols = days.length + 1;
+  const h = [`<table class="fl">`, head, `<tbody>`];
+
+  // 1. 社員の行き先
+  h.push(`<tr class="sec"><th colspan="${cols}">社員の行き先（${staff.length}人）</th></tr>`);
+  if (!staff.length) h.push(`<tr><th class="nm note">（工程に社員が入っていません）</th></tr>`);
+  for (const n of staff) {
+    h.push(`<tr><th class="nm">${esc(n)}</th>`);
+    for (const k of days) {
+      const hits = (at[k] || []).filter(x => (x.b.社員 || []).includes(n));
+      const siteIds = [...new Set(hits.map(x => x.s.id))];
+      if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
+      else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
+      else { const x = hits[0];
+        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + x.s.名前 + "／" + (x.b.作業 || "") + (x.ln ? "（" + x.ln.名前 + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+    }
+    h.push(`</tr>`);
+  }
+  // 社員の入っていない工程
+  h.push(`<tr><th class="nm" style="color:#c62828">社員 未定</th>`);
+  for (const k of days) {
+    const un = (at[k] || []).filter(x => !(x.b.社員 || []).length);
+    const ss = [...new Set(un.map(x => shortOf(x.s)))];
+    h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
+  }
+  h.push(`</tr><tr class="tot"><th class="nm">社員 計</th>`);
+  for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.社員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
+  h.push(`</tr>`);
+
+  // 2. 作業員の人数（現場ごと・昼夜）
+  h.push(`<tr class="sec"><th colspan="${cols}">作業員の人数（工程表のバーの「作業員」の合計。段の名前に「夜」があれば夜間）</th></tr>`);
+  const sum = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + (+x.b.人数 || 0), 0);
+  for (const s of sites()) {
+    if (!s.バー.some(b => b.人数 && b.終了 >= from && b.開始 <= end)) continue;
+    h.push(`<tr><th class="nm">${esc(s.名前)}</th>` + days.map(k => { const v = sum(k, x => x.s === s); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
+  }
+  [["昼間 計", x => !isNight(x.ln)], ["夜間 計", x => isNight(x.ln)], ["作業員 計", () => true]].forEach(([nm, f]) => {
+    h.push(`<tr class="tot"><th class="nm">${nm}</th>` + days.map(k => { const v = sum(k, f); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
+  });
+  h.push(`</tbody></table>`);
+  $("flow").innerHTML = h.join("");
+}
+
 function render() {
-  if (S.tab === "chart") renderChart(); else renderList();
+  if (S.tab === "chart") renderChart(); else if (S.tab === "flow") renderFlow(); else renderList();
   // 社員名の候補（入力済みのものから）
   const names = new Set();
   sites().forEach(s => { if (s.担当) names.add(s.担当); s.バー.forEach(b => (b.社員 || []).forEach(n => names.add(n))); });
@@ -459,6 +522,7 @@ function openSite(id) {
   $("dSiteTtl").textContent = s ? "現場の設定" : "現場を追加";
   $("sName").value = s ? s.名前 : "";
   $("sCode").value = s ? s.コード || "" : "";
+  $("sShort").value = s ? s.略称 || "" : "";
   $("sTanto").value = s ? s.担当 || "" : "";
   const lanes = s ? s.段 : [{ id: newId("l"), 名前: "昼間" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
@@ -485,7 +549,7 @@ $("fSite").addEventListener("submit", e => {
   const name = $("sName").value.trim();
   if (!name) return;
   const lanes = [...$("sLanes").children].map(r => ({ id: r.dataset.id, 名前: r.querySelector("input").value.trim() || "（名前なし）" }));
-  const v = { 名前: name, コード: toHalf($("sCode").value.trim()), 担当: $("sTanto").value.trim() };
+  const v = { 名前: name, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: $("sTanto").value.trim() };
   if (siteCtx.id) {
     mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes; });
   } else {
@@ -537,12 +601,19 @@ $("tabs").addEventListener("click", e => {
   const t = e.target.dataset.tab;
   if (!t) return;
   S.tab = t;
+  try { localStorage.setItem("kotei_tab", t); } catch (e) { }
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-  $("pChart").hidden = t !== "chart"; $("pList").hidden = t !== "list";
+  $("pChart").hidden = t !== "chart"; $("pFlow").hidden = t !== "flow"; $("pList").hidden = t !== "list";
   render();
 });
 $("inListRange").onchange = renderList;
 $("inListQ").oninput = renderList;
+$("flow").addEventListener("click", e => {
+  const td = e.target.closest("td[data-bar]");
+  if (!td) return;
+  const s = S.files[fileOfSite(td.dataset.site)].doc;
+  openBar(s, s.バー.find(b => b.id === td.dataset.bar));
+});
 $("list").addEventListener("click", e => {
   const tr = e.target.closest("tr.r");
   if (!tr) return;
@@ -608,9 +679,10 @@ async function start() {
   $("loading").hidden = false;
   await pull();
   $("loading").hidden = true;
-  $("pChart").hidden = false;
   showSync();
-  render();
+  let tab = "chart";
+  try { tab = localStorage.getItem("kotei_tab") || "chart"; } catch (e) { }
+  (document.querySelector(`#tabs [data-tab="${tab}"]`) || document.querySelector("#tabs [data-tab=chart]")).click();
   setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
 }
 start();

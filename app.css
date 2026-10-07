@@ -9,6 +9,7 @@
   --sat: #e8f0fb;
   --hol: #fde8e8;
   --today: #fff4c2;
+  --fw: 46px;        /* 人の流れの1日の幅 */
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -87,6 +88,28 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .bar .st { opacity: .9; }
 
 .addsite { position: sticky; left: 0; padding: 10px; }
+
+/* ---- 人の流れ ---- */
+#flow { flex: 1; overflow: auto; padding-bottom: 20px; }
+.ngb { color: #fff; background: #d93a36; padding: 0 4px; border-radius: 3px; font-weight: normal; }
+table.fl { border-collapse: separate; border-spacing: 0; font-size: 12px; }
+table.fl th, table.fl td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); height: 26px; padding: 0 2px; text-align: center; white-space: nowrap; }
+table.fl td { width: var(--fw); min-width: var(--fw); max-width: var(--fw); overflow: hidden; text-overflow: ellipsis; }
+table.fl thead th { position: sticky; background: #fff; z-index: 3; font-weight: normal; }
+table.fl thead tr:nth-child(1) th { top: 0; }
+table.fl thead tr:nth-child(2) th { top: 26px; border-bottom: 2px solid #888; }
+table.fl th.nm { position: sticky; left: 0; z-index: 2; background: #fff; text-align: left; padding: 0 8px; min-width: 120px; font-weight: bold; }
+table.fl thead th.nm { z-index: 4; }
+table.fl tr.sec th { background: #eef2f6; text-align: left; padding: 4px 8px; font-size: 13px; position: sticky; left: 0; }
+table.fl tr.tot td, table.fl tr.tot th.nm { font-weight: bold; background: #f3f6f9; }
+table.fl .sun, table.fl .hol { background: var(--sun); }
+table.fl .sat { background: var(--sat); }
+table.fl .today { background: var(--today); }
+table.fl td.as { color: #fff; cursor: pointer; }
+table.fl td.as.dark { color: #222; }
+table.fl td.dup { background: #d93a36 !important; color: #fff; font-weight: bold; cursor: pointer; }
+table.fl td.n0 { color: #bbb; }
+table.fl td.un { color: #c62828; cursor: pointer; }
 
 /* ---- 一覧 ---- */
 .listbar { display: flex; gap: 16px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
