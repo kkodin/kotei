@@ -638,7 +638,7 @@ function openBar(site, b, init) {
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
-  $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
+  $("bBarDel").hidden = !b;
   openDlg($("dBar"));
   showOffInfo();
   if (!b) $("bWork").focus();
@@ -767,17 +767,7 @@ $("bBarDel").onclick = () => {
   mutate(fileOfSite(siteId), doc => { doc.バー = doc.バー.filter(x => x.id !== barId); });
   $("dBar").close();
 };
-$("bBarCopy").onclick = () => {
-  // 「何日から何日まで、少し空けてまた何日から」の2本目を楽に作る
-  const v = readBarForm(), len = dayDiff(v.開始, v.終了);
-  const site = S.files[fileOfSite(barCtx.siteId)].doc;
-  $("dBar").close();
-  openBar(site, null, { 段: v.段, 開始: dayAdd(v.終了, 1), 終了: dayAdd(v.終了, 1 + len) });
-  $("bWork").value = v.作業; $("bStaff").value = v.社員.join("、"); $("bEmp").value = v.従業員.join("、"); $("bNum").value = v.人数; $("bMemo").value = v.メモ;
-  drawPick("社員"); drawPick("従業員");
-  (document.querySelector(`#bColors input[value="${v.色}"]`) || {}).checked = true;
-  $("bFrom").focus();
-};
+// 「続きを作る」は 2026-10-07 にやめた（休みをはさむ工程は「休工日を設定」で1本に書く。ユーザー指定）
 $("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; autoNum = false; });
 
 // 社員・従業員を名簿の一覧（フルネーム）から選ぶ。選んである人は ✓。もう一度選ぶと外す
