@@ -25,6 +25,7 @@
     </select>
     <button id="bNext" class="sub" title="次の月">▶</button>
     <button id="bToday" class="sub">今日</button>
+    <label class="chk" title="完了にした現場も表示する"><input type="checkbox" id="inShowDone"> 完了も出す</label>
   </span>
   <span class="grp right">
     <span id="sync" class="sync"></span>
@@ -100,6 +101,7 @@
       <label for="sShort">略称</label><input type="text" id="sShort" placeholder="人の流れの表に出す短い名前（例：浄明寺）">
       <label for="sCode">現場コード</label><input type="text" id="sCode" inputmode="numeric" class="num" placeholder="例：510015">
       <label for="sTanto">担当</label><input type="text" id="sTanto" list="staffList">
+      <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
       <label>段</label>
       <div>
         <div id="sLanes"></div>

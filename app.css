@@ -73,6 +73,10 @@ table.fl .rest { background: repeating-linear-gradient(45deg, #d5d8dc 0 3px, #f3
 .site { display: flex; border-bottom: 1px solid #9aa3ad; position: relative; }
 .sname { position: sticky; left: 0; z-index: 4; width: var(--sw); flex: none; background: #fff; border-right: 1px solid var(--line); padding: 4px 6px; font-weight: bold; font-size: 14px; cursor: pointer; overflow: hidden; }
 .sname:hover { background: #eef4fb; }
+.site.done .sname { color: #888; }
+.donemark { font-size: 11px; font-weight: normal; background: #888; color: #fff; border-radius: 3px; padding: 0 4px; margin-right: 4px; }
+header .chk { font-size: 13px; white-space: nowrap; cursor: pointer; }
+.chk2 { font-size: 14px; text-align: left !important; color: #222 !important; }
 .sname .tg { display: inline-block; width: 1.2em; color: var(--head); cursor: pointer; font-size: 13px; }
 .sname .tg:hover { background: #d6e4f2; border-radius: 3px; }
 .site.folded .sname { padding-top: 6px; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }

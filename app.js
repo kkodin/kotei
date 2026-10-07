@@ -126,6 +126,10 @@ const S = { files: {}, view: { from: "", months: 2 }, tab: "chart" };
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const siteFiles = () => Object.keys(S.files).filter(n => n.startsWith("現場_") && S.files[n].doc && !S.files[n].doc.消した);
 const sites = () => siteFiles().map(n => S.files[n].doc).sort((a, b) => (a.並び ?? 0) - (b.並び ?? 0) || String(a.名前).localeCompare(b.名前, "ja"));
+// 終わった現場（完了）は、上の「完了も出す」にチェックしたときだけ出す（その人のブラウザに覚える）
+let showDone = false;
+try { showDone = localStorage.getItem("kotei_showDone") === "1"; } catch (e) { }
+const shownSites = () => sites().filter(s => showDone || !s.完了);
 const fileOfSite = id => "現場_" + id + ".json";
 const stamp = d => { d.更新 = { だれ: me.name, いつ: new Date().toLocaleString("ja-JP") }; };
 
@@ -362,9 +366,9 @@ function renderChart() {
   h.push(`<div id="body">`);
   const left = `calc(var(--sw) + var(--lw))`;
   days.forEach((k, i) => { const c = dayClass(k); if (c) h.push(`<div class="col ${c}" style="left:calc(${left} + ${i * dw}px)"></div>`); });
-  for (const s of sites()) {
+  for (const s of shownSites()) {
     const fold = folded.has(s.id);
-    h.push(`<div class="site ${fold ? "folded" : ""}" data-site="${esc(s.id)}"><div class="sname" data-act="site"><span class="tg" title="${fold ? "ひらく" : "たたむ"}">${fold ? "▸" : "▾"}</span>${esc(s.名前)}` +
+    h.push(`<div class="site ${fold ? "folded" : ""} ${s.完了 ? "done" : ""}" data-site="${esc(s.id)}"><div class="sname" data-act="site"><span class="tg" title="${fold ? "ひらく" : "たたむ"}">${fold ? "▸" : "▾"}</span>${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}` +
       (fold ? "" : (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "")) + `</div><div class="lanes">`);
     if (fold) {
       // たたんだ現場：1行に、工事のある期間だけを帯で出す
@@ -393,6 +397,8 @@ function renderChart() {
     h.push(`</div></div>`);
   }
   h.push(`</div><div class="addsite"><button id="bAddSite" class="sub">＋ 現場を追加</button></div>`);
+  const hidden = sites().length - shownSites().length;
+  if (hidden) h.push(`<div class="addsite note">完了した現場 ${hidden} 件を隠しています（上の「完了も出す」で表示）</div>`);
   $("chart").innerHTML = h.join("");
   $("bAddSite").onclick = () => openSite(null);
 }
@@ -402,7 +408,7 @@ function renderList() {
   const { from, end } = range();
   const only = $("inListRange").checked, q = $("inListQ").value.trim();
   const rows = [];
-  for (const s of sites()) for (const b of s.バー) {
+  for (const s of shownSites()) for (const b of s.バー) {
     if (only && (b.終了 < from || b.開始 > end)) continue;
     const ln = s.段.find(l => l.id === b.段);
     const text = [s.名前, ln && ln.名前, b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
@@ -477,7 +483,7 @@ function renderFlow() {
   // 2. 作業員の人数（現場ごと・昼夜）
   h.push(`<tr class="sec"><th colspan="${cols}">作業員の人数（工程表のバーの「作業員」の合計。段の名前に「夜」があれば夜間）</th></tr>`);
   const sum = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + (+x.b.人数 || 0), 0);
-  for (const s of sites()) {
+  for (const s of shownSites()) {
     if (!s.バー.some(b => b.人数 && b.終了 >= from && b.開始 <= end)) continue;
     h.push(`<tr><th class="nm">${esc(s.名前)}</th>` + days.map(k => { const v = sum(k, x => x.s === s); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
   }
@@ -573,7 +579,7 @@ $("wrap").addEventListener("contextmenu", e => {
 });
 $("wrap").addEventListener("click", e => {
   const fb = e.target.closest("[data-fold]");
-  if (fb) { setFold(sites().map(s => s.id), fb.dataset.fold === "all"); return; }
+  if (fb) { setFold(shownSites().map(s => s.id), fb.dataset.fold === "all"); return; }
   const hd = e.target.closest(".hd[data-day]");
   if (hd) { toggleRest(hd.dataset.day); return; }
   if (e.target.closest(".tg") || e.target.closest("[data-act=fold]")) {
@@ -701,6 +707,7 @@ function openSite(id) {
   $("sName").value = s ? s.名前 : "";
   $("sCode").value = s ? s.コード || "" : "";
   $("sShort").value = s ? s.略称 || "" : "";
+  $("sDone").checked = !!(s && s.完了);
   $("sTanto").value = s ? s.担当 || "" : "";
   const lanes = s ? s.段 : [{ id: newId("l"), 名前: "昼間" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
@@ -740,7 +747,7 @@ $("fSite").addEventListener("submit", e => {
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
   const keepDays = (doc, l) => { const o = (doc.段 || []).find(x => x.id === l.id); return { ...l, 休み: o ? o.休み || [] : [], 出勤: o ? o.出勤 || [] : [] }; };
-  const v = { 名前: name, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
+  const v = { 名前: name, 完了: $("sDone").checked, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
   if (siteCtx.id) {
     mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes.map(l => keepDays(doc, l)); });
   } else {
@@ -797,6 +804,8 @@ $("tabs").addEventListener("click", e => {
   $("pChart").hidden = t !== "chart"; $("pFlow").hidden = t !== "flow"; $("pList").hidden = t !== "list";
   render();
 });
+$("inShowDone").checked = showDone;
+$("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
 $("inListRange").onchange = renderList;
 $("inListQ").oninput = renderList;
 $("flow").addEventListener("click", e => {
