@@ -1,0 +1,616 @@
+/* 全体工程表（2026-10-07）
+   画面は GitHub Pages、データは会社の OneDrive「工程データ」フォルダ（Microsoft Graph）。
+   現場ごとに1ファイル（現場_<id>.json）。同時に書いたときは eTag で止め、読み直して自分の変更を重ねて保存する。
+   ?demo を付けて開くと、サインインせずこのブラウザの中だけで試せる（OneDrive には書かない）。 */
+"use strict";
+
+const CFG = window.KOTEI_CONFIG;
+const SCOPES = ["User.Read", "Files.ReadWrite.All"];
+const GRAPH = "https://graph.microsoft.com/v1.0";
+const DEMO = new URLSearchParams(location.search).has("demo");
+const POLL_MS = 30000;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- 日付（"YYYY-MM-DD" の文字列で持つ。時差の狂いを避ける） ---------- */
+const pad2 = n => String(n).padStart(2, "0");
+const keyOf = d => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+const dateOf = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+const dayAdd = (k, n) => { const d = dateOf(k); d.setDate(d.getDate() + n); return keyOf(d); };
+const dayDow = k => dateOf(k).getDay();
+const dayDiff = (a, b) => Math.round((dateOf(b) - dateOf(a)) / 86400000);
+const todayKey = () => keyOf(new Date());
+const md = k => { const d = dateOf(k); return (d.getMonth() + 1) + "/" + d.getDate(); };
+const WD = "日月火水木金土";
+
+/* 日本の祝日（原価管理 Vr013 の jpHolidays と同じ決まり） */
+const JP_HOL = {};
+function jpHolidays(y) {
+  if (JP_HOL[y]) return JP_HOL[y];
+  const h = {}, k = (m, d) => y + "-" + pad2(m) + "-" + pad2(d);
+  const nthMon = (m, n) => { const w = new Date(y, m - 1, 1).getDay(); return 1 + ((8 - w) % 7) + (n - 1) * 7; };
+  const add = (m, d, nm) => { h[k(m, d)] = nm; };
+  add(1, 1, "元日"); add(1, nthMon(1, 2), "成人の日"); add(2, 11, "建国記念の日");
+  if (y >= 2020) add(2, 23, "天皇誕生日");
+  add(3, Math.floor(20.8431 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)), "春分の日");
+  add(4, 29, "昭和の日"); add(5, 3, "憲法記念日"); add(5, 4, "みどりの日"); add(5, 5, "こどもの日");
+  add(7, nthMon(7, 3), "海の日"); add(8, 11, "山の日"); add(10, nthMon(10, 2), "スポーツの日");
+  add(9, nthMon(9, 3), "敬老の日");
+  add(9, Math.floor(23.2488 + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)), "秋分の日");
+  add(11, 3, "文化の日"); add(11, 23, "勤労感謝の日");
+  Object.keys(h).forEach(x => { const n = dayAdd(x, 2), mid = dayAdd(x, 1);
+    if (h[n] && !h[mid] && dayDow(mid) !== 0 && mid.slice(0, 4) === String(y)) h[mid] = "国民の休日"; });
+  Object.keys(h).sort().forEach(x => { if (dayDow(x) !== 0) return; let n = dayAdd(x, 1); while (h[n]) n = dayAdd(n, 1); if (n.slice(0, 4) === String(y)) h[n] = "振替休日"; });
+  return JP_HOL[y] = h;
+}
+const holidayOf = k => jpHolidays(+k.slice(0, 4))[k] || "";
+
+/* ---------- 色 ---------- */
+const COLORS = [
+  ["青", "#3d7cc9"], ["緑", "#3f9a45"], ["黄", "#f2c230"], ["橙", "#ef7d1a"],
+  ["赤", "#d93a36"], ["紫", "#8a4fb0"], ["茶", "#8d6e63"], ["灰", "#8a96a3"], ["黒", "#37414b"]
+];
+const colorOf = n => (COLORS.find(c => c[0] === n) || COLORS[0])[1];
+const isLight = n => n === "黄";
+
+/* ---------- 保存先：OneDrive（Graph）／試し（このブラウザの中） ---------- */
+let msalApp = null, me = { name: "" };
+
+async function token() {
+  try {
+    return (await msalApp.acquireTokenSilent({ scopes: SCOPES })).accessToken;
+  } catch (e) {
+    if (e instanceof msal.InteractionRequiredAuthError) await msalApp.acquireTokenRedirect({ scopes: SCOPES });
+    throw e;
+  }
+}
+async function g(path, opt = {}) {
+  return fetch(GRAPH + path, { ...opt, headers: { Authorization: "Bearer " + await token(), ...(opt.headers || {}) } });
+}
+function httpErr(res, what) { const e = new Error(what + " " + res.status); e.status = res.status; return e; }
+
+const GraphStore = {
+  base: () => `/drives/${CFG.folder.driveId}/items/${CFG.folder.itemId}`,
+  async list() {
+    const out = [];
+    let url = this.base() + "/children?$top=999";
+    while (url) {
+      const res = await g(url);
+      if (!res.ok) throw httpErr(res, "一覧");
+      const j = await res.json();
+      j.value.forEach(x => out.push({ name: x.name, eTag: x.eTag, url: x["@microsoft.graph.downloadUrl"] }));
+      url = j["@odata.nextLink"] ? j["@odata.nextLink"].replace(GRAPH, "") : null;
+    }
+    return out;
+  },
+  async get(name) {
+    const p = this.base() + ":/" + encodeURIComponent(name);
+    const res = await g(p);
+    if (res.status === 404) return null;
+    if (!res.ok) throw httpErr(res, "読み込み");
+    const meta = await res.json();
+    const dl = meta["@microsoft.graph.downloadUrl"];
+    const body = dl ? await fetch(dl, { cache: "no-store" }) : await g(p + ":/content");
+    if (!body.ok) throw httpErr(body, "中身の読み込み");
+    return { data: await body.json(), eTag: meta.eTag };
+  },
+  // eTag があれば If-Match（違えば 412）。無ければ新規（あれば 409）
+  async put(name, data, eTag) {
+    const p = this.base() + ":/" + encodeURIComponent(name) + ":/content" + (eTag ? "" : "?@microsoft.graph.conflictBehavior=fail");
+    const res = await g(p, { method: "PUT", headers: { "Content-Type": "application/json", ...(eTag ? { "If-Match": eTag } : {}) }, body: JSON.stringify(data, null, 1) });
+    if (!res.ok) throw httpErr(res, "保存");
+    return { eTag: (await res.json()).eTag };
+  }
+};
+
+const DemoStore = {
+  key: "kotei_demo_v1",
+  all() { try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch (e) { return {}; } },
+  save(a) { try { localStorage.setItem(this.key, JSON.stringify(a)); } catch (e) { } },
+  async list() { const a = this.all(); return Object.keys(a).map(n => ({ name: n, eTag: a[n].eTag })); },
+  async get(name) { const a = this.all(); return a[name] ? { data: JSON.parse(JSON.stringify(a[name].data)), eTag: a[name].eTag } : null; },
+  async put(name, data, eTag) {
+    const a = this.all(), cur = a[name];
+    if (eTag ? (!cur || cur.eTag !== eTag) : cur) { const e = new Error("保存 " + (eTag ? 412 : 409)); e.status = eTag ? 412 : 409; throw e; }
+    const t = "d" + Date.now() + Math.random().toString(36).slice(2, 6);
+    a[name] = { data: JSON.parse(JSON.stringify(data)), eTag: t }; this.save(a);
+    return { eTag: t };
+  }
+};
+let store = DEMO ? DemoStore : GraphStore;
+
+/* ---------- 状態 ---------- */
+// S.files[name] = { doc, eTag, pending:[fn], saving, timer, err }
+const S = { files: {}, view: { from: "", months: 2 }, tab: "chart" };
+const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const siteFiles = () => Object.keys(S.files).filter(n => n.startsWith("現場_") && S.files[n].doc && !S.files[n].doc.消した);
+const sites = () => siteFiles().map(n => S.files[n].doc).sort((a, b) => (a.並び ?? 0) - (b.並び ?? 0) || String(a.名前).localeCompare(b.名前, "ja"));
+const fileOfSite = id => "現場_" + id + ".json";
+const stamp = d => { d.更新 = { だれ: me.name, いつ: new Date().toLocaleString("ja-JP") }; };
+
+// 変更は「関数」で持つ。保存がぶつかったら、読み直した最新の中身に同じ関数をもう一度かける
+function mutate(name, fn) {
+  const f = S.files[name];
+  fn(f.doc); stamp(f.doc);
+  f.pending.push(fn);
+  scheduleSave(name);
+  render();
+}
+function scheduleSave(name, ms = 700) {
+  const f = S.files[name];
+  clearTimeout(f.timer);
+  f.timer = setTimeout(() => saveFile(name), ms);
+  showSync();
+}
+async function saveFile(name) {
+  const f = S.files[name];
+  if (f.saving) { scheduleSave(name, 500); return; }
+  if (!f.pending.length) return;
+  f.saving = true; showSync();
+  try {
+    for (let tries = 0; tries < 5; tries++) {
+      const n = f.pending.length;
+      try {
+        const r = await store.put(name, f.doc, f.eTag);
+        f.eTag = r.eTag; f.pending.splice(0, n); f.err = null;
+        break;
+      } catch (e) {
+        if (e.status !== 412 && e.status !== 409) throw e;
+        // ほかの人が先に保存した → 最新を読んで、自分の変更を重ね直す
+        const fresh = await store.get(name);
+        const d = fresh ? fresh.data : f.doc;
+        f.pending.forEach(fn => fn(d)); stamp(d);
+        f.doc = d; f.eTag = fresh ? fresh.eTag : null;
+        toast("ほかの人の変更を読み込んで、重ねて保存しました");
+        render();
+      }
+    }
+  } catch (e) {
+    f.err = e.message; console.error(e);
+    toast("保存できませんでした：" + e.message + "（自動でやり直します）");
+    setTimeout(() => scheduleSave(name, 0), 10000);
+  } finally {
+    f.saving = false; showSync();
+    if (f.pending.length && !f.err) scheduleSave(name, 300);
+  }
+}
+function showSync() {
+  const files = Object.values(S.files);
+  const busy = files.some(f => f.pending.length || f.saving), err = files.some(f => f.err);
+  const el = $("sync");
+  el.className = "sync " + (err ? "err" : busy ? "busy" : "ok");
+  el.textContent = err ? "保存できていません" : busy ? "保存中…" : "保存済み";
+}
+
+// ほかの人の書き込みを取り込む（自分の未保存の変更があるファイルは、保存のときに重ねるので飛ばす）
+let pulling = false;
+async function pull() {
+  if (pulling) return;
+  pulling = true;
+  try {
+    const items = await store.list();
+    let changed = false;
+    for (const it of items) {
+      if (!it.name.endsWith(".json") || it.name === "接続テスト.json") continue;
+      const f = S.files[it.name];
+      if (f && (f.eTag === it.eTag || f.pending.length || f.saving)) continue;
+      const r = await store.get(it.name);
+      if (!r) continue;
+      S.files[it.name] = { doc: r.data, eTag: r.eTag, pending: [], saving: false, timer: null, err: null };
+      changed = true;
+    }
+    if (changed) render();
+    showSync();
+  } catch (e) {
+    console.error(e);
+    if (e.status === 404 || e.status === 403) toast("工程データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください");
+    else toast("最新の読み込みに失敗：" + e.message);
+  } finally { pulling = false; }
+}
+
+/* ---------- 表示する期間 ---------- */
+function range() {
+  const from = S.view.from + "-01";
+  const end = dayAdd(keyOf(new Date(+S.view.from.slice(0, 4), +S.view.from.slice(5, 7) - 1 + S.view.months, 1)), -1);
+  const days = [];
+  for (let k = from; k <= end; k = dayAdd(k, 1)) days.push(k);
+  return { from, end, days };
+}
+function dayClass(k) {
+  if (k === todayKey()) return "today";
+  if (holidayOf(k)) return "hol";
+  const w = dayDow(k);
+  return w === 0 ? "sun" : w === 6 ? "sat" : "";
+}
+
+/* ---------- 工程表を描く ---------- */
+const DW = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dw"));
+
+function barLabel(b) {
+  const parts = [];
+  if (b.作業) parts.push(esc(b.作業));
+  if (b.人数) parts.push(esc(b.人数) + "名");
+  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.join("・"))}</span>`);
+  return parts.join(" ");
+}
+function barTitle(s, b) {
+  return `${s.名前}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日）` +
+    (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (b.人数 ? "\n作業員：" + b.人数 + "名" : "") + (b.メモ ? "\n" + b.メモ : "");
+}
+
+function renderChart() {
+  const { from, end, days } = range();
+  const dw = DW();
+  const width = days.length * dw;
+  const h = [];
+  // 見出し：月・日・曜
+  h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年</div>` +
+    days.map(k => `<div class="hd ${k.endsWith("-01") ? "mon" : ""}">${k.endsWith("-01") ? (+k.slice(5, 7)) + "月" : ""}</div>`).join("") + "</div>");
+  h.push(`<div class="hrow d"><div class="corner"></div>` +
+    days.map(k => `<div class="hd ${dayClass(k)}" title="${esc(holidayOf(k))}">${+k.slice(8)}</div>`).join("") + "</div>");
+  h.push(`<div class="hrow w"><div class="corner">現場／段</div>` +
+    days.map(k => `<div class="hd ${dayClass(k)}">${WD[dayDow(k)]}</div>`).join("") + "</div>");
+  // 本体
+  h.push(`<div id="body">`);
+  const left = `calc(var(--sw) + var(--lw))`;
+  days.forEach((k, i) => { const c = dayClass(k); if (c) h.push(`<div class="col ${c}" style="left:calc(${left} + ${i * dw}px)"></div>`); });
+  for (const s of sites()) {
+    h.push(`<div class="site" data-site="${esc(s.id)}"><div class="sname" data-act="site">${esc(s.名前)}` +
+      (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "") + `</div><div class="lanes">`);
+    for (const ln of s.段) {
+      h.push(`<div class="lane"><div class="llab" data-act="site" title="${esc(ln.名前)}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      for (const b of s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end)) {
+        const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
+        const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
+        h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
+          `style="left:${x}px;width:${w}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          `<span class="h l"></span>${barLabel(b)}<span class="h r"></span></div>`);
+      }
+      h.push(`</div></div>`);
+    }
+    h.push(`</div></div>`);
+  }
+  h.push(`</div><div class="addsite"><button id="bAddSite" class="sub">＋ 現場を追加</button></div>`);
+  $("chart").innerHTML = h.join("");
+  $("bAddSite").onclick = () => openSite(null);
+}
+
+/* ---------- 一覧 ---------- */
+function renderList() {
+  const { from, end } = range();
+  const only = $("inListRange").checked, q = $("inListQ").value.trim();
+  const rows = [];
+  for (const s of sites()) for (const b of s.バー) {
+    if (only && (b.終了 < from || b.開始 > end)) continue;
+    const ln = s.段.find(l => l.id === b.段);
+    const text = [s.名前, ln && ln.名前, b.作業, (b.社員 || []).join(" "), b.メモ].join(" ");
+    if (q && !q.split(/\s+/).every(w => text.includes(w))) continue;
+    rows.push({ s, b, ln });
+  }
+  rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
+  const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
+  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th><th>作業員</th><th>メモ</th><th>更新</th></tr>` +
+    rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? ln.名前 : "")}</td>` +
+      `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td><td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
+      `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
+    `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
+}
+
+function render() {
+  if (S.tab === "chart") renderChart(); else renderList();
+  // 社員名の候補（入力済みのものから）
+  const names = new Set();
+  sites().forEach(s => { if (s.担当) names.add(s.担当); s.バー.forEach(b => (b.社員 || []).forEach(n => names.add(n))); });
+  $("staffList").innerHTML = [...names].sort((a, b) => a.localeCompare(b, "ja")).map(n => `<option value="${esc(n)}">`).join("");
+}
+
+/* ---------- ドラッグ（動かす・延ばす・作る） ---------- */
+let drag = null;
+function dayAt(track, clientX) {
+  const r = track.getBoundingClientRect();
+  return Math.floor((clientX - r.left) / DW());
+}
+$("wrap").addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  const barEl = e.target.closest(".bar"), track = e.target.closest(".track");
+  if (!track) return;
+  const site = S.files[fileOfSite(track.dataset.site)].doc;
+  const { from } = range();
+  const d0 = dayAt(track, e.clientX);
+  if (barEl) {
+    const b = site.バー.find(x => x.id === barEl.dataset.bar);
+    const mode = e.target.classList.contains("l") ? "l" : e.target.classList.contains("r") ? "r" : "move";
+    drag = { kind: "bar", mode, el: barEl, track, site, b, d0, x0: e.clientX, moved: false, a: b.開始, z: b.終了, from };
+    barEl.setPointerCapture(e.pointerId);
+  } else {
+    // 指で触ったときは、なぞると画面が流れるので「押した日に1日のバー」を作る小窓だけ出す
+    if (e.pointerType === "touch") { const k = dayAdd(from, d0); openBar(site, null, { 段: track.dataset.lane, 開始: k, 終了: k }); return; }
+    const ghost = document.createElement("div");
+    ghost.className = "bar ghost";
+    track.appendChild(ghost);
+    drag = { kind: "new", track, site, lane: track.dataset.lane, d0, d1: d0, el: ghost, from };
+    track.setPointerCapture(e.pointerId);
+    placeGhost();
+  }
+  e.preventDefault();
+});
+function placeGhost() {
+  const dw = DW(), a = Math.min(drag.d0, drag.d1), z = Math.max(drag.d0, drag.d1);
+  drag.el.style.left = a * dw + "px"; drag.el.style.width = (z - a + 1) * dw + "px";
+  drag.el.textContent = `${md(dayAdd(drag.from, a))}〜${md(dayAdd(drag.from, z))}（${z - a + 1}日）`;
+}
+window.addEventListener("pointermove", e => {
+  if (!drag) return;
+  if (drag.kind === "new") { drag.d1 = dayAt(drag.track, e.clientX); placeGhost(); return; }
+  const dd = Math.round((e.clientX - drag.x0) / DW());
+  if (Math.abs(e.clientX - drag.x0) > 4) drag.moved = true;
+  if (!drag.moved) return;
+  const b = drag.b;
+  let a = b.開始, z = b.終了;
+  if (drag.mode === "move") { a = dayAdd(b.開始, dd); z = dayAdd(b.終了, dd); }
+  else if (drag.mode === "l") { a = dayAdd(b.開始, dd); if (a > z) a = z; }
+  else { z = dayAdd(b.終了, dd); if (z < a) z = a; }
+  drag.a = a; drag.z = z;
+  // 見た目だけ先に動かす（離したときに保存）
+  const { from, end } = range(), dw = DW();
+  const va = a < from ? from : a, vz = z > end ? end : z;
+  drag.el.style.left = dayDiff(from, va) * dw + "px";
+  drag.el.style.width = Math.max(dw, (dayDiff(va, vz) + 1) * dw) + "px";
+  drag.el.classList.add("drag");
+  drag.el.title = `${md(a)}〜${md(z)}（${dayDiff(a, z) + 1}日）`;
+  toast(`${md(a)}（${WD[dayDow(a)]}）〜 ${md(z)}（${WD[dayDow(z)]}）　${dayDiff(a, z) + 1}日`, 900);
+});
+window.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === "new") {
+    d.el.remove();
+    const a = Math.min(d.d0, d.d1), z = Math.max(d.d0, d.d1);
+    openBar(d.site, null, { 段: d.lane, 開始: dayAdd(d.from, a), 終了: dayAdd(d.from, z) });
+    return;
+  }
+  if (!d.moved) { openBar(d.site, d.b); return; }
+  if (d.a === d.b.開始 && d.z === d.b.終了) { render(); return; }
+  const id = d.b.id, a = d.a, z = d.z;
+  mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
+});
+$("wrap").addEventListener("click", e => {
+  if (e.target.closest("[data-act=site]")) openSite(e.target.closest(".site").dataset.site);
+});
+
+/* ---------- バーの小窓 ---------- */
+let barCtx = null;
+$("bColors").innerHTML = COLORS.map(([n, c], i) => `<input type="radio" name="bColor" id="bc${i}" value="${n}"><label for="bc${i}" style="background:${c}" title="${n}"></label>`).join("");
+const splitNames = s => s.split(/[、,，・\s]+/).map(x => x.trim()).filter(Boolean);
+const toHalf = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+
+function openBar(site, b, init) {
+  barCtx = { siteId: site.id, barId: b ? b.id : null };
+  const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
+  $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
+  $("dBarSite").textContent = site.名前;
+  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(l.名前)}</option>`).join("");
+  $("bLane").value = v.段;
+  $("bWork").value = v.作業 || "";
+  $("bFrom").value = v.開始; $("bTo").value = v.終了;
+  $("bStaff").value = (v.社員 || []).join("、");
+  $("bNum").value = v.人数 || "";
+  (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
+  $("bMemo").value = v.メモ || "";
+  $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
+  $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
+  $("dBar").showModal();
+  if (!b) $("bWork").focus();
+}
+let lastColor = "青";
+function readBarForm() {
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (z < a) [a, z] = [z, a];
+  const n = parseInt(toHalf($("bNum").value), 10);
+  return {
+    段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
+    社員: splitNames($("bStaff").value), 人数: isNaN(n) ? "" : n,
+    色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim()
+  };
+}
+$("fBar").addEventListener("submit", e => {
+  e.preventDefault();
+  if (!$("bFrom").value || !$("bTo").value) return;
+  const v = readBarForm(), { siteId, barId } = barCtx;
+  lastColor = v.色;
+  const id = barId || newId("b");
+  mutate(fileOfSite(siteId), doc => {
+    let b = doc.バー.find(x => x.id === id);
+    if (!b) { b = { id }; doc.バー.push(b); }
+    Object.assign(b, v); stamp(b);
+  });
+  $("dBar").close();
+});
+$("bBarCancel").onclick = () => $("dBar").close();
+$("bBarDel").onclick = () => {
+  const { siteId, barId } = barCtx;
+  if (!confirm("この工程を消します。よろしいですか？")) return;
+  mutate(fileOfSite(siteId), doc => { doc.バー = doc.バー.filter(x => x.id !== barId); });
+  $("dBar").close();
+};
+$("bBarCopy").onclick = () => {
+  // 「何日から何日まで、少し空けてまた何日から」の2本目を楽に作る
+  const v = readBarForm(), len = dayDiff(v.開始, v.終了);
+  const site = S.files[fileOfSite(barCtx.siteId)].doc;
+  $("dBar").close();
+  openBar(site, null, { 段: v.段, 開始: dayAdd(v.終了, 1), 終了: dayAdd(v.終了, 1 + len) });
+  $("bWork").value = v.作業; $("bStaff").value = v.社員.join("、"); $("bNum").value = v.人数; $("bMemo").value = v.メモ;
+  (document.querySelector(`#bColors input[value="${v.色}"]`) || {}).checked = true;
+  $("bFrom").focus();
+};
+$("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; });
+
+/* ---------- 現場の小窓 ---------- */
+let siteCtx = null;
+function laneRow(l) {
+  return `<div class="ln" data-id="${esc(l.id)}"><input type="text" value="${esc(l.名前)}">` +
+    `<button type="button" class="sub small" data-mv="-1" title="上へ">▲</button><button type="button" class="sub small" data-mv="1" title="下へ">▼</button>` +
+    `<button type="button" class="danger small" data-del>✕</button></div>`;
+}
+function openSite(id) {
+  const s = id ? S.files[fileOfSite(id)].doc : null;
+  siteCtx = { id };
+  $("dSiteTtl").textContent = s ? "現場の設定" : "現場を追加";
+  $("sName").value = s ? s.名前 : "";
+  $("sCode").value = s ? s.コード || "" : "";
+  $("sTanto").value = s ? s.担当 || "" : "";
+  const lanes = s ? s.段 : [{ id: newId("l"), 名前: "昼間" }];
+  $("sLanes").innerHTML = lanes.map(laneRow).join("");
+  $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
+  $("dSite").showModal();
+  if (!s) $("sName").focus();
+}
+$("sLanes").addEventListener("click", e => {
+  const row = e.target.closest(".ln");
+  if (!row) return;
+  if (e.target.dataset.mv) {
+    const sib = e.target.dataset.mv === "-1" ? row.previousElementSibling : row.nextElementSibling;
+    if (sib) e.target.dataset.mv === "-1" ? row.parentNode.insertBefore(row, sib) : row.parentNode.insertBefore(sib, row);
+  } else if ("del" in e.target.dataset) {
+    const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
+    if (s && s.バー.some(b => b.段 === row.dataset.id)) { alert("この段にはバーがあるので消せません。先にバーを消すか、別の段へ移してください。"); return; }
+    if ($("sLanes").children.length <= 1) { alert("段は1つ以上要ります。"); return; }
+    row.remove();
+  }
+});
+$("bLaneAdd").onclick = () => { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 名前: "" })); $("sLanes").lastElementChild.querySelector("input").focus(); };
+$("fSite").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = $("sName").value.trim();
+  if (!name) return;
+  const lanes = [...$("sLanes").children].map(r => ({ id: r.dataset.id, 名前: r.querySelector("input").value.trim() || "（名前なし）" }));
+  const v = { 名前: name, コード: toHalf($("sCode").value.trim()), 担当: $("sTanto").value.trim() };
+  if (siteCtx.id) {
+    mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes; });
+  } else {
+    const id = newId("s"), file = fileOfSite(id);
+    const maxOrd = Math.max(0, ...sites().map(s => s.並び ?? 0));
+    S.files[file] = { doc: { id, ...v, 段: lanes, バー: [], 並び: maxOrd + 10 }, eTag: null, pending: [], saving: false, timer: null, err: null };
+    mutate(file, () => { });
+  }
+  $("dSite").close();
+});
+$("bSiteCancel").onclick = () => $("dSite").close();
+$("bSiteDel").onclick = () => {
+  const s = S.files[fileOfSite(siteCtx.id)].doc;
+  if (!confirm(`「${s.名前}」を工程表から消します（バー ${s.バー.length} 本も見えなくなります）。よろしいですか？`)) return;
+  mutate(fileOfSite(siteCtx.id), doc => { doc.消した = true; });
+  $("dSite").close();
+};
+function moveSite(dir) {
+  const list = sites(), i = list.findIndex(s => s.id === siteCtx.id), j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  // 並びを10おきに振り直してから入れ替える（2つのファイルだけ書く）
+  const a = list[i], b = list[j];
+  const oa = (j + 1) * 10, ob = (i + 1) * 10;
+  list.forEach((s, k) => { if (s !== a && s !== b && (s.並び ?? 0) !== (k + 1) * 10) { const ord = (k + 1) * 10; mutate(fileOfSite(s.id), d => { d.並び = ord; }); } });
+  mutate(fileOfSite(a.id), d => { d.並び = oa; });
+  mutate(fileOfSite(b.id), d => { d.並び = ob; });
+}
+$("bSiteUp").onclick = () => moveSite(-1);
+$("bSiteDown").onclick = () => moveSite(1);
+
+/* ---------- 上の操作 ---------- */
+function setFrom(ym) {
+  S.view.from = ym; $("inFrom").value = ym;
+  try { localStorage.setItem("kotei_view", JSON.stringify(S.view)); } catch (e) { }
+  render();
+}
+const shiftMonth = (ym, n) => { const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1); return d.getFullYear() + "-" + pad2(d.getMonth() + 1); };
+$("inFrom").onchange = e => e.target.value && setFrom(e.target.value);
+$("inMonths").onchange = e => { S.view.months = +e.target.value; setFrom(S.view.from); };
+$("bPrev").onclick = () => setFrom(shiftMonth(S.view.from, -1));
+$("bNext").onclick = () => setFrom(shiftMonth(S.view.from, 1));
+$("bToday").onclick = () => {
+  setFrom(todayKey().slice(0, 7));
+  const i = dayDiff(range().from, todayKey());
+  $("wrap").scrollLeft = Math.max(0, i * DW() - 60);
+};
+$("bReload").onclick = () => pull().then(() => toast("最新にしました"));
+$("tabs").addEventListener("click", e => {
+  const t = e.target.dataset.tab;
+  if (!t) return;
+  S.tab = t;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("pChart").hidden = t !== "chart"; $("pList").hidden = t !== "list";
+  render();
+});
+$("inListRange").onchange = renderList;
+$("inListQ").oninput = renderList;
+$("list").addEventListener("click", e => {
+  const tr = e.target.closest("tr.r");
+  if (!tr) return;
+  const s = S.files[fileOfSite(tr.dataset.site)].doc;
+  openBar(s, s.バー.find(b => b.id === tr.dataset.bar));
+});
+window.addEventListener("beforeunload", e => {
+  if (Object.values(S.files).some(f => f.pending.length || f.saving)) { e.preventDefault(); e.returnValue = ""; }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pull(); });
+
+let toastTimer = null;
+function toast(msg, ms = 3000) {
+  const el = $("toast"); el.textContent = msg; el.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("on"), ms);
+}
+
+/* ---------- 試しのデータ（?demo のときだけ。社員名は入れない） ---------- */
+function seedDemo() {
+  if (Object.keys(DemoStore.all()).length) return;
+  const ym = todayKey().slice(0, 7) + "-";
+  const mk = (n, name, lanes, bars) => {
+    const id = "demo" + n, ls = lanes.map((l, i) => ({ id: "l" + n + i, 名前: l }));
+    return [fileOfSite(id), { id, 名前: name, コード: "", 担当: "", 並び: n * 10, 段: ls,
+      バー: bars.map(([li, w, a, z, num, c], i) => ({ id: "b" + n + i, 段: ls[li].id, 作業: w, 開始: ym + pad2(a), 終了: ym + pad2(z), 社員: [], 人数: num, 色: c, メモ: "" })) }];
+  };
+  const a = {};
+  [mk(1, "A現場 配水管", ["夜間", "25t夜間"], [[0, "布設工", 3, 10, 3, "青"], [0, "布設工", 15, 22, 3, "青"], [1, "クレーン", 5, 6, "", "橙"]]),
+   mk(2, "B現場 道路改良", ["昼間"], [[0, "舗装", 8, 12, 5, "緑"]]),
+   mk(3, "C現場 下水", ["昼間"], [[0, "推進工", 1, 25, 4, "紫"]])]
+    .forEach(([f, d]) => { a[f] = { data: d, eTag: "d0" }; });
+  DemoStore.save(a);
+}
+
+/* ---------- 起動 ---------- */
+async function start() {
+  try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
+  if (!S.view.from) S.view.from = todayKey().slice(0, 7);
+  $("inFrom").value = S.view.from; $("inMonths").value = S.view.months;
+
+  if (DEMO) {
+    seedDemo();
+    me.name = "試し";
+    $("who").textContent = "試し（このブラウザの中だけ。OneDrive には書きません）";
+  } else {
+    msalApp = new msal.PublicClientApplication({
+      auth: { clientId: CFG.clientId, authority: "https://login.microsoftonline.com/" + CFG.tenantId, redirectUri: new URL("./", location.href).href },
+      cache: { cacheLocation: "localStorage" }
+    });
+    await msalApp.initialize();
+    try { const r = await msalApp.handleRedirectPromise(); if (r) msalApp.setActiveAccount(r.account); }
+    catch (e) { $("signinMsg").textContent = "サインインできませんでした：" + e.message; }
+    const acc = msalApp.getActiveAccount() || msalApp.getAllAccounts()[0];
+    if (!acc) {
+      $("signin").hidden = false;
+      $("bSignIn").onclick = () => msalApp.loginRedirect({ scopes: SCOPES });
+      return;
+    }
+    msalApp.setActiveAccount(acc);
+    me.name = acc.name || acc.username;
+    $("who").textContent = me.name;
+  }
+  $("loading").hidden = false;
+  await pull();
+  $("loading").hidden = true;
+  $("pChart").hidden = false;
+  showSync();
+  render();
+  setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
+}
+start();
