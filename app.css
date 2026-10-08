@@ -175,6 +175,10 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .btns .sp { flex: 1; }
 #sLanes .ln { display: flex; gap: 4px; margin-bottom: 4px; align-items: center; }
 #sLanes .ln input[type=text] { flex: 1; min-width: 4em; }
+#sLanes .ln select.kb { width: 3.6em; flex: none; }
+.lnhead { display: flex; gap: 4px; font-size: 12px; color: #666; margin-bottom: 2px; }
+.lnhead .h1 { width: 3.6em; } .lnhead .h2 { flex: 1; } .lnhead .h3 { width: 11.5em; }
+.llab.night { color: #1f3c88; font-weight: bold; }
 #sLanes .dw { font-size: 13px; white-space: nowrap; }
 /* その段が作業しない日：薄い斜線（バーの下に敷く。バーの上は .gap で白く抜く） */
 .off { position: absolute; top: 0; bottom: 0; width: var(--dw); z-index: 1; pointer-events: none;

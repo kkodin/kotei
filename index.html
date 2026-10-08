@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/08 19:32">
+<link rel="stylesheet" href="app.css?v=Vr001 10/08 19:43">
 </head>
 <body>
 <header id="top">
@@ -31,7 +31,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/08 19:32</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/08 19:43</span>
   </span>
 </header>
 
@@ -46,7 +46,7 @@
 <main id="pChart" hidden>
   <div id="help" class="help">
     バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。右クリック＝メニュー（同じ期間で工種を足す・消す など）／日付を押す＝会社の休み。
-    現場名を押すと現場の設定（段の追加・並べ替え）。
+    現場名を押すと現場の設定（工種の追加・並べ替え）。
   </div>
   <div id="wrap"><div id="chart"></div></div>
 </main>
@@ -71,7 +71,7 @@
     <h3 id="dBarTtl">工程</h3>
     <div class="frm">
       <label>現場</label><div id="dBarSite"></div>
-      <label for="bLane">段</label><select id="bLane"></select>
+      <label for="bLane">工種</label><select id="bLane"></select>
       <label for="bWork">作業</label><input type="text" id="bWork" placeholder="例：布設工">
       <label for="bFrom">開始</label><input type="date" id="bFrom" required>
       <label for="bTo">終了</label><input type="date" id="bTo" required>
@@ -103,12 +103,13 @@
       <label for="sCode">現場コード</label><input type="text" id="sCode" inputmode="numeric" class="num" placeholder="例：510015">
       <label for="sTanto">担当</label><input type="text" id="sTanto" list="staffList">
       <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
-      <label>段</label>
+      <label>工種</label>
       <div>
+        <div class="lnhead"><span class="h1">区分</span><span class="h2">作業名</span><span class="h3">作業する曜日</span></div>
         <div id="sLanes"></div>
-        <button type="button" id="bLaneAdd" class="sub small">＋ 段を足す</button>
-        <div class="note">段は工程表の1行です（例：昼間・夜間・25t夜間）。昼夜の現場は昼間と夜間の2段にします。<br>
-          土・日・祝にチェック＝その曜日も作業する。工程ごとの休みは、バーの小窓の「休工日を設定」。バーのある段は消せません。</div>
+        <button type="button" id="bLaneAdd" class="sub small">＋ 工種を足す</button>
+        <div class="note">工種は工程表の1行です。区分（昼／夜）と作業名（例：立坑工・25tクレーン）を入れます。昼夜の現場は昼と夜の2行にします。<br>
+          作業する曜日：チェックした曜日も作業する（平日はいつも作業）。工程ごとの休みは、バーの「休工日を設定」。バーのある工種は消せません。</div>
       </div>
       <label>並び</label>
       <div><button type="button" id="bSiteUp" class="sub small">▲ 上へ</button> <button type="button" id="bSiteDown" class="sub small">▼ 下へ</button></div>
@@ -127,7 +128,7 @@
   <form method="dialog" id="fCal">
     <h3 id="dCalTtl">休工日を設定</h3>
     <div class="calhelp">色の付いた日＝作業する日。<b>日にちを押すと色が消えて休工日</b>、もう一度押すと元に戻ります。<br>
-      <span class="note">はじめから白い日は、現場の段の決まり（土・日・祝）や会社の休みで休みの日です。押すとこの工程だけ作業する日にできます（会社の休みは変えられません）。</span></div>
+      <span class="note">はじめから白い日は、現場の工種の決まり（作業する曜日）や会社の休みで休みの日です。押すとこの工程だけ作業する日にできます（会社の休みは変えられません）。</span></div>
     <div id="calBody"></div>
     <div id="calSum" class="calsum"></div>
     <div class="btns">
@@ -147,7 +148,7 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/08 19:32"></script>
-<script src="app.js?v=Vr001 10/08 19:32"></script>
+<script src="config.js?v=Vr001 10/08 19:43"></script>
+<script src="app.js?v=Vr001 10/08 19:43"></script>
 </body>
 </html>

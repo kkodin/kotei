@@ -280,6 +280,11 @@ function ruleWorks(ln, k) {
 }
 // 段.休み／出勤（前の版の右クリックで入れた「段のその日だけ休み」）は 2026-10-08 から見ない。
 // 直す画面が無く、残っていると意味の分からない斜線になるため（ユーザー：10/21 の斜線は何？）。工程ごとの休みは バー.休み
+/* 工種（段）の区分と作業名（2026-10-08 ユーザー：「夜間」と書いている所を 作業区分（昼／夜）と 作業名 に分けたい）
+   段.区分＝"昼"／"夜"、段.名前＝作業名。区分の無い前のデータは、名前の「昼間／夜間」から区分を決め、その字を除いた残りを作業名とみなす */
+function laneKubun(ln) { return !ln ? "昼" : ln.区分 || (/夜/.test(ln.名前 || "") ? "夜" : "昼"); }
+function laneWork(ln) { return !ln ? "" : ln.区分 ? (ln.名前 || "") : String(ln.名前 || "").replace(/昼間|夜間/g, "").trim(); }
+function laneName(ln) { const w = laneWork(ln), k = laneKubun(ln); return w ? k + "　" + w : k + "間"; }
 function laneWorks(ln, k) {
   if (!ln || isRest(k)) return false;
   return ruleWorks(ln, k);
@@ -367,7 +372,7 @@ function renderChart() {
     days.map(k => `<div class="hd ${k.endsWith("-01") ? "mon" : ""}">${k.endsWith("-01") ? (+k.slice(5, 7)) + "月" : ""}</div>`).join("") + "</div>");
   h.push(`<div class="hrow d"><div class="corner"></div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
-  h.push(`<div class="hrow w"><div class="corner">現場／段</div>` +
+  h.push(`<div class="hrow w"><div class="corner">現場／工種</div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="押すと会社の休みにする／戻す">${isRest(k) ? "休" : WD[dayDow(k)]}</div>`).join("") + "</div>");
   // 本体
   h.push(`<div id="body">`);
@@ -390,7 +395,7 @@ function renderChart() {
     } else for (const ln of s.段) {
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
       const { pos, rows } = packLane(bars);
-      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab" data-act="site" title="${esc(ln.名前 + "\n" + laneRuleText(ln))}">${esc(ln.名前)}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln))}">${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
       // 段の休みの日に薄い斜線。日曜・祝日は赤い色で分かるので斜線は付けない（2026-10-07 ユーザー指定）。右クリックで休みにした日は付ける
       days.forEach((k, i) => {
         if (isRest(k) || laneWorks(ln, k)) return;
@@ -439,14 +444,14 @@ function renderList() {
   for (const s of shownSites()) for (const b of s.バー) {
     if (only && (b.終了 < from || b.開始 > end)) continue;
     const ln = s.段.find(l => l.id === b.段);
-    const text = [s.名前, ln && ln.名前, b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
+    const text = [s.名前, ln && laneName(ln), b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
     if (q && !q.split(/\s+/).every(w => text.includes(w))) continue;
     rows.push({ s, b, ln });
   }
   rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
   const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
   $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員</th><th>メモ</th><th>更新</th></tr>` +
-    rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? ln.名前 : "")}</td>` +
+    rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? laneName(ln) : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
       `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
@@ -455,7 +460,7 @@ function renderList() {
 
 /* ---------- 人の流れ（工程表のバーから、社員の行き先と作業員の日ごとの人数を出す） ---------- */
 const shortOf = s => s.略称 || String(s.名前).slice(0, 4);
-const isNight = ln => /夜/.test(ln ? ln.名前 : "");
+const isNight = ln => laneKubun(ln) === "夜";
 
 function renderFlow() {
   const { from, end, days } = range();
@@ -482,7 +487,7 @@ function renderFlow() {
       if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
       else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
       else { const x = hits[0];
-        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + x.s.名前 + "／" + (x.b.作業 || "") + (x.ln ? "（" + x.ln.名前 + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + x.s.名前 + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
     }
     h.push(`</tr>`);
   } };
@@ -666,7 +671,7 @@ function openBar(site, b, init) {
   const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
   $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
   $("dBarSite").textContent = site.名前;
-  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(l.名前)}</option>`).join("");
+  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(laneName(l))}</option>`).join("");
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
@@ -859,7 +864,9 @@ let siteCtx = null;
 const laneRuleText = ln => "作業：平日" + (ln.土 !== false ? "・土" : "") + (ln.日 === true ? "・日" : "") + (ln.祝 === true ? "・祝" : "");
 function laneRow(l) {
   const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
-  return `<div class="ln" data-id="${esc(l.id)}"><input type="text" value="${esc(l.名前)}">` +
+  const kb = laneKubun(l);
+  return `<div class="ln" data-id="${esc(l.id)}"><select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
+    `<input type="text" class="wk" value="${esc(laneWork(l))}" placeholder="作業名（例：立坑工）">` +
     ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
     `<button type="button" class="sub small" data-mv="-1" title="上へ">▲</button><button type="button" class="sub small" data-mv="1" title="下へ">▼</button>` +
     `<button type="button" class="danger small" data-del>✕</button></div>`;
@@ -873,7 +880,7 @@ function openSite(id) {
   $("sShort").value = s ? s.略称 || "" : "";
   $("sDone").checked = !!(s && s.完了);
   $("sTanto").value = s ? s.担当 || "" : "";
-  const lanes = s ? s.段 : [{ id: newId("l"), 名前: "昼間" }];
+  const lanes = s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
   $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
   openDlg($("dSite"));
@@ -887,8 +894,8 @@ $("sLanes").addEventListener("click", e => {
     if (sib) e.target.dataset.mv === "-1" ? row.parentNode.insertBefore(row, sib) : row.parentNode.insertBefore(sib, row);
   } else if ("del" in e.target.dataset) {
     const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
-    if (s && s.バー.some(b => b.段 === row.dataset.id)) { alert("この段にはバーがあるので消せません。先にバーを消すか、別の段へ移してください。"); return; }
-    if ($("sLanes").children.length <= 1) { alert("段は1つ以上要ります。"); return; }
+    if (s && s.バー.some(b => b.段 === row.dataset.id)) { alert("この工種にはバーがあるので消せません。先にバーを消すか、別の工種へ移してください。"); return; }
+    if ($("sLanes").children.length <= 1) { alert("工種は1つ以上要ります。"); return; }
     row.remove();
   }
 });
@@ -899,13 +906,13 @@ $("sName").addEventListener("change", () => {
   if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
   if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
 });
-$("bLaneAdd").onclick = () => { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 名前: "" })); $("sLanes").lastElementChild.querySelector("input").focus(); };
+$("bLaneAdd").onclick = () => { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 区分: "昼", 名前: "" })); $("sLanes").lastElementChild.querySelector("input").focus(); };
 $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
   const lanes = [...$("sLanes").children].map(r => {
-    const l = { id: r.dataset.id, 名前: r.querySelector("input[type=text]").value.trim() || "（名前なし）" };
+    const l = { id: r.dataset.id, 区分: r.querySelector("select.kb").value, 名前: r.querySelector("input.wk").value.trim() };
     r.querySelectorAll("input[data-k]").forEach(c => { l[c.dataset.k] = c.checked; });
     return l;
   });
