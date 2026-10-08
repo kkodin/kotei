@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/08 19:05">
+<link rel="stylesheet" href="app.css?v=Vr001 10/08 19:24">
 </head>
 <body>
 <header id="top">
@@ -31,7 +31,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/08 19:05</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/08 19:24</span>
   </span>
 </header>
 
@@ -45,7 +45,7 @@
 
 <main id="pChart" hidden>
   <div id="help" class="help">
-    バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。段の上を右クリック＝その日だけ休み・出勤／日付を押す＝会社の休み。
+    バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。右クリック＝メニュー（同じ期間で工種を足す・消す など）／日付を押す＝会社の休み。
     現場名を押すと現場の設定（段の追加・並べ替え）。
   </div>
   <div id="wrap"><div id="chart"></div></div>
@@ -108,7 +108,7 @@
         <div id="sLanes"></div>
         <button type="button" id="bLaneAdd" class="sub small">＋ 段を足す</button>
         <div class="note">段は工程表の1行です（例：昼間・夜間・25t夜間）。昼夜の現場は昼間と夜間の2段にします。<br>
-          土・日・祝にチェック＝その曜日も作業する。その日だけの休み／出勤は、工程表の段の上を右クリック。バーのある段は消せません。</div>
+          土・日・祝にチェック＝その曜日も作業する。工程ごとの休みは、バーの小窓の「休工日を設定」。バーのある段は消せません。</div>
       </div>
       <label>並び</label>
       <div><button type="button" id="bSiteUp" class="sub small">▲ 上へ</button> <button type="button" id="bSiteDown" class="sub small">▼ 下へ</button></div>
@@ -139,12 +139,15 @@
   </form>
 </dialog>
 
+<!-- 右クリックのメニュー -->
+<div id="ctx" class="ctx" hidden></div>
+
 <datalist id="staffList"></datalist>
 <datalist id="siteList"></datalist>
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/08 19:05"></script>
-<script src="app.js?v=Vr001 10/08 19:05"></script>
+<script src="config.js?v=Vr001 10/08 19:24"></script>
+<script src="app.js?v=Vr001 10/08 19:24"></script>
 </body>
 </html>

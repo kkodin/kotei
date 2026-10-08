@@ -270,7 +270,7 @@ function toggleRest(k) {
 
 /* 段ごとの作業日（2026-10-07 ユーザー：現場ごとに土曜・日曜・祝日に作業するかが違う。昼夜で違うこともある）
    段.土／日／祝 … その曜日も作業するか（決めていなければ 土＝する・日＝しない・祝＝しない）
-   段.休み／出勤 … その日だけの例外（段の上の日付を右クリックで切り替え） */
+   段.休み／出勤 … その日だけの例外（前は段の上を右クリックで切り替えた。2026-10-08 にやめたが、残っているものは効く） */
 function ruleWorks(ln, k) {
   if (holidayOf(k)) return ln.祝 === true;
   const w = dayDow(k);
@@ -613,12 +613,49 @@ window.addEventListener("pointerup", e => {
   const id = d.b.id, a = d.a, z = d.z;
   mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
 });
+/* 右クリックのメニュー（2026-10-08 ユーザー：右クリックの「その日だけ休み」は要らない。
+   同じ日に工種を足すと「工程を直す」が開いてしまう → 右クリックで足す・消すを選べるように）
+   これまでに右クリックで入れた段の休み（段.休み／出勤）は残っていれば効く。新しくは作らない */
 $("wrap").addEventListener("contextmenu", e => {
   const track = e.target.closest(".track");
   if (!track || track.classList.contains("sum")) return;
   e.preventDefault();
-  toggleLaneDay(track.dataset.site, track.dataset.lane, dayAdd(range().from, dayAt(track, e.clientX)));
+  const site = S.files[fileOfSite(track.dataset.site)].doc;
+  const day = dayAdd(range().from, dayAt(track, e.clientX));
+  const barEl = e.target.closest(".bar");
+  const b = barEl && site.バー.find(x => x.id === barEl.dataset.bar);
+  const lane = track.dataset.lane;
+  const items = b ? [
+    [`「${b.作業 || "工程"}」を直す`, () => openBar(site, b)],
+    ["同じ期間で工種を足す", () => openBar(site, null, { 段: b.段, 開始: b.開始, 終了: b.終了 })],
+    [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
+    ["休工日を設定", () => { openBar(site, b); $("bOffBtn").click(); }],
+    ["-"],
+    [`「${b.作業 || "工程"}」を消す`, () => {
+      if (!confirm(`「${b.作業 || "工程"}」（${md(b.開始)}〜${md(b.終了)}）を消します。よろしいですか？`)) return;
+      const id = b.id;
+      mutate(fileOfSite(site.id), doc => { doc.バー = doc.バー.filter(x => x.id !== id); });
+    }, "danger"],
+  ] : [
+    [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
+    ["現場の設定を開く", () => openSite(site.id)],
+  ];
+  showCtx(e.clientX, e.clientY, items);
 });
+function showCtx(x, y, items) {
+  const m = $("ctx");
+  m.innerHTML = items.map((it, i) => it[0] === "-" ? `<hr>` : `<button type="button" data-i="${i}" class="${it[2] || ""}">${esc(it[0])}</button>`).join("");
+  m.hidden = false;
+  const r = m.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth || innerWidth || 1e5, vh = document.documentElement.clientHeight || innerHeight || 1e5;
+  m.style.left = Math.max(0, Math.min(x, vw - r.width - 4)) + "px";
+  m.style.top = Math.max(0, Math.min(y, vh - r.height - 4)) + "px";
+  m.onclick = ev => { const i = ev.target.dataset.i; if (i === undefined) return; hideCtx(); items[+i][1](); };
+}
+function hideCtx() { $("ctx").hidden = true; }
+document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctx")) hideCtx(); }, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideCtx(); });
+$("wrap").addEventListener("scroll", hideCtx);
 $("wrap").addEventListener("click", e => {
   const fb = e.target.closest("[data-fold]");
   if (fb) { setFold(shownSites().map(s => s.id), fb.dataset.fold === "all"); return; }

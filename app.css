@@ -201,6 +201,13 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 select.pick { width: 7.5em; flex: none; font-size: 14px; }
 #dBar { width: 560px; }
 
+/* 右クリックのメニュー */
+.ctx { position: fixed; z-index: 60; background: #fff; border: 1px solid #9aa3ad; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; min-width: 200px; }
+.ctx button { display: block; width: 100%; text-align: left; background: #fff; color: #222; border: none; border-radius: 4px; padding: 7px 12px; font-size: 14px; }
+.ctx button:hover { background: #e8f0fa; }
+.ctx button.danger { color: #c62828; }
+.ctx hr { border: none; border-top: 1px solid #e3e5e8; margin: 4px 0; }
+
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 50; }
 #toast.on { opacity: .95; }
 
