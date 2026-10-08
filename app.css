@@ -187,7 +187,7 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 /* 休みの日：外枠だけ残して中を白く抜く */
 .bar .gap { position: absolute; top: 0; height: 9px; z-index: 1; pointer-events: none; background: #fff; border: 1.5px solid var(--bc); }
 .bar:not(.dark) .gap { border-color: var(--bc); }
-.bar .lbl { position: absolute; left: 1px; top: 10px; z-index: 2; font-size: 12px; line-height: 14px; white-space: nowrap; color: #222;
+.bar .lbl { position: absolute; left: 1px; top: 10px; z-index: 2; font-size: 12px; line-height: 14px; white-space: nowrap; color: #222; overflow: hidden; text-overflow: ellipsis;
   text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 2px #fff; pointer-events: none; }
 .bar .lbl .st { color: #555; }
 .bar.drag .stripe { outline: 2px solid #000; }
@@ -195,6 +195,8 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .bar .h { z-index: 3; }
 
 .pickrow { display: flex; gap: 6px; }
+.srow { display: flex; gap: 6px; margin-bottom: 4px; }
+.srow input { flex: 1; min-width: 0; }
 .pickrow input { flex: 1; min-width: 0; }
 select.pick { width: 7.5em; flex: none; font-size: 14px; }
 #dBar { width: 560px; }

@@ -317,12 +317,23 @@ function dayClass(k) {
 /* ---------- 工程表を描く ---------- */
 const DW = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dw"));
 
-function barLabel(b) {
-  const parts = [];
-  if (b.作業) parts.push(esc(b.作業));
-  if (b.人数) parts.push(esc(b.人数) + "名");
-  if (b.社員 && b.社員.length) parts.push(`<span class="st">${esc(b.社員.join("・"))}</span>`);
-  return parts.join(" ");
+/* バーの下の文字（2026-10-08 ユーザー：文字が多いと見づらい → 空白を省く、収まらなければ名字だけ、重ならないように）
+   avail＝同じ行の次のバーまでの幅。長い順に試して、収まる最初の書き方にする */
+const measureCtx = document.createElement("canvas").getContext("2d");
+function textW(t) { measureCtx.font = '12px "Yu Gothic UI", Meiryo, sans-serif'; return measureCtx.measureText(t).width; }
+const noSpace = n => String(n).replace(/[\s　]+/g, "");
+// 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
+function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
+function barLabel(b, avail) {
+  const w = b.作業 || "", num = b.人数 ? b.人数 + "名" : "", st = b.社員 || [];
+  const cands = [
+    [w, num, st.map(noSpace).join("・")],
+    [w, num, st.map(shortStaff).join("・")],
+    [w, num, ""], [w, "", ""]
+  ];
+  let pick = cands[cands.length - 1];
+  for (const c of cands) { if (textW(c.filter(Boolean).join(" ")) <= avail) { pick = c; break; } }
+  return [esc(pick[0]), esc(pick[1]), pick[2] ? `<span class="st">${esc(pick[2])}</span>` : ""].filter(Boolean).join(" ");
 }
 function barTitle(s, b) {
   const ln = s.段.find(l => l.id === b.段);
@@ -400,6 +411,13 @@ function renderChart() {
         if ((dayDow(k) === 0 || holidayOf(k)) && !(ln.休み || []).includes(k)) return;
         h.push(`<div class="off" style="left:${i * dw}px"></div>`);
       });
+      // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
+      const avail = {};
+      for (const b of bars) {
+        const a = b.開始 < from ? from : b.開始;
+        const next = bars.filter(o => o !== b && pos[o.id] === pos[b.id] && o.開始 > b.開始).map(o => o.開始).sort()[0];
+        avail[b.id] = Math.max(dw, (next ? dayDiff(a, next) : dayDiff(a, end) + 1) * dw - 6);
+      }
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
@@ -414,7 +432,7 @@ function renderChart() {
           `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
-          `<span class="h l"></span><span class="lbl">${barLabel(b)}</span><span class="h r"></span></div>`);
+          `<span class="h l"></span><span class="lbl" style="max-width:${avail[b.id]}px">${barLabel(b, avail[b.id])}</span><span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
     }
@@ -629,12 +647,12 @@ function openBar(site, b, init) {
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
-  $("bStaff").value = joinSplit(v.社員 || [], M().社員 || []).join("、");
+  setStaffRows(joinSplit(v.社員 || [], M().社員 || []));
   $("bEmp").value = joinSplit(v.従業員 || [], M().従業員 || []).join("、");
   $("bNum").value = v.人数 || "";
   autoNum = SHOW_EMP && (!v.人数 || v.人数 === (v.従業員 || []).length);
   document.querySelectorAll("#dBar .emp").forEach(el => { el.hidden = !SHOW_EMP; });
-  drawPick("社員"); drawPick("従業員");
+  drawPick("従業員");
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
@@ -650,7 +668,7 @@ function readBarForm() {
   const n = parseInt(toHalf($("bNum").value), 10);
   return {
     段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
-    社員: [...new Set(splitNames($("bStaff").value).map(x => resolveName(x, namesFor("社員"))))],
+    社員: [...new Set(getStaffRows().map(x => resolveName(x, namesFor("社員"))))],
     従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: isNaN(n) ? "" : n,
     色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim(),
     // 期間の外になった休工日は捨てる
@@ -772,7 +790,24 @@ $("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if 
 
 // 社員・従業員を名簿の一覧（フルネーム）から選ぶ。選んである人は ✓。もう一度選ぶと外す
 let autoNum = true;
-const PICK = { 社員: ["bStaff", "bStaffPick"], 従業員: ["bEmp", "bEmpPick"] };
+const PICK = { 従業員: ["bEmp", "bEmpPick"] };
+
+/* 社員は1人1欄（2026-10-08 ユーザー：2人以上は欄を増やす。空白が名前の区切りか名字と名前の間か分からなくなるため）
+   欄は候補（名簿のフルネーム）から選ぶか打つ。名字だけ打てば名簿のフルネームに寄せる */
+function staffRow(n) {
+  return `<div class="srow"><input type="text" list="staffList" value="${esc(n || "")}" placeholder="名前（候補から選ぶ）">` +
+    `<button type="button" class="danger small" data-del title="この欄を消す">✕</button></div>`;
+}
+function setStaffRows(list) { $("bStaffRows").innerHTML = (list.length ? list : [""]).map(staffRow).join(""); }
+function getStaffRows() { return [...$("bStaffRows").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean); }
+$("bStaffAdd").onclick = () => { $("bStaffRows").insertAdjacentHTML("beforeend", staffRow("")); $("bStaffRows").lastElementChild.querySelector("input").focus(); };
+$("bStaffRows").addEventListener("click", e => {
+  if (!("del" in e.target.dataset)) return;
+  const rows = $("bStaffRows").children;
+  if (rows.length <= 1) rows[0].querySelector("input").value = ""; else e.target.closest(".srow").remove();
+});
+// 名字だけ打って欄を離れたら、名簿のフルネームに直して見せる
+$("bStaffRows").addEventListener("change", e => { if (e.target.matches("input")) e.target.value = resolveName(e.target.value.trim(), namesFor("社員")); });
 function drawPick(field) {
   const [inp, box] = PICK[field], list = namesFor(field);
   const cur = splitNames($(inp).value).map(x => resolveName(x, list));
