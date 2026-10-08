@@ -278,10 +278,10 @@ function ruleWorks(ln, k) {
   if (w === 6) return ln.土 !== false;
   return true;
 }
+// 段.休み／出勤（前の版の右クリックで入れた「段のその日だけ休み」）は 2026-10-08 から見ない。
+// 直す画面が無く、残っていると意味の分からない斜線になるため（ユーザー：10/21 の斜線は何？）。工程ごとの休みは バー.休み
 function laneWorks(ln, k) {
   if (!ln || isRest(k)) return false;
-  if ((ln.休み || []).includes(k)) return false;
-  if ((ln.出勤 || []).includes(k)) return true;
   return ruleWorks(ln, k);
 }
 // 工程（バー）ごとの休工日（バーの小窓の「休工日を設定」）。段の決まりの上にかける
@@ -290,20 +290,6 @@ function barWorks(ln, b, k) {
   if (b && (b.休み || []).includes(k)) return false;
   if (b && (b.出勤 || []).includes(k)) return true;
   return laneWorks(ln, k);
-}
-function toggleLaneDay(siteId, laneId, k) {
-  const s = S.files[fileOfSite(siteId)].doc, ln = s.段.find(l => l.id === laneId);
-  if (isRest(k)) { toast("この日は会社の休みです（日付の見出しを押すと戻せます）"); return; }
-  const on = !laneWorks(ln, k);   // 押したあと作業する日になるか
-  mutate(fileOfSite(siteId), d => {
-    const l = d.段.find(x => x.id === laneId);
-    if (!l) return;
-    l.休み = (l.休み || []).filter(x => x !== k);
-    l.出勤 = (l.出勤 || []).filter(x => x !== k);
-    if (on && !ruleWorks(l, k)) l.出勤.push(k);
-    if (!on && ruleWorks(l, k)) l.休み.push(k);
-  });
-  toast(`${s.名前}（${ln.名前}）${md(k)}（${WD[dayDow(k)]}）を${on ? "作業する日" : "休み"}にしました`);
 }
 
 function dayClass(k) {
@@ -408,7 +394,7 @@ function renderChart() {
       // 段の休みの日に薄い斜線。日曜・祝日は赤い色で分かるので斜線は付けない（2026-10-07 ユーザー指定）。右クリックで休みにした日は付ける
       days.forEach((k, i) => {
         if (isRest(k) || laneWorks(ln, k)) return;
-        if ((dayDow(k) === 0 || holidayOf(k)) && !(ln.休み || []).includes(k)) return;
+        if (dayDow(k) === 0 || holidayOf(k)) return;
         h.push(`<div class="off" style="left:${i * dw}px"></div>`);
       });
       // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
@@ -870,8 +856,7 @@ Object.entries(PICK).forEach(([field, [inp, box]]) => {
 
 /* ---------- 現場の小窓 ---------- */
 let siteCtx = null;
-const laneRuleText = ln => "作業：平日" + (ln.土 !== false ? "・土" : "") + (ln.日 === true ? "・日" : "") + (ln.祝 === true ? "・祝" : "") +
-  ((ln.休み || []).length ? `／その日だけ休み ${ln.休み.length}日` : "") + ((ln.出勤 || []).length ? `／その日だけ出勤 ${ln.出勤.length}日` : "");
+const laneRuleText = ln => "作業：平日" + (ln.土 !== false ? "・土" : "") + (ln.日 === true ? "・日" : "") + (ln.祝 === true ? "・祝" : "");
 function laneRow(l) {
   const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
   return `<div class="ln" data-id="${esc(l.id)}"><input type="text" value="${esc(l.名前)}">` +
