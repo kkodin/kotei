@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/13 15:33">
+<link rel="stylesheet" href="app.css?v=Vr001 10/13 15:48">
 </head>
 <body>
 <header id="top">
@@ -43,11 +43,11 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 15:33</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 15:48</span>
   </span>
 </header>
 
-<div id="printHead"></div>
+<div id="printPages"></div>
 
 <div id="signin" class="center" hidden>
   <p>会社の Microsoft アカウントでサインインしてください。</p>
@@ -154,7 +154,13 @@
         <div id="pSites"></div></div>
       <label for="inPaper">用紙</label>
       <div><select id="inPaper"><option value="A3">A3 横</option><option value="A4">A4 横</option></select>
-        <span class="note">用紙いっぱいに合わせて縮めます。PDF は印刷画面の送信先で「PDF に保存」</span></div>
+        <span class="note">1ページずつ用紙いっぱいに合わせます。</span>
+        <div class="pwarn">プリンターで印刷するときは、印刷画面の「詳細設定」→「用紙サイズ」もここと同じ（A3）にしてください。
+          プリンター側が A4 のままだと、A3 の大きさで組んだ表が A4 に入らず、はみ出して2枚になります。PDF に保存するときは自動で合います。</div></div>
+      <label>ページ</label>
+      <div>期間を <select id="pNx"><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option></select> ページに分ける
+        現場を <select id="pNy"><option>1</option><option>2</option><option>3</option><option>4</option></select> ページに分ける
+        <div class="note">どのページにも上の年月日の行と現場名が出ます。期間がちょうど○か月なら月の切れ目で分けます。人の流れは期間だけ分けられます。</div></div>
     </div>
     <div class="calsum" id="pSum" style="padding-top:8px"></div>
     <div class="btns">
@@ -205,7 +211,7 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/13 15:33"></script>
-<script src="app.js?v=Vr001 10/13 15:33"></script>
+<script src="config.js?v=Vr001 10/13 15:48"></script>
+<script src="app.js?v=Vr001 10/13 15:48"></script>
 </body>
 </html>

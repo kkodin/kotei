@@ -1285,83 +1285,148 @@ const mid2 = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clien
 $("wrap").addEventListener("touchmove", e => { if ((drag || (tp && tp.pan)) && e.cancelable) e.preventDefault(); }, { passive: false });
 
 /* ---------- 印刷・PDF（2026-10-13 ユーザー指定）
-   いま開いているタブ（工程表／人の流れ／一覧）の表示中の期間を、用紙の横幅に合わせて縮めて出す。
-   PDF はブラウザの印刷画面で「送信先：PDF に保存」。Ctrl＋P でも同じ形になる ---------- */
+   「印刷・PDF」の小窓で 期間・現場・用紙・ページの分け方 を選んで印刷。Ctrl＋P は画面の期間・現場を1ページで。
+   1ページずつ、用紙に収まるよう工程表を作り直して写し（#printPages）を作る。どのページにも上の年月日の行が出る。
+   PDF はブラウザの印刷画面で「送信先：PDF に保存」 ---------- */
 const PAPER = { A3: [420, 297], A4: [297, 210] };
-/* 用紙いっぱいに使う（2026-10-13 ユーザー：下と右に余白ができないように、列幅と行の高さを合わせて見やすく）
-   工程表：①行の高さ 30px のときの高さで、縦が用紙に収まる倍率（文字も一緒に大きく／小さく）を決める
-           ②その倍率で横がちょうど埋まるよう 1日の幅を決める（日付の数字が重なる 18px より細いときは、横に合わせて縮める）
-           ③まだ下が余れば行の高さを広げて埋める。1枚に収まらない量なら横に合わせて、縦は次のページへ
-   人の流れ：同じ考えで、1日の幅（--fw）と行の高さ（--fh）を合わせる。一覧は横に合わせて縮めるだけ */
+const PAGE_MM = 7;
 const root = document.documentElement.style;
-function preparePrint() {
+// 用紙の向き・大きさは印刷画面を開く前から決めておく（2026-10-13 ユーザー：A3 にしても A4 で出た）
+function setPageStyle() {
   const size = $("inPaper").value || "A3";
-  const [w, h] = PAPER[size], mm = 7;
   let st = $("printPage");
   if (!st) { st = document.createElement("style"); st.id = "printPage"; document.head.appendChild(st); }
-  st.textContent = `@page { size: ${size} landscape; margin: ${mm}mm; }`;
-  const { from, end, days } = range();
-  const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
-  $("printHead").innerHTML = `<b>${tabName}</b>　${from.slice(0, 4)}年${+from.slice(5, 7)}月${+from.slice(8)}日 〜 ${end.slice(0, 4) !== from.slice(0, 4) ? end.slice(0, 4) + "年" : ""}${+end.slice(5, 7)}月${+end.slice(8)}日` +
-    `<span>印刷 ${new Date().toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>`;
-  root.setProperty("--z", 1);
-  const W = (w - mm * 2) * 96 / 25.4 - 4;            // 用紙の中の幅（px）。少しだけ控える
-  const H = (h - mm * 2) * 96 / 25.4 - 30;           // 上の見出し（印刷日時の行）の分を引く
-  const n = days.length;
-  let z = 1;
-  if (S.tab === "chart") {
-    const cw = $("chart");
-    const tall = () => { const hw = cw.querySelector(".hrow.w"); return hw.offsetTop + hw.offsetHeight + $("body").offsetHeight; };
-    const left = () => cw.querySelector(".corner").offsetWidth;
-    root.setProperty("--rh", "30px"); root.setProperty("--dw", "24px"); renderChart();
-    const h30 = tall();
-    z = Math.min(1.6, H / h30);
-    let dw = (W / z - left()) / n;
-    if (z < 0.55 || dw < 18) {
-      // 1枚に入らない・日が細くなりすぎる：日の幅を決めて、横に合わせた倍率にする（縦は次のページへ）
-      dw = Math.max(18, Math.min(24, dw));
-      z = W / (left() + dw * n);
-    }
-    root.setProperty("--dw", dw + "px"); renderChart();
-    z = W / (left() + dw * n);                        // 工種名の列の幅が変わることがあるので取り直す
-    // 下が余れば行の高さを広げる（行は 30〜150px）
-    if (tall() * z < H) {
-      let lo = 30, hi = 150;
-      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--rh", m + "px"); renderChart(); if (tall() * z <= H) lo = m; else hi = m; }
-      root.setProperty("--rh", lo + "px"); renderChart();
-    }
-  } else if (S.tab === "flow") {
-    const tb = () => $("flow").querySelector("table");
-    root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
-    const nameW = () => tb().querySelector("th.nm").offsetWidth;
-    z = Math.min(1.6, H / tb().offsetHeight);
-    let fw = (W / z - nameW()) / n;
-    if (z < 0.55 || fw < 26) { fw = Math.max(26, Math.min(46, fw)); z = W / (nameW() + fw * n); }
-    root.setProperty("--fw", fw + "px"); renderFlow();
-    z = W / tb().offsetWidth;
-    if (tb().offsetHeight * z < H) {
-      let lo = 26, hi = 70;
-      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
-      root.setProperty("--fh", lo + "px"); renderFlow();
-    }
-  } else {
-    const t = $("list").querySelector("table");
-    z = t ? Math.min(1.4, W / t.scrollWidth) : 1;
+  st.textContent = `@page { size: ${size} landscape; margin: ${PAGE_MM}mm; }`;
+}
+/* 1ページを用紙いっぱいに（2026-10-13 ユーザー：下と右に余白ができないように／1ページに収めたいのにはみ出す）
+   ①行 30px の高さで縦が収まる倍率（文字ごと拡大縮小）→②その倍率で横が埋まる 1日の幅（18px より細くなるなら 18〜24px にして横に合わせる）
+   →③それでも縦がはみ出すなら、縦に合わせてさらに縮める（右が少し空く）→④下が余れば行の高さを広げて埋める。返り値＝倍率 */
+function fitChart(W, H) {
+  const cw = $("chart"), n = range().days.length;
+  // 高さは「完了 n工種」の細い行を除いて測る（印刷には出さない）
+  const tall = () => { const hw = cw.querySelector(".hrow.w"); let t = hw.offsetTop + hw.offsetHeight + $("body").offsetHeight; cw.querySelectorAll(".lane.donerow").forEach(x => { t -= x.offsetHeight; }); return t; };
+  const left = () => cw.querySelector(".corner").offsetWidth;
+  root.setProperty("--rh", "30px"); root.setProperty("--dw", "24px"); renderChart();
+  let z = Math.min(1.6, H / tall());
+  let dw = (W / z - left()) / n;
+  if (dw < 18) dw = Math.max(18, Math.min(24, dw));
+  if (dw > 90) dw = 90;
+  root.setProperty("--dw", dw + "px"); renderChart();
+  z = Math.min(W / (left() + dw * n), H / tall());
+  if (tall() * z < H) {
+    let lo = 30, hi = 150;
+    for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--rh", m + "px"); renderChart(); if (tall() * z <= H) lo = m; else hi = m; }
+    root.setProperty("--rh", lo + "px"); renderChart();
   }
-  root.setProperty("--pz", z.toFixed(4));
+  return z;
+}
+function fitFlow(W, H) {
+  const tb = () => $("flow").querySelector("table"), n = range().days.length;
+  root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
+  const nameW = () => tb().querySelector("th.nm").offsetWidth;
+  let z = Math.min(1.6, H / tb().offsetHeight);
+  let fw = (W / z - nameW()) / n;
+  if (fw < 26) fw = Math.max(26, Math.min(46, fw));
+  if (fw > 120) fw = 120;
+  root.setProperty("--fw", fw + "px"); renderFlow();
+  z = Math.min(W / tb().offsetWidth, H / tb().offsetHeight);
+  if (tb().offsetHeight * z < H) {
+    let lo = 26, hi = 70;
+    for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
+    root.setProperty("--fh", lo + "px"); renderFlow();
+  }
+  return z;
+}
+// 期間を nx ページに分ける。期間がちょうど nか月で nx で割り切れるなら月の切れ目で、そうでなければ日数で等分
+function dayChunks(from, end, nx) {
+  const total = dayDiff(from, end) + 1;
+  nx = Math.max(1, Math.min(nx, total));
+  let months = 0;
+  for (let m = 1; m <= 24; m++) if (dayAdd(addMonths(from, m), -1) === end) { months = m; break; }
+  const out = [];
+  for (let i = 0; i < nx; i++) {
+    let a, z;
+    if (months && months % nx === 0) { const k = months / nx; a = addMonths(from, i * k); z = dayAdd(addMonths(from, (i + 1) * k), -1); }
+    else { a = dayAdd(from, Math.round(total * i / nx)); z = dayAdd(from, Math.round(total * (i + 1) / nx) - 1); }
+    out.push({ a, z });
+  }
+  return out;
+}
+// 現場を ny ページに分ける（工種の行の数がだいたい同じになるように。並びはそのまま）
+function siteGroups(ids, ny) {
+  const list = shownSitesOf(ids);
+  const wt = s => folded.has(s.id) ? 1 : visibleLanes(s).length;
+  const total = list.reduce((a, s) => a + wt(s), 0);
+  ny = Math.max(1, Math.min(ny, list.length));
+  const out = Array.from({ length: ny }, () => []);
+  let acc = 0;
+  for (const s of list) { const g = Math.min(ny - 1, Math.floor(acc / total * ny)); out[g].push(s.id); acc += wt(s); }
+  return out.filter(g => g.length);
+}
+const shownSitesOf = ids => sortSites(sites().filter(s => ids.includes(s.id)));
+const kd = (k, y) => (y ? k.slice(0, 4) + "年" : "") + `${+k.slice(5, 7)}月${+k.slice(8)}日`;
+function preparePrint() {
+  setPageStyle();
+  const size = $("inPaper").value || "A3";
+  const [w, h] = PAPER[size];
+  root.setProperty("--z", 1);
+  const W = ((w - PAGE_MM * 2) * 96 / 25.4) * 0.985;          // 用紙の中の幅（px）。少し控える
+  const H = ((h - PAGE_MM * 2) * 96 / 25.4 - 30) * 0.97;      // 上の題の行の分を引き、少し控える（はみ出して2ページになるのを防ぐ）
+  const view = range();
+  const P = S.print || { from: view.from, end: view.end, sites: shownSites().map(s => s.id), nx: 1, ny: 1 };
+  const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
+  const out = $("printPages");
+  out.innerHTML = "";
+  if (S.tab === "list") {
+    // 一覧は横に合わせて縮めるだけ（縦は続けて次のページへ）
+    S.print = P; renderList();
+    const t = $("list").querySelector("table").cloneNode(true);
+    t.style.zoom = Math.min(1.4, W / $("list").querySelector("table").scrollWidth);
+    out.innerHTML = `<div class="ptitle"><b>${tabName}</b>　${kd(P.from, true)} 〜 ${kd(P.end, P.end.slice(0, 4) !== P.from.slice(0, 4))}</div>`;
+    out.appendChild(t);
+  } else {
+    const chunks = dayChunks(P.from, P.end, P.nx || 1);
+    const groups = S.tab === "chart" ? siteGroups(P.sites, P.ny || 1) : [P.sites];
+    const pages = [];
+    for (const g of groups) for (const c of chunks) pages.push({ g, c });
+    pages.forEach((pg, i) => {
+      S.print = { from: pg.c.a, end: pg.c.z, sites: pg.g };
+      const div = document.createElement("div");
+      div.className = "ppage";
+      div.innerHTML = `<div class="ptitle"><b>${tabName}</b>　${kd(pg.c.a, true)} 〜 ${kd(pg.c.z, pg.c.z.slice(0, 4) !== pg.c.a.slice(0, 4))}${pages.length > 1 ? `<span>${i + 1} / ${pages.length}</span>` : ""}</div>`;
+      let el, z;
+      if (S.tab === "chart") {
+        z = fitChart(W, H);
+        el = $("chart").cloneNode(true);
+        el.removeAttribute("id"); el.classList.add("pchart");
+        const b = el.querySelector("#body"); if (b) { b.removeAttribute("id"); b.classList.add("cbody"); }
+        el.querySelectorAll(".addsite, .lane.donerow").forEach(x => x.remove());
+      } else {
+        z = fitFlow(W, H);
+        el = $("flow").querySelector("table").cloneNode(true);
+      }
+      // 写しにはそのページの幅・高さ・倍率を持たせる（:root の値はページごとに変わるため）
+      ["--dw", "--rh", "--fw", "--fh"].forEach(k => { const v = root.getPropertyValue(k); if (v) el.style.setProperty(k, v); });
+      el.style.zoom = z.toFixed(4);
+      div.appendChild(el);
+      out.appendChild(div);
+    });
+  }
+  S.print = P;
+  ["--dw", "--rh", "--fw", "--fh"].forEach(k => root.removeProperty(k));
   document.body.classList.add("printing");
 }
 function afterPrint() {
   document.body.classList.remove("printing");
+  $("printPages").innerHTML = "";
   S.print = null;
-  ["--dw", "--rh", "--fw", "--fh", "--pz"].forEach(k => root.removeProperty(k));
+  ["--dw", "--rh", "--fw", "--fh"].forEach(k => root.removeProperty(k));
   applyZoom(); render();
 }
 window.addEventListener("beforeprint", preparePrint);
 window.addEventListener("afterprint", afterPrint);
-/* 印刷の小窓（2026-10-13 ユーザー：印刷する現場と期間を決めてから印刷したい）
-   期間（はじめは画面の期間）・現場（チェック。はじめは画面に出ている現場）・用紙を選んで「印刷する」。
-   印刷の間だけ S.print で range()・shownSites() を差し替え、終わったら画面に戻す。Ctrl＋P は画面のまま印刷 */
+/* 印刷の小窓（2026-10-13 ユーザー：印刷する現場と期間を決めてから印刷したい／2ページ以上に分けるのは自分で決めたい）
+   期間（はじめは画面の期間）・現場（チェック。はじめは画面に出ている現場）・用紙・ページの分け方（期間を n ページ・現場を n ページ）を選んで「印刷する」 */
 const PRINT_OFF_KEY = "kotei_printOff";   // 前に外した現場（その人のブラウザに覚える）
 $("bPrint").onclick = () => {
   const { from, end } = range();
@@ -1372,19 +1437,20 @@ $("bPrint").onclick = () => {
   $("pSites").innerHTML = all.map(s => `<label class="${s.完了 ? "done" : ""}"><input type="checkbox" value="${esc(s.id)}" ${(showDone || !s.完了) && !off.includes(s.id) ? "checked" : ""}>` +
     `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
   $("pTab").textContent = { chart: "工程表", flow: "人の流れ", list: "一覧" }[S.tab];
+  $("pNy").disabled = S.tab !== "chart"; $("pNx").disabled = S.tab === "list";
   printCount();
   openDlg($("dPrint"));
 };
 function printCount() {
   const n = $("pSites").querySelectorAll("input:checked").length, a = $("pFrom").value, z = $("pTo").value;
   const days = a && z && z >= a ? dayDiff(a, z) + 1 : 0;
-  $("pSum").textContent = `現場 ${n} 件・${days ? days + " 日間" : "期間が正しくありません"}`;
+  const pages = S.tab === "list" ? 0 : (+$("pNx").value || 1) * (S.tab === "chart" ? Math.min(n || 1, +$("pNy").value || 1) : 1);
+  $("pSum").textContent = `現場 ${n} 件・${days ? days + " 日間" : "期間が正しくありません"}` + (pages ? `・${pages} ページ` : "");
   $("bPrintGo").disabled = !n || !days || days > 366;
   if (days > 366) $("pSum").textContent += "（1年までにしてください）";
 }
+["pFrom", "pTo", "pNx", "pNy"].forEach(id => $(id).addEventListener("change", printCount));
 $("pSites").addEventListener("change", printCount);
-$("pFrom").addEventListener("change", printCount);
-$("pTo").addEventListener("change", printCount);
 $("pAll").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = true; }); printCount(); };
 $("pNone").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = false; }); printCount(); };
 $("pView").onclick = () => { const v = fromKey(S.view.from); $("pFrom").value = v; $("pTo").value = dayAdd(addMonths(v, S.view.months), -1); printCount(); };
@@ -1397,15 +1463,24 @@ $("fPrint").addEventListener("submit", e => {
   e.preventDefault();
   const boxes = [...$("pSites").querySelectorAll("input")];
   const ids = boxes.filter(c => c.checked).map(c => c.value);
-  try { localStorage.setItem(PRINT_OFF_KEY, JSON.stringify(boxes.filter(c => !c.checked).map(c => c.value))); } catch (x) { }
+  try {
+    localStorage.setItem(PRINT_OFF_KEY, JSON.stringify(boxes.filter(c => !c.checked).map(c => c.value)));
+    localStorage.setItem("kotei_printSplit", JSON.stringify([$("pNx").value, $("pNy").value]));
+  } catch (x) { }
   $("dPrint").close();
-  S.print = { from: $("pFrom").value, end: $("pTo").value, sites: ids };
-  render();
+  setPageStyle();
+  S.print = { from: $("pFrom").value, end: $("pTo").value, sites: ids, nx: +$("pNx").value || 1, ny: +$("pNy").value || 1 };
   // 小窓が閉じきってから印刷画面を出す
   setTimeout(() => window.print(), 50);
 });
-try { $("inPaper").value = localStorage.getItem("kotei_paper") || "A3"; } catch (e) { }
-$("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } };
+try {
+  $("inPaper").value = localStorage.getItem("kotei_paper") || "A3";
+  const sp = JSON.parse(localStorage.getItem("kotei_printSplit")) || [];
+  if (sp[0]) $("pNx").value = sp[0];
+  if (sp[1]) $("pNy").value = sp[1];
+} catch (e) { }
+$("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } setPageStyle(); };
+setPageStyle();
 
 /* ---------- 試しのデータ（?demo のときだけ。社員名は入れない） ---------- */
 function seedDemo() {

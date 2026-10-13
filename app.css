@@ -233,19 +233,21 @@ header .ver { font-size: 11px; opacity: .75; white-space: nowrap; }
 header .zoom button { padding: 4px 8px; min-width: 2.2em; }
 header .zoom #bZoom { min-width: 3.6em; }
 
-/* ---- 印刷・PDF（印刷・PDF ボタン／Ctrl＋P。倍率 --pz は app.js が用紙の幅から決める） ---- */
-#printHead { display: none; }
+/* ---- 印刷・PDF（app.js の preparePrint が #printPages に1ページずつ写しを作る） ---- */
+#printPages { display: none; }
+.cbody { position: relative; }
 @media print {
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { height: auto; display: block; background: #fff; }
-  header, .help, .listbar, #toast, #ctx, dialog, .addsite, .corner .fold, #signin, #loading { display: none !important; }
-  #printHead { display: flex !important; justify-content: space-between; align-items: baseline; font-size: 15px; padding: 0 0 4px; }
-  #printHead b { font-size: 19px; }
-  main { display: block; }
-  #wrap, #flow, #list { overflow: visible !important; height: auto; padding: 0; }
-  body.printing #chart, body.printing table.fl, body.printing #list table { zoom: var(--pz, 1); }
-  #chart { display: block; min-width: 0; }
+  body.printing > *:not(#printPages) { display: none !important; }
+  body.printing #printPages { display: block !important; }
+  .ppage { break-after: page; page-break-after: always; overflow: hidden; }
+  .ppage:last-child { break-after: auto; page-break-after: auto; }
+  .ptitle { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; height: 26px; padding: 0 0 4px; }
+  .ptitle b { font-size: 19px; }
+  .pchart { position: relative; display: block; min-width: 0; }
   .hrow, .corner, .sname, .llab, table.fl thead th, table.fl th.nm, table.fl tr.sec th, #list th { position: static !important; }
+  #printPages .addsite, #printPages .corner .fold { display: none !important; }
   .site, table.fl tr, #list tr { break-inside: avoid; page-break-inside: avoid; }
   .bar.sel .stripe { outline: none; }
   .bar.sel .h { border: none; }
@@ -274,3 +276,5 @@ header .zoom #bZoom { min-width: 3.6em; }
 #pSites label { display: block; padding: 3px 0; font-size: 14px; cursor: pointer; }
 #pSites label.done { color: #888; }
 #pSites input { margin-right: 6px; }
+
+.pwarn { margin-top: 4px; font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d090; border-radius: 4px; padding: 4px 8px; }
