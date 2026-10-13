@@ -112,11 +112,11 @@ header .chk { font-size: 13px; white-space: nowrap; cursor: pointer; }
 #flow { flex: 1; overflow: auto; padding-bottom: 20px; }
 .ngb { color: #fff; background: #d93a36; padding: 0 4px; border-radius: 3px; font-weight: normal; }
 table.fl { border-collapse: separate; border-spacing: 0; font-size: 12px; }
-table.fl th, table.fl td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); height: 26px; padding: 0 2px; text-align: center; white-space: nowrap; }
+table.fl th, table.fl td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); height: var(--fh, 26px); padding: 0 2px; text-align: center; white-space: nowrap; }
 table.fl td { width: var(--fw); min-width: var(--fw); max-width: var(--fw); overflow: hidden; text-overflow: ellipsis; }
 table.fl thead th { position: sticky; background: #fff; z-index: 3; font-weight: normal; }
 table.fl thead tr:nth-child(1) th { top: 0; }
-table.fl thead tr:nth-child(2) th { top: 26px; border-bottom: 2px solid #888; }
+table.fl thead tr:nth-child(2) th { top: var(--fh, 26px); border-bottom: 2px solid #888; }
 table.fl th.nm { position: sticky; left: 0; z-index: 2; background: #fff; text-align: left; padding: 0 8px; min-width: 120px; font-weight: bold; }
 table.fl thead th.nm { z-index: 4; }
 table.fl tr.sec th { background: #eef2f6; text-align: left; padding: 4px 8px; font-size: 13px; position: sticky; left: 0; }
@@ -239,8 +239,8 @@ header .zoom #bZoom { min-width: 3.6em; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { height: auto; display: block; background: #fff; }
   header, .help, .listbar, #toast, #ctx, dialog, .addsite, .corner .fold, #signin, #loading { display: none !important; }
-  #printHead { display: flex !important; justify-content: space-between; font-size: 13px; padding: 0 0 4px; }
-  #printHead b { font-size: 16px; }
+  #printHead { display: flex !important; justify-content: space-between; align-items: baseline; font-size: 15px; padding: 0 0 4px; }
+  #printHead b { font-size: 19px; }
   main { display: block; }
   #wrap, #flow, #list { overflow: visible !important; height: auto; padding: 0; }
   body.printing #chart, body.printing table.fl, body.printing #list table { zoom: var(--pz, 1); }

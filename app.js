@@ -433,7 +433,7 @@ function renderChart() {
           if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
         }
         h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.id === selBar ? "sel" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
-          `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          `style="left:${x}px;top:${pos[b.id] * rh + Math.max(3, (rh - 26) / 2)}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
           `<span class="h l"></span><span class="lbl" style="max-width:${avail[b.id]}px">${barLabel(b, avail[b.id])}</span><span class="h r"></span></div>`);
@@ -1201,25 +1201,74 @@ $("wrap").addEventListener("touchmove", e => { if ((drag || (tp && tp.pan)) && e
    いま開いているタブ（工程表／人の流れ／一覧）の表示中の期間を、用紙の横幅に合わせて縮めて出す。
    PDF はブラウザの印刷画面で「送信先：PDF に保存」。Ctrl＋P でも同じ形になる ---------- */
 const PAPER = { A3: [420, 297], A4: [297, 210] };
+/* 用紙いっぱいに使う（2026-10-13 ユーザー：下と右に余白ができないように、列幅と行の高さを合わせて見やすく）
+   工程表：①行の高さ 30px のときの高さで、縦が用紙に収まる倍率（文字も一緒に大きく／小さく）を決める
+           ②その倍率で横がちょうど埋まるよう 1日の幅を決める（日付の数字が重なる 18px より細いときは、横に合わせて縮める）
+           ③まだ下が余れば行の高さを広げて埋める。1枚に収まらない量なら横に合わせて、縦は次のページへ
+   人の流れ：同じ考えで、1日の幅（--fw）と行の高さ（--fh）を合わせる。一覧は横に合わせて縮めるだけ */
+const root = document.documentElement.style;
 function preparePrint() {
   const size = $("inPaper").value || "A3";
-  const [w, h] = PAPER[size], mm = 8;
+  const [w, h] = PAPER[size], mm = 7;
   let st = $("printPage");
   if (!st) { st = document.createElement("style"); st.id = "printPage"; document.head.appendChild(st); }
   st.textContent = `@page { size: ${size} landscape; margin: ${mm}mm; }`;
-  const { from, end } = range();
+  const { from, end, days } = range();
   const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
   $("printHead").innerHTML = `<b>${tabName}</b>　${from.slice(0, 4)}年${+from.slice(5, 7)}月${+from.slice(8)}日 〜 ${+end.slice(5, 7)}月${+end.slice(8)}日` +
     `<span>印刷 ${new Date().toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>`;
-  // 表の横幅（倍率1のとき）を測って、用紙の幅に収まる倍率にする
-  document.documentElement.style.setProperty("--z", 1);
-  const el = S.tab === "chart" ? $("chart") : $(S.tab === "flow" ? "flow" : "list").querySelector("table");
-  const natural = el ? el.scrollWidth : 1;
-  const printable = (w - mm * 2) * 96 / 25.4;
-  document.documentElement.style.setProperty("--pz", Math.min(1, printable / natural).toFixed(3));
+  root.setProperty("--z", 1);
+  const W = (w - mm * 2) * 96 / 25.4 - 4;            // 用紙の中の幅（px）。少しだけ控える
+  const H = (h - mm * 2) * 96 / 25.4 - 30;           // 上の見出し（印刷日時の行）の分を引く
+  const n = days.length;
+  let z = 1;
+  if (S.tab === "chart") {
+    const cw = $("chart");
+    const tall = () => { const hw = cw.querySelector(".hrow.w"); return hw.offsetTop + hw.offsetHeight + $("body").offsetHeight; };
+    const left = () => cw.querySelector(".corner").offsetWidth;
+    root.setProperty("--rh", "30px"); root.setProperty("--dw", "24px"); renderChart();
+    const h30 = tall();
+    z = Math.min(1.6, H / h30);
+    let dw = (W / z - left()) / n;
+    if (z < 0.55 || dw < 18) {
+      // 1枚に入らない・日が細くなりすぎる：日の幅を決めて、横に合わせた倍率にする（縦は次のページへ）
+      dw = Math.max(18, Math.min(24, dw));
+      z = W / (left() + dw * n);
+    }
+    root.setProperty("--dw", dw + "px"); renderChart();
+    z = W / (left() + dw * n);                        // 工種名の列の幅が変わることがあるので取り直す
+    // 下が余れば行の高さを広げる（行は 30〜150px）
+    if (tall() * z < H) {
+      let lo = 30, hi = 150;
+      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--rh", m + "px"); renderChart(); if (tall() * z <= H) lo = m; else hi = m; }
+      root.setProperty("--rh", lo + "px"); renderChart();
+    }
+  } else if (S.tab === "flow") {
+    const tb = () => $("flow").querySelector("table");
+    root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
+    const nameW = () => tb().querySelector("th.nm").offsetWidth;
+    z = Math.min(1.6, H / tb().offsetHeight);
+    let fw = (W / z - nameW()) / n;
+    if (z < 0.55 || fw < 26) { fw = Math.max(26, Math.min(46, fw)); z = W / (nameW() + fw * n); }
+    root.setProperty("--fw", fw + "px"); renderFlow();
+    z = W / tb().offsetWidth;
+    if (tb().offsetHeight * z < H) {
+      let lo = 26, hi = 70;
+      for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
+      root.setProperty("--fh", lo + "px"); renderFlow();
+    }
+  } else {
+    const t = $("list").querySelector("table");
+    z = t ? Math.min(1.4, W / t.scrollWidth) : 1;
+  }
+  root.setProperty("--pz", z.toFixed(4));
   document.body.classList.add("printing");
 }
-function afterPrint() { document.body.classList.remove("printing"); applyZoom(); }
+function afterPrint() {
+  document.body.classList.remove("printing");
+  ["--dw", "--rh", "--fw", "--fh", "--pz"].forEach(k => root.removeProperty(k));
+  applyZoom(); render();
+}
 window.addEventListener("beforeprint", preparePrint);
 window.addEventListener("afterprint", afterPrint);
 $("bPrint").onclick = () => window.print();
