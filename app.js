@@ -142,7 +142,7 @@ function sortSites(list) {
   if (sortBy === "start") return [...list].sort((a, b) => { const x = firstDay(a), y = firstDay(b); return last(x, y, () => x.localeCompare(y)) || byName(a, b); });
   return list;
 }
-const shownSites = () => sortSites(sites().filter(s => showDone || !s.完了));
+const shownSites = () => sortSites(sites().filter(s => S.print ? S.print.sites.includes(s.id) : (showDone || !s.完了)));
 const fileOfSite = id => "現場_" + id + ".json";
 const stamp = d => { d.更新 = { だれ: me.name, いつ: new Date().toLocaleString("ja-JP") }; };
 
@@ -270,8 +270,9 @@ function addMonths(k, n) {
   return keyOf(new Date(y, m, Math.min(d, last)));
 }
 function range() {
-  const from = fromKey(S.view.from);
-  const end = dayAdd(addMonths(from, S.view.months), -1);
+  // 印刷の小窓で期間を決めて印刷している間は、その期間（S.print）
+  const from = S.print ? S.print.from : fromKey(S.view.from);
+  const end = S.print ? S.print.end : dayAdd(addMonths(from, S.view.months), -1);
   const days = [];
   for (let k = from; k <= end; k = dayAdd(k, 1)) days.push(k);
   return { from, end, days };
@@ -1352,12 +1353,57 @@ function preparePrint() {
 }
 function afterPrint() {
   document.body.classList.remove("printing");
+  S.print = null;
   ["--dw", "--rh", "--fw", "--fh", "--pz"].forEach(k => root.removeProperty(k));
   applyZoom(); render();
 }
 window.addEventListener("beforeprint", preparePrint);
 window.addEventListener("afterprint", afterPrint);
-$("bPrint").onclick = () => window.print();
+/* 印刷の小窓（2026-10-13 ユーザー：印刷する現場と期間を決めてから印刷したい）
+   期間（はじめは画面の期間）・現場（チェック。はじめは画面に出ている現場）・用紙を選んで「印刷する」。
+   印刷の間だけ S.print で range()・shownSites() を差し替え、終わったら画面に戻す。Ctrl＋P は画面のまま印刷 */
+const PRINT_OFF_KEY = "kotei_printOff";   // 前に外した現場（その人のブラウザに覚える）
+$("bPrint").onclick = () => {
+  const { from, end } = range();
+  $("pFrom").value = from; $("pTo").value = end;
+  let off = [];
+  try { off = JSON.parse(localStorage.getItem(PRINT_OFF_KEY)) || []; } catch (e) { }
+  const all = sortSites(sites());
+  $("pSites").innerHTML = all.map(s => `<label class="${s.完了 ? "done" : ""}"><input type="checkbox" value="${esc(s.id)}" ${(showDone || !s.完了) && !off.includes(s.id) ? "checked" : ""}>` +
+    `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
+  $("pTab").textContent = { chart: "工程表", flow: "人の流れ", list: "一覧" }[S.tab];
+  printCount();
+  openDlg($("dPrint"));
+};
+function printCount() {
+  const n = $("pSites").querySelectorAll("input:checked").length, a = $("pFrom").value, z = $("pTo").value;
+  const days = a && z && z >= a ? dayDiff(a, z) + 1 : 0;
+  $("pSum").textContent = `現場 ${n} 件・${days ? days + " 日間" : "期間が正しくありません"}`;
+  $("bPrintGo").disabled = !n || !days || days > 366;
+  if (days > 366) $("pSum").textContent += "（1年までにしてください）";
+}
+$("pSites").addEventListener("change", printCount);
+$("pFrom").addEventListener("change", printCount);
+$("pTo").addEventListener("change", printCount);
+$("pAll").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = true; }); printCount(); };
+$("pNone").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = false; }); printCount(); };
+$("pView").onclick = () => { const v = fromKey(S.view.from); $("pFrom").value = v; $("pTo").value = dayAdd(addMonths(v, S.view.months), -1); printCount(); };
+document.querySelectorAll("#dPrint [data-pm]").forEach(b => b.onclick = () => {
+  const a = $("pFrom").value || fromKey(S.view.from);
+  $("pTo").value = dayAdd(addMonths(a, +b.dataset.pm), -1); printCount();
+});
+$("bPrintCancel").onclick = () => $("dPrint").close();
+$("fPrint").addEventListener("submit", e => {
+  e.preventDefault();
+  const boxes = [...$("pSites").querySelectorAll("input")];
+  const ids = boxes.filter(c => c.checked).map(c => c.value);
+  try { localStorage.setItem(PRINT_OFF_KEY, JSON.stringify(boxes.filter(c => !c.checked).map(c => c.value))); } catch (x) { }
+  $("dPrint").close();
+  S.print = { from: $("pFrom").value, end: $("pTo").value, sites: ids };
+  render();
+  // 小窓が閉じきってから印刷画面を出す
+  setTimeout(() => window.print(), 50);
+});
 try { $("inPaper").value = localStorage.getItem("kotei_paper") || "A3"; } catch (e) { }
 $("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } };
 

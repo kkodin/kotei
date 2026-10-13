@@ -266,3 +266,11 @@ header .zoom #bZoom { min-width: 3.6em; }
 .oldrow label { white-space: nowrap; font-size: 14px; cursor: pointer; }
 .oldrow label.del { color: #c62828; }
 @media print { .lane.donerow { display: none; } }
+
+/* 印刷の小窓 */
+#dPrint { width: 600px; }
+.pquick { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+#pSites { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
+#pSites label { display: block; padding: 3px 0; font-size: 14px; cursor: pointer; }
+#pSites label.done { color: #888; }
+#pSites input { margin-right: 6px; }
