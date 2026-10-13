@@ -414,10 +414,16 @@ function renderChart() {
         h.push(`<div class="bar sumbar" data-act="fold" style="left:${x}px;width:${w}px" title="${esc(md(p.a) + "〜" + md(p.z) + "\n" + works.join("・") + "\n押すとひらく")}">${esc(works.join("・"))}</div>`);
       }
       h.push(`</div></div>`);
-    } else for (const ln of s.段) {
+    } else for (const ln of visibleLanes(s)) {
+      if (ln === DONE_ROW) {
+        // 完了した工種をたたんだ行（押すと出す／たたむ。その人のブラウザに覚える）
+        const n = s.段.filter(l => l.完了).length, open = showLanes.has(s.id);
+        h.push(`<div class="lane donerow"><div class="llab" data-act="donelanes" title="${open ? "完了した工種をたたむ" : "完了した工種を出す"}">${open ? "▾" : "▸"} 完了 ${n}工種</div><div class="track sum" style="width:${width}px" data-act="donelanes"></div></div>`);
+        continue;
+      }
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
       const { pos, rows } = packLane(bars);
-      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln))}">${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}">${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
       // 段の休みの日に薄い斜線。日曜・祝日は赤い色で分かるので斜線は付けない（2026-10-07 ユーザー指定）。右クリックで休みにした日は付ける
       days.forEach((k, i) => {
         if (isRest(k) || laneWorks(ln, k)) return;
@@ -458,6 +464,28 @@ function renderChart() {
   fitLaneWidth();
   $("bAddSite").onclick = () => openSite(null);
 }
+
+/* 完了した工種（2026-10-13 ユーザー：工種が増えすぎないよう、終わった工種はたたんで見えなくしたい）
+   段.完了＝true（全員で共有）。工程表では隠して、現場の一番下に「▸ 完了 n工種」の細い行を出す。押すとその現場だけ出す（kotei_showLanes）。
+   人の流れ・一覧は完了の工種も数える（事実なので） */
+const DONE_ROW = {};
+let showLanes = new Set();
+try { showLanes = new Set(JSON.parse(localStorage.getItem("kotei_showLanes")) || []); } catch (e) { }
+function visibleLanes(s) {
+  const done = s.段.filter(l => l.完了);
+  if (!done.length) return s.段;
+  return [...(showLanes.has(s.id) ? s.段 : s.段.filter(l => !l.完了)), DONE_ROW];
+}
+function toggleShowLanes(id) {
+  showLanes.has(id) ? showLanes.delete(id) : showLanes.add(id);
+  try { localStorage.setItem("kotei_showLanes", JSON.stringify([...showLanes])); } catch (e) { }
+  render();
+}
+function setLaneDone(siteId, laneId, on) {
+  mutate(fileOfSite(siteId), doc => { const l = doc.段.find(x => x.id === laneId); if (l) { if (on) l.完了 = true; else delete l.完了; } });
+}
+// 終わった工種：バーがあって、どのバーも今日より前に終わっている
+const laneFinished = (s, l) => { const bs = s.バー.filter(b => b.段 === l.id); return bs.length > 0 && bs.every(b => b.終了 < todayKey()); };
 
 /* 工種名の列：いちばん長い工種名が収まる幅にする（2026-10-13 ユーザー指定）。狭すぎ・広すぎは 56〜280px で止める */
 function fitLaneWidth() {
@@ -743,11 +771,16 @@ function openCtx(track, barEl, cx, cy) {
   const day = dayAdd(range().from, dayAt(track, cx));
   const b = barEl && site.バー.find(x => x.id === barEl.dataset.bar);
   const lane = track.dataset.lane;
+  const ln = site.段.find(l => l.id === lane);
+  const laneDoneItem = () => ln && ln.完了
+    ? [`「${laneName(ln)}」の完了を取り消す`, () => setLaneDone(site.id, lane, false)]
+    : [`「${ln ? laneName(ln) : "工種"}」を完了にしてたたむ`, () => setLaneDone(site.id, lane, true)];
   const items = b ? [
     [`「${b.作業 || "工程"}」を直す`, () => openBar(site, b)],
     ["同じ期間で工種を足す", () => openBar(site, null, { 段: b.段, 開始: b.開始, 終了: b.終了 })],
     [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
     ["休工日を設定", () => { openBar(site, b); $("bOffBtn").click(); }],
+    laneDoneItem(),
     ["-"],
     [`「${b.作業 || "工程"}」を消す`, () => {
       if (!confirm(`「${b.作業 || "工程"}」（${md(b.開始)}〜${md(b.終了)}）を消します。よろしいですか？`)) return;
@@ -756,6 +789,7 @@ function openCtx(track, barEl, cx, cy) {
     }, "danger"],
   ] : [
     [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
+    laneDoneItem(),
     ["現場の設定を開く", () => openSite(site.id)],
   ];
   showCtx(cx, cy, items);
@@ -779,6 +813,7 @@ $("wrap").addEventListener("click", e => {
   if (fb) { setFold(shownSites().map(s => s.id), fb.dataset.fold === "all"); return; }
   const hd = e.target.closest(".hd[data-day]");
   if (hd) { toggleRest(hd.dataset.day); return; }
+  if (e.target.closest("[data-act=donelanes]")) { toggleShowLanes(e.target.closest(".site").dataset.site); return; }
   if (e.target.closest(".tg") || e.target.closest("[data-act=fold]")) {
     const id = e.target.closest(".site").dataset.site;
     setFold([id], !folded.has(id)); return;
@@ -798,7 +833,7 @@ function openBar(site, b, init) {
   const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
   $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
   $("dBarSite").textContent = site.名前;
-  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(laneName(l))}</option>`).join("");
+  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(laneName(l))}${l.完了 ? "（完了）" : ""}</option>`).join("");
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
@@ -995,12 +1030,13 @@ function laneRow(l) {
   return `<div class="ln" data-id="${esc(l.id)}"><select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
     `<input type="text" class="wk" value="${esc(laneWork(l))}" placeholder="作業名（例：立坑工）">` +
     ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
+    `<label class="dw ldn" title="終わった工種。工程表ではたたんで隠す"><input type="checkbox" data-done ${l.完了 ? "checked" : ""}>完了</label>` +
     `<button type="button" class="sub small" data-mv="-1" title="上へ">▲</button><button type="button" class="sub small" data-mv="1" title="下へ">▼</button>` +
     `<button type="button" class="danger small" data-del>✕</button></div>`;
 }
 function openSite(id) {
   const s = id ? S.files[fileOfSite(id)].doc : null;
-  siteCtx = { id };
+  siteCtx = { id, lanes: s ? s.段.map(l => l.id) : [] };
   $("dSiteTtl").textContent = s ? "現場の設定" : "現場を追加";
   $("sName").value = s ? s.名前 : "";
   $("sCode").value = s ? s.コード || "" : "";
@@ -1022,9 +1058,11 @@ $("sLanes").addEventListener("click", e => {
     const sib = e.target.dataset.mv === "-1" ? row.previousElementSibling : row.nextElementSibling;
     if (sib) e.target.dataset.mv === "-1" ? row.parentNode.insertBefore(row, sib) : row.parentNode.insertBefore(sib, row);
   } else if ("del" in e.target.dataset) {
-    const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
-    if (s && s.バー.some(b => b.段 === row.dataset.id)) { alert("この工種にはバーがあるので消せません。先にバーを消すか、別の工種へ移してください。"); return; }
     if ($("sLanes").children.length <= 1) { alert("工種は1つ以上要ります。"); return; }
+    // バーのある工種も消せる（2026-10-13 ユーザー指定）。バーも一緒に消える。決まるのは「保存」のとき
+    const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
+    const n = s ? s.バー.filter(b => b.段 === row.dataset.id).length : 0;
+    if (n && !confirm(`この工種のバー ${n} 本も一緒に消えます（「保存」を押したとき）。よろしいですか？\n残しておくなら「完了」にチェックすると、たたんで隠せます。`)) return;
     row.remove();
   }
 });
@@ -1035,7 +1073,42 @@ $("sName").addEventListener("change", () => {
   if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
   if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
 });
-$("bLaneAdd").onclick = () => { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 区分: "昼", 名前: "" })); $("sLanes").lastElementChild.querySelector("input").focus(); };
+/* 工種を足すとき、終わった工種（どのバーも今日より前に終わっている）があれば、たたむ／そのまま／消す を選ぶ（2026-10-13 ユーザー指定） */
+function addLaneRow() { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 区分: "昼", 名前: "" })); $("sLanes").lastElementChild.querySelector("input.wk").focus(); }
+$("bLaneAdd").onclick = () => {
+  const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
+  const rows = s ? [...$("sLanes").children].filter(r => {
+    const l = s.段.find(x => x.id === r.dataset.id);
+    return l && !r.querySelector("input[data-done]").checked && laneFinished(s, l);
+  }) : [];
+  if (!rows.length) { addLaneRow(); return; }
+  $("oldBody").innerHTML = rows.map(r => {
+    const l = s.段.find(x => x.id === r.dataset.id), bs = s.バー.filter(b => b.段 === l.id);
+    const last = bs.map(b => b.終了).sort().pop();
+    return `<div class="oldrow" data-id="${esc(l.id)}"><div class="onm"><b>${esc(laneName(l))}</b><span class="note">バー ${bs.length} 本・${md(last)} に終了</span></div>` +
+      ["たたむ", "そのまま", "消す"].map((v, i) => `<label class="${i === 2 ? "del" : ""}"><input type="radio" name="o_${esc(l.id)}" value="${v}" ${i === 0 ? "checked" : ""}>${v}</label>`).join("") + `</div>`;
+  }).join("");
+  openDlg($("dOld"));
+};
+$("fOld").addEventListener("submit", e => {
+  e.preventDefault();
+  const picks = [...$("oldBody").children].map(d => ({ id: d.dataset.id, v: d.querySelector("input:checked").value }));
+  const dels = picks.filter(p => p.v === "消す");
+  if (dels.length) {
+    const s = S.files[fileOfSite(siteCtx.id)].doc;
+    const n = s.バー.filter(b => dels.some(p => p.id === b.段)).length;
+    if (!confirm(`工種 ${dels.length} 件とそのバー ${n} 本を消します（現場の設定の「保存」を押したとき）。よろしいですか？`)) return;
+  }
+  for (const p of picks) {
+    const row = $("sLanes").querySelector(`.ln[data-id="${CSS.escape(p.id)}"]`);
+    if (!row) continue;
+    if (p.v === "たたむ") row.querySelector("input[data-done]").checked = true;
+    if (p.v === "消す") row.remove();
+  }
+  $("dOld").close();
+  addLaneRow();
+});
+$("bOldCancel").onclick = () => $("dOld").close();
 $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
@@ -1043,13 +1116,21 @@ $("fSite").addEventListener("submit", e => {
   const lanes = [...$("sLanes").children].map(r => {
     const l = { id: r.dataset.id, 区分: r.querySelector("select.kb").value, 名前: r.querySelector("input.wk").value.trim() };
     r.querySelectorAll("input[data-k]").forEach(c => { l[c.dataset.k] = c.checked; });
+    if (r.querySelector("input[data-done]").checked) l.完了 = true;
     return l;
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
   const keepDays = (doc, l) => { const o = (doc.段 || []).find(x => x.id === l.id); return { ...l, 休み: o ? o.休み || [] : [], 出勤: o ? o.出勤 || [] : [] }; };
   const v = { 名前: name, 完了: $("sDone").checked, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
   if (siteCtx.id) {
-    mutate(fileOfSite(siteCtx.id), doc => { Object.assign(doc, v); doc.段 = lanes.map(l => keepDays(doc, l)); });
+    // この小窓で消した工種（開いたときにあって、いま無いもの）のバーも消す。ほかの人が同時に足した工種は残す
+    const opened = siteCtx.lanes || [], gone = opened.filter(id => !lanes.some(l => l.id === id));
+    mutate(fileOfSite(siteCtx.id), doc => {
+      Object.assign(doc, v);
+      const extra = (doc.段 || []).filter(l => !opened.includes(l.id) && !lanes.some(x => x.id === l.id));
+      doc.段 = [...lanes.map(l => keepDays(doc, l)), ...extra];
+      if (gone.length) doc.バー = doc.バー.filter(b => !gone.includes(b.段));
+    });
   } else {
     const id = newId("s"), file = fileOfSite(id);
     const maxOrd = Math.max(0, ...sites().map(s => s.並び ?? 0));
