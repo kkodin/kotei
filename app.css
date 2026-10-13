@@ -279,3 +279,43 @@ header .zoom #bZoom { min-width: 3.6em; }
 
 .pwarn { margin-top: 4px; font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d090; border-radius: 4px; padding: 4px 8px; }
 .oldrow.fin .onm b { color: #555; }
+
+/* 現場の地図（現場の設定） */
+.mapbox { width: 100%; height: 120px; border: 1px dashed #9aa3ad; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fafbfc; cursor: pointer; }
+.mapbox:focus { outline: 2px solid var(--head); }
+.mapbox img { max-width: 100%; max-height: 100%; }
+.filebtn { display: inline-block; font-size: 13px; padding: 2px 8px; border: 1px solid var(--head); color: var(--head); background: #fff; border-radius: 4px; cursor: pointer; }
+
+/* 週間工程表（印刷。1500×1040px で組む） */
+.wkpage { width: 1500px; height: 1040px; font-family: "MS Gothic", "Yu Gothic UI", sans-serif; color: #000; display: flex; flex-direction: column; }
+.wkpage table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.wkhd td { border: 2px solid #000; padding: 2px 6px; font-size: 15px; height: 34px; }
+.wkhd tr:first-child td:not(.wkco) { border-top: none; border-left: none; border-right: none; }
+.wkhd .wkttl { font-size: 30px; font-weight: bold; letter-spacing: 6px; border: none !important; padding: 0; }
+.wkhd .wkmade { border: 2px solid #000 !important; text-align: center; font-size: 15px; }
+.wkhd .wkco { border: none; text-align: right; font-size: 30px; font-weight: bold; vertical-align: bottom; }
+.wkhd .vt { writing-mode: vertical-rl; text-align: center; font-size: 13px; padding: 0; }
+.wkhd .wkname div, .wkhd .wkki div { line-height: 26px; }
+.wkhd .wkaddr { vertical-align: top; }
+.wkhd tr:last-child td { border: none; height: 30px; }
+.wkhd .wktanto { border-bottom: 2px solid #000 !important; font-weight: bold; font-size: 16px; }
+.wk { flex: 1; border: 2px solid #000; }
+.wk td { border: 1px solid #000; padding: 0; font-size: 14px; position: relative; }
+.wk .wkym { text-align: center; font-size: 15px; }
+.wk .wkw { text-align: center; font-size: 15px; border-left: 2px solid #000; }
+.wk .wkm { text-align: left; padding-left: 8px; font-size: 14px; border-top: none; }
+.wk .wkd { text-align: center; font-weight: bold; font-size: 17px; }
+.wk .wkd.red { color: #e00; } .wk .wkd.blue { color: #06c; }
+.wk .wkdiag { background: linear-gradient(to top right, transparent calc(50% - 1px), #000 50%, transparent calc(50% + 1px)); }
+.wk .wkl { padding: 2px 4px; font-size: 14px; line-height: 1.25; white-space: pre-wrap; word-break: break-all; vertical-align: middle; }
+.wk .wkoff { background: linear-gradient(90deg, #c8c8c8, #f4f4f4 50%, #c8c8c8); }
+.wk .wkbar { position: absolute; left: -1px; right: -1px; top: 50%; height: 11px; margin-top: -6px; background: #000; }
+.wk .wkn { vertical-align: top; text-align: left; font-size: 13px; padding: 2px; }
+.wk .wknote { text-align: center; letter-spacing: 4px; }
+.wk .wkmemo { vertical-align: top; font-size: 12px; padding: 2px 4px; line-height: 19px; border-left: 2px solid #000;
+  background: repeating-linear-gradient(to bottom, transparent 0 18px, #999 18px 19px); }
+.wk .wkmap { padding: 0; border: 2px solid #000; vertical-align: top; overflow: hidden; }
+.wk .wkmap { position: relative; }
+.wk .wkmap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.wk .wkmap .nomap { position: absolute; inset: 0; }
+.wk .wkmap .nomap { height: 100%; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 20px; }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/13 16:06">
+<link rel="stylesheet" href="app.css?v=Vr001 10/13 16:16">
 </head>
 <body>
 <header id="top">
@@ -43,7 +43,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 16:06</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 16:16</span>
   </span>
 </header>
 
@@ -117,6 +117,14 @@
       <label for="sShort">略称</label><input type="text" id="sShort" placeholder="人の流れの表に出す短い名前（例：浄明寺）">
       <label for="sCode">現場コード</label><input type="text" id="sCode" inputmode="numeric" class="num" placeholder="例：510015">
       <label for="sTanto">担当</label><input type="text" id="sTanto" list="staffList">
+      <label for="sKouji">工事名</label><input type="text" id="sKouji" placeholder="正式な工事名（週間工程表に出す）">
+      <label for="sKiFrom">工期</label><div><input type="date" id="sKiFrom"> 〜 <input type="date" id="sKiTo"></div>
+      <label for="sAddr">住所</label><input type="text" id="sAddr" placeholder="現場の住所（週間工程表に出す）">
+      <label>地図</label>
+      <div><div id="sMapBox" class="mapbox" tabindex="0" title="押してから Ctrl＋V で貼り付け"></div>
+        <div class="pquick"><label class="filebtn">画像ファイルを選ぶ<input type="file" id="sMapFile" accept="image/*" hidden></label>
+          <button type="button" id="sMapDel" class="sub small">地図を外す</button></div>
+        <div class="note">週間工程表の右に出す地図です。画像ファイルを選ぶか、枠を押して Ctrl＋V で貼り付けます（「保存」で決まります）。</div></div>
       <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
       <label>工種</label>
       <div>
@@ -145,9 +153,12 @@
   <form method="dialog" id="fPrint">
     <h3>印刷・PDF（<span id="pTab"></span>）</h3>
     <div class="frm">
+      <label for="pFmt">形式</label>
+      <div><select id="pFmt"><option value="chart">工程表（いまの画面の形）</option><option value="week">週間工程表（現場ごとに1枚）</option></select></div>
       <label for="pFrom">期間</label>
-      <div><input type="date" id="pFrom" required> 〜 <input type="date" id="pTo" required>
-        <div class="pquick"><button type="button" id="pView" class="sub small">画面と同じ</button>
+      <div><input type="date" id="pFrom" required><span class="fmt-chart"> 〜 <input type="date" id="pTo" required></span>
+        <div class="note fmt-week">開始日の週の月曜から3週間（今週・来週・再来週）を出します。右の地図は現場の設定で貼り付けた画像です。</div>
+        <div class="pquick fmt-chart"><button type="button" id="pView" class="sub small">画面と同じ</button>
           <button type="button" class="sub small" data-pm="1">開始から1か月</button><button type="button" class="sub small" data-pm="2">2か月</button><button type="button" class="sub small" data-pm="3">3か月</button></div></div>
       <label>現場</label>
       <div><div class="pquick"><button type="button" id="pAll" class="sub small">全部</button> <button type="button" id="pNone" class="sub small">全部外す</button></div>
@@ -157,8 +168,8 @@
         <span class="note">1ページずつ用紙いっぱいに合わせます。</span>
         <div class="pwarn">プリンターで印刷するときは、印刷画面の「詳細設定」→「用紙サイズ」もここと同じ（A3）にしてください。
           プリンター側が A4 のままだと、A3 の大きさで組んだ表が A4 に入らず、はみ出して2枚になります。PDF に保存するときは自動で合います。</div></div>
-      <label>ページ</label>
-      <div>期間を <select id="pNx"><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option></select> ページに分ける
+      <label class="fmt-chart">ページ</label>
+      <div class="fmt-chart">期間を <select id="pNx"><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option></select> ページに分ける
         現場を <select id="pNy"><option>1</option><option>2</option><option>3</option><option>4</option></select> ページに分ける
         <div class="note">どのページにも上の年月日の行と現場名が出ます。期間がちょうど○か月なら月の切れ目で分けます。人の流れは期間だけ分けられます。</div></div>
     </div>
@@ -211,7 +222,7 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/13 16:06"></script>
-<script src="app.js?v=Vr001 10/13 16:06"></script>
+<script src="config.js?v=Vr001 10/13 16:16"></script>
+<script src="app.js?v=Vr001 10/13 16:16"></script>
 </body>
 </html>

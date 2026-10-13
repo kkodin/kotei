@@ -101,8 +101,23 @@ const GraphStore = {
     const res = await g(p, { method: "PUT", headers: { "Content-Type": "application/json", ...(eTag ? { "If-Match": eTag } : {}) }, body: JSON.stringify(data, null, 1) });
     if (!res.ok) throw httpErr(res, "保存");
     return { eTag: (await res.json()).eTag };
+  },
+  // 画像（現場の地図）。上書きでよい（同時に直すことはまず無い）。読むときは data URL で返す
+  async putRaw(name, blob) {
+    const res = await g(this.base() + ":/" + encodeURIComponent(name) + ":/content", { method: "PUT", headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+    if (!res.ok) throw httpErr(res, "画像の保存");
+  },
+  async getRaw(name) {
+    const res = await g(this.base() + ":/" + encodeURIComponent(name));
+    if (res.status === 404) return null;
+    if (!res.ok) throw httpErr(res, "画像の読み込み");
+    const dl = (await res.json())["@microsoft.graph.downloadUrl"];
+    const body = await fetch(dl, { cache: "no-store" });
+    if (!body.ok) throw httpErr(body, "画像の読み込み");
+    return blobToUrl(await body.blob());
   }
 };
+const blobToUrl = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ng; r.readAsDataURL(b); });
 
 const DemoStore = {
   key: "kotei_demo_v1",
@@ -116,7 +131,9 @@ const DemoStore = {
     const t = "d" + Date.now() + Math.random().toString(36).slice(2, 6);
     a[name] = { data: JSON.parse(JSON.stringify(data)), eTag: t }; this.save(a);
     return { eTag: t };
-  }
+  },
+  async putRaw(name, blob) { try { localStorage.setItem(this.key + ":" + name, await blobToUrl(blob)); } catch (e) { throw new Error("画像が大きすぎます（試しの画面）"); } },
+  async getRaw(name) { try { return localStorage.getItem(this.key + ":" + name); } catch (e) { return null; } }
 };
 let store = DEMO ? DemoStore : GraphStore;
 
@@ -1039,6 +1056,13 @@ function openSite(id) {
   $("sShort").value = s ? s.略称 || "" : "";
   $("sDone").checked = !!(s && s.完了);
   $("sTanto").value = s ? s.担当 || "" : "";
+  // 週間工程表に出す（2026-10-13）
+  $("sKouji").value = s ? s.工事名 || "" : "";
+  $("sKiFrom").value = s ? s.工期自 || "" : ""; $("sKiTo").value = s ? s.工期至 || "" : "";
+  $("sAddr").value = s ? s.住所 || "" : "";
+  siteCtx.map = undefined;   // undefined＝変えない／{blob,url}＝新しい画像／null＝外す
+  showMapBox(null);
+  if (s && s.地図) loadMap(s).then(u => { if (siteCtx && siteCtx.id === s.id && siteCtx.map === undefined) showMapBox(u); });
   const lanes = s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
   $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
@@ -1068,6 +1092,7 @@ $("sName").addEventListener("change", () => {
   if (!$("sCode").value) $("sCode").value = x.コード || "";
   if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
   if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
+  if (!$("sAddr").value && x.場所) $("sAddr").value = x.場所;
 });
 /* 工種を足すとき、たたむ／そのまま／消す を選ぶ（2026-10-13 ユーザー指定）
    出すのは ①終わった工種（バーがあって、どのバーも今日より前に終わっている）がある ②完了でない工種がもう3つ以上ある（増えすぎないように）とき。
@@ -1122,10 +1147,14 @@ $("fSite").addEventListener("submit", e => {
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
   const keepDays = (doc, l) => { const o = (doc.段 || []).find(x => x.id === l.id); return { ...l, 休み: o ? o.休み || [] : [], 出勤: o ? o.出勤 || [] : [] }; };
-  const v = { 名前: name, 完了: $("sDone").checked, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")) };
+  const v = { 名前: name, 完了: $("sDone").checked, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")),
+    工事名: $("sKouji").value.trim(), 工期自: $("sKiFrom").value, 工期至: $("sKiTo").value, 住所: $("sAddr").value.trim() };
+  if (siteCtx.map === null) v.地図 = null;
+  const newMap = siteCtx.map;
   if (siteCtx.id) {
     // この小窓で消した工種（開いたときにあって、いま無いもの）のバーも消す。ほかの人が同時に足した工種は残す
     const opened = siteCtx.lanes || [], gone = opened.filter(id => !lanes.some(l => l.id === id));
+    if (newMap) saveMap(siteCtx.id, newMap);
     mutate(fileOfSite(siteCtx.id), doc => {
       Object.assign(doc, v);
       const extra = (doc.段 || []).filter(l => !opened.includes(l.id) && !lanes.some(x => x.id === l.id));
@@ -1137,10 +1166,63 @@ $("fSite").addEventListener("submit", e => {
     const maxOrd = Math.max(0, ...sites().map(s => s.並び ?? 0));
     S.files[file] = { doc: { id, ...v, 段: lanes, バー: [], 並び: maxOrd + 10 }, eTag: null, pending: [], saving: false, timer: null, err: null };
     mutate(file, () => { });
+    if (newMap) saveMap(id, newMap);
   }
   $("dSite").close();
 });
 $("bSiteCancel").onclick = () => $("dSite").close();
+
+/* 現場の地図（2026-10-13 ユーザー：週間工程表の右の地図は別に用意して貼り付けたい）
+   工程データ\地図_<現場id>.jpg に置く（.json ではないので30秒ごとの読み直しには入らない）。現場.地図＝入れた時刻（版）。
+   画像は長い辺 1400px の JPEG に縮めてから保存。読んだものは S.maps に覚える */
+S.maps = {};
+const mapFile = id => "地図_" + id + ".jpg";
+async function loadMap(s) {
+  if (!s || !s.地図) return null;
+  const c = S.maps[s.id];
+  if (c && c.ver === s.地図) return c.url;
+  try { const url = await store.getRaw(mapFile(s.id)); S.maps[s.id] = { ver: s.地図, url }; return url; }
+  catch (e) { console.error(e); return null; }
+}
+function saveMap(id, m) {
+  const ver = Date.now();
+  toast("地図を保存しています…");
+  store.putRaw(mapFile(id), m.blob)
+    .then(() => { S.maps[id] = { ver, url: m.url }; mutate(fileOfSite(id), d => { d.地図 = ver; }); toast("地図を保存しました"); })
+    .catch(e => { console.error(e); toast("地図の保存に失敗：" + e.message); });
+}
+// 画像を読み終わるまで待つ（decode() は画面が隠れていると終わらないことがあるので onload。5秒で諦める）
+const loadImg = src => new Promise(ok => { const i = new Image(); const t = setTimeout(() => ok(null), 5000); i.onload = () => { clearTimeout(t); ok(i); }; i.onerror = () => { clearTimeout(t); ok(null); }; i.src = src; });
+async function shrinkImage(file) {
+  const src = URL.createObjectURL(file);
+  const img = await loadImg(src);
+  if (!img) throw new Error("画像を読めません");
+  const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+  const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(src);
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+  return { blob, url: c.toDataURL("image/jpeg", 0.85) };
+}
+function showMapBox(url) {
+  $("sMapBox").innerHTML = url ? `<img src="${url}" alt="地図">` : `<span class="note">（地図なし）この枠を押して Ctrl＋V で貼り付け</span>`;
+  $("sMapDel").hidden = !url;
+}
+async function takeMap(file) {
+  if (!file || !/^image\//.test(file.type)) return;
+  try { const m = await shrinkImage(file); siteCtx.map = m; showMapBox(m.url); toast("地図を入れました（「保存」で決まります）"); }
+  catch (e) { console.error(e); toast("画像を読めませんでした"); }
+}
+$("sMapFile").onchange = e => { takeMap(e.target.files[0]); e.target.value = ""; };
+$("sMapDel").onclick = () => { siteCtx.map = null; showMapBox(null); };
+// 小窓の中で画像を貼り付け（文字の欄に貼るときは文字のまま）
+$("dSite").addEventListener("paste", e => {
+  const it = [...(e.clipboardData || {}).items || []].find(i => i.type.startsWith("image/"));
+  if (!it) return;
+  e.preventDefault(); takeMap(it.getAsFile());
+});
 $("bSiteDel").onclick = () => {
   const s = S.files[fileOfSite(siteCtx.id)].doc;
   if (!confirm(`「${s.名前}」を工程表から消します（バー ${s.バー.length} 本も見えなくなります）。よろしいですか？`)) return;
@@ -1307,14 +1389,14 @@ function fitChart(W, H) {
   const tall = () => { const hw = cw.querySelector(".hrow.w"); let t = hw.offsetTop + hw.offsetHeight + $("body").offsetHeight; cw.querySelectorAll(".lane.donerow").forEach(x => { t -= x.offsetHeight; }); return t; };
   const left = () => cw.querySelector(".corner").offsetWidth;
   root.setProperty("--rh", "30px"); root.setProperty("--dw", "24px"); renderChart();
-  let z = Math.min(1.6, H / tall());
+  let z = Math.min(2.6, H / tall());
   let dw = (W / z - left()) / n;
   if (dw < 18) dw = Math.max(18, Math.min(24, dw));
   if (dw > 90) dw = 90;
   root.setProperty("--dw", dw + "px"); renderChart();
   z = Math.min(W / (left() + dw * n), H / tall());
   if (tall() * z < H) {
-    let lo = 30, hi = 150;
+    let lo = 30, hi = 240;
     for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--rh", m + "px"); renderChart(); if (tall() * z <= H) lo = m; else hi = m; }
     root.setProperty("--rh", lo + "px"); renderChart();
   }
@@ -1365,6 +1447,69 @@ function siteGroups(ids, ny) {
 }
 const shownSitesOf = ids => sortSites(sites().filter(s => ids.includes(s.id)));
 const kd = (k, y) => (y ? k.slice(0, 4) + "年" : "") + `${+k.slice(5, 7)}月${+k.slice(8)}日`;
+/* 週間工程表（2026-10-13 ユーザー：Excel の週間工程表の書式でも出したい）。元：現場別\510012金沢線配水\金沢週間工程.xlsx
+   1現場1ページ。開始日の週の月曜から3週間（今週・来週・再来週）。行＝作業（バーの作業名。夜間の工種は（夜間））・作業員（その日の人数の合計）・記事（バーのメモ）。
+   右に現場の地図（現場の設定で貼り付けた画像）。土日祝・会社の休みの列は灰色。1500×1040px で組んで用紙に合わせて縮める */
+const COMPANY = "株式会社 ハシックス";
+const WK_W = 1500, WK_H = 1040;
+const monday = k => dayAdd(k, -((dayDow(k) + 6) % 7));
+const reiwa = (k, wd) => { const y = +k.slice(0, 4) - 2018; return `令和${pad2(y)}年${k.slice(5, 7)}月${k.slice(8, 10)}日` + (wd ? `(${WD[dayDow(k)]})` : ""); };
+function weekPage(s, mon) {
+  const days = Array.from({ length: 21 }, (_, i) => dayAdd(mon, i)), end = days[20];
+  const laneOf = b => s.段.find(l => l.id === b.段);
+  const hasNight = s.段.some(isNight);
+  // 行：作業ごと（同じ作業名・同じ昼夜はまとめる）
+  const rows = [], byKey = {};
+  for (const b of s.バー) {
+    if (b.終了 < mon || b.開始 > end) continue;
+    const ln = laneOf(b);
+    const name = (b.作業 || (ln ? laneWork(ln) : "") || "（作業）") + (ln && isNight(ln) ? "（夜間）" : hasNight ? "（昼間）" : "");
+    let r = byKey[name];
+    if (!r) { r = byKey[name] = { name, on: new Set(), first: b.開始 }; rows.push(r); }
+    if (b.開始 < r.first) r.first = b.開始;
+    days.forEach(k => { if (k >= b.開始 && k <= b.終了 && barWorks(ln, b, k)) r.on.add(k); });
+  }
+  rows.sort((a, b) => a.first.localeCompare(b.first));
+  const nRows = Math.max(8, rows.length);
+  while (rows.length < nRows) rows.push({ name: "", on: new Set() });
+  const headH = 104, weekH = 26 + 22 + 30 + 26, workerH = 46, noteH = 92;
+  const rowH = Math.max(22, Math.min(70, Math.floor((WK_H - headH - weekH - workerH - noteH) / nRows)));
+  const offCls = k => (isRest(k) || dayDow(k) === 0 || dayDow(k) === 6 || holidayOf(k)) ? "wkoff" : "";
+  const numCls = k => (dayDow(k) === 0 || holidayOf(k)) ? "red" : dayDow(k) === 6 ? "blue" : "";
+  // 作業員：その日に作業するバーの人数の合計
+  const workers = days.map(k => s.バー.reduce((a, b) => a + (k >= b.開始 && k <= b.終了 && barWorks(laneOf(b), b, k) ? (+b.人数 || 0) : 0), 0));
+  // 記事：その週に始まる（1週目はそれより前から続く）バーのメモ
+  const notes = [0, 1, 2].map(w => {
+    const a = days[w * 7], z = days[w * 7 + 6];
+    return s.バー.filter(b => b.メモ && (w === 0 ? b.開始 <= z && b.終了 >= a : b.開始 >= a && b.開始 <= z))
+      .sort((x, y) => x.開始.localeCompare(y.開始))
+      .map(b => `<div><b>${+(b.開始 < a ? a : b.開始).slice(8)}日</b>　${esc(b.作業 || "")}　${esc(b.メモ)}</div>`).join("");
+  });
+  // 月の見出し（月が変わる所で区切る）
+  const months = [];
+  days.forEach(k => { const m = +k.slice(5, 7), last = months[months.length - 1]; if (last && last.m === m) last.n++; else months.push({ m, n: 1 }); });
+  const map = S.maps[s.id] && s.地図 && S.maps[s.id].ver === s.地図 ? S.maps[s.id].url : null;
+  const totalRows = 4 + nRows + 2;
+  return `<div class="wkpage">
+  <table class="wkhd"><colgroup><col style="width:34px"><col style="width:380px"><col style="width:34px"><col style="width:230px"><col style="width:34px"><col style="width:250px"><col></colgroup>
+    <tr><td colspan="5" class="wkttl">週　　間　　工　　程　　表</td><td class="wkmade">${reiwa(todayKey(), true)}作成</td><td class="wkco" rowspan="2">${esc(COMPANY)}</td></tr>
+    <tr><td class="vt">工事名</td><td class="wkname"><div>${esc(s.工事名 || s.名前)}</div><div>工事略称　　${esc(s.略称 || s.名前)}</div></td>
+      <td class="vt">工期</td><td class="wkki"><div>自　　${s.工期自 ? reiwa(s.工期自) : ""}</div><div>至　　${s.工期至 ? reiwa(s.工期至) : ""}</div></td>
+      <td class="vt">住所</td><td class="wkaddr">${esc(s.住所 || "")}</td></tr>
+    <tr><td colspan="6"></td><td class="wktanto">担当：　${esc(s.担当 || "")}</td></tr>
+  </table>
+  <table class="wk"><colgroup><col style="width:180px">${days.map(() => `<col>`).join("")}<col style="width:220px"></colgroup>
+    <tr style="height:26px"><td rowspan="2" class="wkym">令和${+mon.slice(0, 4) - 2018}年${+mon.slice(5, 7)}月</td>
+      <td colspan="7" class="wkw">今　　　　週</td><td colspan="7" class="wkw">来　　　　週</td><td colspan="7" class="wkw">再　来　週</td>
+      <td rowspan="${totalRows}" class="wkmap">${map ? `<img src="${map}" alt="">` : `<div class="nomap">地図</div>`}</td></tr>
+    <tr style="height:22px">${months.map(x => `<td colspan="${x.n}" class="wkm">${x.m}　月</td>`).join("")}</tr>
+    <tr style="height:30px"><td rowspan="2" class="wkdiag"></td>${days.map(k => `<td class="wkd ${numCls(k)}">${+k.slice(8)}</td>`).join("")}</tr>
+    <tr style="height:26px">${days.map(k => `<td class="wkd ${numCls(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</td>`).join("")}</tr>
+    ${rows.map(r => `<tr style="height:${rowH}px"><td class="wkl">${esc(r.name)}</td>${days.map(k => `<td class="${offCls(k)}">${r.on.has(k) ? '<div class="wkbar"></div>' : ""}</td>`).join("")}</tr>`).join("")}
+    <tr style="height:${workerH}px"><td class="wkl">作業員</td>${days.map((k, i) => `<td class="${offCls(k)} wkn">${workers[i] ? workers[i] + "名" : ""}</td>`).join("")}</tr>
+    <tr style="height:${noteH}px"><td class="wkl wknote">記　　　　事</td>${notes.map(n => `<td colspan="7" class="wkmemo">${n}</td>`).join("")}</tr>
+  </table></div>`;
+}
 function preparePrint() {
   setPageStyle();
   const size = $("inPaper").value || "A3";
@@ -1377,7 +1522,16 @@ function preparePrint() {
   const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
   const out = $("printPages");
   out.innerHTML = "";
-  if (S.tab === "list") {
+  if (P.fmt === "week") {
+    const z = Math.min(W / WK_W, ((h - PAGE_MM * 2) * 96 / 25.4) * 0.97 / WK_H);
+    for (const s of shownSitesOf(P.sites)) {
+      const div = document.createElement("div");
+      div.className = "ppage";
+      div.innerHTML = weekPage(s, monday(P.from));
+      div.firstElementChild.style.zoom = z.toFixed(4);
+      out.appendChild(div);
+    }
+  } else if (S.tab === "list") {
     // 一覧は横に合わせて縮めるだけ（縦は続けて次のページへ）
     S.print = P; renderList();
     const t = $("list").querySelector("table").cloneNode(true);
@@ -1438,11 +1592,24 @@ $("bPrint").onclick = () => {
     `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
   $("pTab").textContent = { chart: "工程表", flow: "人の流れ", list: "一覧" }[S.tab];
   $("pNy").disabled = S.tab !== "chart"; $("pNx").disabled = S.tab === "list";
+  fmtView();
   printCount();
   openDlg($("dPrint"));
 };
+const isWeek = () => $("pFmt").value === "week";
+function fmtView() {
+  document.querySelectorAll("#dPrint .fmt-chart").forEach(el => { el.hidden = isWeek(); });
+  document.querySelectorAll("#dPrint .fmt-week").forEach(el => { el.hidden = !isWeek(); });
+}
+$("pFmt").addEventListener("change", () => { fmtView(); printCount(); try { localStorage.setItem("kotei_printFmt", $("pFmt").value); } catch (x) { } });
 function printCount() {
   const n = $("pSites").querySelectorAll("input:checked").length, a = $("pFrom").value, z = $("pTo").value;
+  if (isWeek()) {
+    const m = a ? monday(a) : "";
+    $("pSum").textContent = `現場 ${n} 件・${m ? md(m) + "（月）〜 " + md(dayAdd(m, 20)) + "（日）の3週間" : "開始日を入れてください"}・${n} ページ`;
+    $("bPrintGo").disabled = !n || !a;
+    return;
+  }
   const days = a && z && z >= a ? dayDiff(a, z) + 1 : 0;
   const pages = S.tab === "list" ? 0 : (+$("pNx").value || 1) * (S.tab === "chart" ? Math.min(n || 1, +$("pNy").value || 1) : 1);
   $("pSum").textContent = `現場 ${n} 件・${days ? days + " 日間" : "期間が正しくありません"}` + (pages ? `・${pages} ページ` : "");
@@ -1459,7 +1626,7 @@ document.querySelectorAll("#dPrint [data-pm]").forEach(b => b.onclick = () => {
   $("pTo").value = dayAdd(addMonths(a, +b.dataset.pm), -1); printCount();
 });
 $("bPrintCancel").onclick = () => $("dPrint").close();
-$("fPrint").addEventListener("submit", e => {
+$("fPrint").addEventListener("submit", async e => {
   e.preventDefault();
   const boxes = [...$("pSites").querySelectorAll("input")];
   const ids = boxes.filter(c => c.checked).map(c => c.value);
@@ -1469,7 +1636,13 @@ $("fPrint").addEventListener("submit", e => {
   } catch (x) { }
   $("dPrint").close();
   setPageStyle();
-  S.print = { from: $("pFrom").value, end: $("pTo").value, sites: ids, nx: +$("pNx").value || 1, ny: +$("pNy").value || 1 };
+  S.print = { from: $("pFrom").value, end: $("pTo").value, sites: ids, nx: +$("pNx").value || 1, ny: +$("pNy").value || 1, fmt: $("pFmt").value };
+  if (S.print.fmt === "week") {
+    // 地図は先に読んでおく（印刷の直前には読み込みを待てない）
+    toast("地図を読んでいます…", 1500);
+    const urls = await Promise.all(shownSitesOf(ids).map(loadMap));
+    await Promise.all(urls.filter(Boolean).map(loadImg));
+  }
   // 小窓が閉じきってから印刷画面を出す
   setTimeout(() => window.print(), 50);
 });
@@ -1478,6 +1651,7 @@ try {
   const sp = JSON.parse(localStorage.getItem("kotei_printSplit")) || [];
   if (sp[0]) $("pNx").value = sp[0];
   if (sp[1]) $("pNy").value = sp[1];
+  $("pFmt").value = localStorage.getItem("kotei_printFmt") || "chart";
 } catch (e) { }
 $("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } setPageStyle(); };
 setPageStyle();
