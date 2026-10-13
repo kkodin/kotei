@@ -43,8 +43,11 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .help { font-size: 13px; color: #555; padding: 4px 12px; background: #f6f8fa; border-bottom: 1px solid var(--line); }
 
 /* ---- 工程表 ---- */
-#wrap { flex: 1; overflow: auto; position: relative; }
-#chart { position: relative; display: inline-block; min-width: 100%; }
+/* 指の操作は全部こちらで受ける（1本指＝選ぶ・動かす、2本指＝スクロール・ピンチ。app.js の touchDown／2本指） */
+#wrap { flex: 1; overflow: auto; position: relative; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#chart { position: relative; display: inline-block; min-width: 100%; zoom: var(--z, 1); }
+#flow, #list { touch-action: pan-x pan-y; }
+table.fl, #list table { zoom: var(--z, 1); }
 .hrow { display: flex; position: sticky; z-index: 6; background: #fff; }
 .hrow.m { top: 0; }
 .hrow.m .corner { white-space: nowrap; overflow: hidden; }
@@ -89,11 +92,11 @@ header .chk { font-size: 13px; white-space: nowrap; cursor: pointer; }
 .lane { display: flex; height: var(--rh); border-bottom: 1px dotted var(--line); }
 .lane:last-child { border-bottom: none; }
 .llab { position: sticky; left: var(--sw); z-index: 4; width: var(--lw); flex: none; background: #fff; border-right: 1px solid #9aa3ad; font-size: 13px; padding: 0 4px; line-height: var(--rh); overflow: hidden; white-space: nowrap; }
-.track { position: relative; flex: none; z-index: 1; cursor: crosshair; touch-action: pan-x pan-y;
+.track { position: relative; flex: none; z-index: 1; cursor: crosshair;
   background-image: repeating-linear-gradient(to right, transparent 0 calc(var(--dw) - 1px), var(--line) calc(var(--dw) - 1px) var(--dw)); }
 
 .bar { position: absolute; top: 3px; height: calc(var(--rh) - 6px); border-radius: 4px; color: #fff; font-size: 12px; line-height: calc(var(--rh) - 6px);
-  padding: 0 5px; white-space: nowrap; overflow: hidden; cursor: grab; z-index: 2; touch-action: none; box-shadow: 0 1px 2px rgba(0,0,0,.25); user-select: none; }
+  padding: 0 5px; white-space: nowrap; overflow: hidden; cursor: grab; z-index: 2; box-shadow: 0 1px 2px rgba(0,0,0,.25); user-select: none; }
 .bar.dark { color: #222; }
 .bar .h { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
 .bar .h.l { left: 0; } .bar .h.r { right: 0; }
@@ -221,3 +224,29 @@ select.pick { width: 7.5em; flex: none; font-size: 14px; }
   .help { display: none; }
 }
 header .ver { font-size: 11px; opacity: .75; white-space: nowrap; }
+
+/* タブレットで選んだバー：太い枠と、端をつかむ所 */
+.bar.sel .stripe { outline: 3px solid #000; outline-offset: 1px; }
+.bar.sel .h { width: 14px; }
+.bar.sel .h.l { left: -4px; border-left: 4px solid #000; border-radius: 3px; height: 9px; }
+.bar.sel .h.r { right: -4px; border-right: 4px solid #000; border-radius: 3px; height: 9px; }
+header .zoom button { padding: 4px 8px; min-width: 2.2em; }
+header .zoom #bZoom { min-width: 3.6em; }
+
+/* ---- 印刷・PDF（印刷・PDF ボタン／Ctrl＋P。倍率 --pz は app.js が用紙の幅から決める） ---- */
+#printHead { display: none; }
+@media print {
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { height: auto; display: block; background: #fff; }
+  header, .help, .listbar, #toast, #ctx, dialog, .addsite, .corner .fold, #signin, #loading { display: none !important; }
+  #printHead { display: flex !important; justify-content: space-between; font-size: 13px; padding: 0 0 4px; }
+  #printHead b { font-size: 16px; }
+  main { display: block; }
+  #wrap, #flow, #list { overflow: visible !important; height: auto; padding: 0; }
+  body.printing #chart, body.printing table.fl, body.printing #list table { zoom: var(--pz, 1); }
+  #chart { display: block; min-width: 0; }
+  .hrow, .corner, .sname, .llab, table.fl thead th, table.fl th.nm, table.fl tr.sec th, #list th { position: static !important; }
+  .site, table.fl tr, #list tr { break-inside: avoid; page-break-inside: avoid; }
+  .bar.sel .stripe { outline: none; }
+  .bar.sel .h { border: none; }
+}

@@ -419,7 +419,7 @@ function renderChart() {
           const g = gaps[gaps.length - 1];
           if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
         }
-        h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
+        h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.id === selBar ? "sel" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
           `style="left:${x}px;top:${pos[b.id] * rh + 3}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
@@ -534,33 +534,55 @@ function render() {
   $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? "配置表：" + x.略称 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
 }
 
-/* ---------- ドラッグ（動かす・延ばす・作る） ---------- */
+/* ---------- ドラッグ（動かす・延ばす・作る） ----------
+   マウス：つかんで動かす／端で延ばす／空いている所をなぞって作る／押すと直す。
+   タブレット（2026-10-13 ユーザー指定：スワイプしたのにタップと取られて編集画面が開いた）：
+     1本指タップ＝バーを選ぶ／ダブルタップ＝直す（空いている所なら新しいバー）／
+     選んだバーは1本指で動かす・端で延ばす／空いている所を1本指でなぞると新しいバー／長押し＝メニュー／
+     2本指スワイプ＝スクロール／2本指ピンチ＝拡大縮小（下の「拡大縮小」） */
 let drag = null;
+let selBar = null;        // タブレットで選んでいるバーの id（描き直しても残す）
+// 1日の幅（画面の px）。工程表だけを拡大縮小しているので、その倍率をかける
+const pxDay = () => DW() * ZOOM;
 function dayAt(track, clientX) {
   const r = track.getBoundingClientRect();
-  return Math.floor((clientX - r.left) / DW());
+  return Math.floor((clientX - r.left) / pxDay());
+}
+function setSel(id) {
+  selBar = id;
+  document.querySelectorAll("#chart .bar.sel").forEach(el => el.classList.remove("sel"));
+  if (id) { const el = document.querySelector(`#chart .bar[data-bar="${CSS.escape(id)}"]`); if (el) el.classList.add("sel"); }
+}
+function startBarDrag(e, barEl, track, mode, x0) {
+  const site = S.files[fileOfSite(track.dataset.site)].doc;
+  const b = site.バー.find(x => x.id === barEl.dataset.bar);
+  if (!b) return;
+  drag = { kind: "bar", mode, el: barEl, track, site, b, x0, moved: false, a: b.開始, z: b.終了, from: range().from };
+}
+function startNewDrag(track, d0) {
+  const ghost = document.createElement("div");
+  ghost.className = "bar ghost";
+  track.appendChild(ghost);
+  drag = { kind: "new", track, site: S.files[fileOfSite(track.dataset.site)].doc, lane: track.dataset.lane, d0, d1: d0, el: ghost, from: range().from };
+  placeGhost();
+}
+function cancelDrag() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === "new") d.el.remove(); else if (d.moved) render();
 }
 $("wrap").addEventListener("pointerdown", e => {
+  if (e.pointerType !== "mouse") return touchDown(e);
   if (e.button !== 0) return;
   const barEl = e.target.closest(".bar"), track = e.target.closest(".track");
   if (!track || track.classList.contains("sum")) return;
-  const site = S.files[fileOfSite(track.dataset.site)].doc;
-  const { from } = range();
-  const d0 = dayAt(track, e.clientX);
   if (barEl) {
-    const b = site.バー.find(x => x.id === barEl.dataset.bar);
     const mode = e.target.classList.contains("l") ? "l" : e.target.classList.contains("r") ? "r" : "move";
-    drag = { kind: "bar", mode, el: barEl, track, site, b, d0, x0: e.clientX, moved: false, a: b.開始, z: b.終了, from };
+    startBarDrag(e, barEl, track, mode, e.clientX);
     barEl.setPointerCapture(e.pointerId);
   } else {
-    // 指で触ったときは、なぞると画面が流れるので「押した日に1日のバー」を作る小窓だけ出す
-    if (e.pointerType === "touch") { const k = dayAdd(from, d0); openBar(site, null, { 段: track.dataset.lane, 開始: k, 終了: k }); return; }
-    const ghost = document.createElement("div");
-    ghost.className = "bar ghost";
-    track.appendChild(ghost);
-    drag = { kind: "new", track, site, lane: track.dataset.lane, d0, d1: d0, el: ghost, from };
+    startNewDrag(track, dayAt(track, e.clientX));
     track.setPointerCapture(e.pointerId);
-    placeGhost();
   }
   e.preventDefault();
 });
@@ -569,10 +591,9 @@ function placeGhost() {
   drag.el.style.left = a * dw + "px"; drag.el.style.width = (z - a + 1) * dw + "px";
   drag.el.textContent = `${md(dayAdd(drag.from, a))}〜${md(dayAdd(drag.from, z))}（${z - a + 1}日）`;
 }
-window.addEventListener("pointermove", e => {
-  if (!drag) return;
-  if (drag.kind === "new") { drag.d1 = dayAt(drag.track, e.clientX); placeGhost(); return; }
-  const dd = Math.round((e.clientX - drag.x0) / DW());
+function dragMove(e) {
+  if (drag.kind === "new") { drag.d1 = dayAt(drag.track, e.clientX); if (drag.d1 !== drag.d0) drag.moved = true; placeGhost(); return; }
+  const dd = Math.round((e.clientX - drag.x0) / pxDay());
   if (Math.abs(e.clientX - drag.x0) > 4) drag.moved = true;
   if (!drag.moved) return;
   const b = drag.b;
@@ -589,9 +610,8 @@ window.addEventListener("pointermove", e => {
   drag.el.classList.add("drag");
   drag.el.title = `${md(a)}〜${md(z)}（${dayDiff(a, z) + 1}日）`;
   toast(`${md(a)}（${WD[dayDow(a)]}）〜 ${md(z)}（${WD[dayDow(z)]}）　${dayDiff(a, z) + 1}日`, 900);
-});
-window.addEventListener("pointerup", e => {
-  if (!drag) return;
+}
+function dragEnd() {
   const d = drag; drag = null;
   if (d.kind === "new") {
     d.el.remove();
@@ -603,17 +623,91 @@ window.addEventListener("pointerup", e => {
   if (d.a === d.b.開始 && d.z === d.b.終了) { render(); return; }
   const id = d.b.id, a = d.a, z = d.z;
   mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
+}
+window.addEventListener("pointermove", e => {
+  if (e.pointerType !== "mouse") return touchMove(e);
+  if (drag) dragMove(e);
 });
+window.addEventListener("pointerup", e => {
+  if (e.pointerType !== "mouse") return touchUp(e);
+  if (drag) dragEnd();
+});
+window.addEventListener("pointercancel", e => { if (e.pointerType !== "mouse") { tp = null; cancelDrag(); } });
+
+/* タブレット（指・ペン）の1本指。2本指になったら twoFinger が引き取る */
+let tp = null, lastTap = null, lastTouchAt = 0;
+const fingers = new Set();
+function touchDown(e) {
+  fingers.add(e.pointerId);
+  lastTouchAt = Date.now();
+  if (fingers.size > 1) { tp = null; cancelDrag(); return; }
+  const track = e.target.closest(".track"), barEl = e.target.closest(".bar");
+  tp = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, target: e.target, track: track && !track.classList.contains("sum") ? track : null,
+    barEl, moved: false, long: false, sl: $("wrap").scrollLeft, st: $("wrap").scrollTop };
+  tp.timer = setTimeout(() => {
+    // 長押し＝メニュー（右クリックと同じ）
+    if (!tp || tp.moved || !tp.track) return;
+    tp.long = true;
+    if (navigator.vibrate) try { navigator.vibrate(20); } catch (x) { }
+    openCtx(tp.track, tp.barEl, tp.x, tp.y);
+  }, 600);
+}
+function touchMove(e) {
+  if (!tp || e.pointerId !== tp.id) return;
+  tp.x = e.clientX; tp.y = e.clientY;
+  if (!tp.moved && Math.hypot(e.clientX - tp.x0, e.clientY - tp.y0) > 10) {
+    tp.moved = true; clearTimeout(tp.timer);
+    if (tp.long) return;
+    const sel = tp.barEl && tp.barEl.dataset.bar === selBar;
+    if (tp.track && sel) {
+      // 選んであるバー：動かす。端（指なので広め）なら延ばす・縮める
+      const r = tp.barEl.getBoundingClientRect(), edge = Math.min(22, r.width / 3);
+      const mode = tp.x0 - r.left < edge ? "l" : r.right - tp.x0 < edge ? "r" : "move";
+      startBarDrag(e, tp.barEl, tp.track, mode, tp.x0);
+    } else if (tp.track && !tp.barEl) {
+      startNewDrag(tp.track, dayAt(tp.track, tp.x0));
+    } else if (tp.track) {
+      toast("バーを動かすときは、先に1回タップして選んでください。画面を動かすのは2本指です", 2500);
+      tp.track = null;
+    } else tp.pan = true;   // 見出し・現場名の上：1本指で画面を動かす
+  }
+  if (drag) { dragMove(e); return; }
+  if (tp.pan) { $("wrap").scrollLeft = tp.sl - (e.clientX - tp.x0); $("wrap").scrollTop = tp.st - (e.clientY - tp.y0); }
+}
+function touchUp(e) {
+  fingers.delete(e.pointerId);
+  if (!tp || e.pointerId !== tp.id) return;
+  const t = tp; tp = null; clearTimeout(t.timer);
+  if (drag) { dragEnd(); return; }
+  if (t.moved || t.long || !t.track) return;
+  // タップ：1回目は選ぶ、同じ所をすぐもう1回でダブルタップ＝直す
+  const site = S.files[fileOfSite(t.track.dataset.site)].doc;
+  const day = dayAdd(range().from, dayAt(t.track, t.x0));
+  const key = t.barEl ? "b:" + t.barEl.dataset.bar : "d:" + t.track.dataset.site + "/" + t.track.dataset.lane + "/" + day;
+  const now = Date.now();
+  if (lastTap && lastTap.key === key && now - lastTap.at < 400) {
+    lastTap = null;
+    if (t.barEl) openBar(site, site.バー.find(x => x.id === t.barEl.dataset.bar));
+    else openBar(site, null, { 段: t.track.dataset.lane, 開始: day, 終了: day });
+    return;
+  }
+  lastTap = { key, at: now };
+  setSel(t.barEl ? t.barEl.dataset.bar : null);
+}
 /* 右クリックのメニュー（2026-10-08 ユーザー：右クリックの「その日だけ休み」は要らない。
    同じ日に工種を足すと「工程を直す」が開いてしまう → 右クリックで足す・消すを選べるように）
    これまでに右クリックで入れた段の休み（段.休み／出勤）は残っていれば効く。新しくは作らない */
 $("wrap").addEventListener("contextmenu", e => {
+  // 指の長押しはこちらで出す（touchDown）。ブラウザの長押しメニューは止める
+  if (Date.now() - lastTouchAt < 1500) { e.preventDefault(); return; }
   const track = e.target.closest(".track");
   if (!track || track.classList.contains("sum")) return;
   e.preventDefault();
+  openCtx(track, e.target.closest(".bar"), e.clientX, e.clientY);
+});
+function openCtx(track, barEl, cx, cy) {
   const site = S.files[fileOfSite(track.dataset.site)].doc;
-  const day = dayAdd(range().from, dayAt(track, e.clientX));
-  const barEl = e.target.closest(".bar");
+  const day = dayAdd(range().from, dayAt(track, cx));
   const b = barEl && site.バー.find(x => x.id === barEl.dataset.bar);
   const lane = track.dataset.lane;
   const items = b ? [
@@ -631,8 +725,8 @@ $("wrap").addEventListener("contextmenu", e => {
     [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
     ["現場の設定を開く", () => openSite(site.id)],
   ];
-  showCtx(e.clientX, e.clientY, items);
-});
+  showCtx(cx, cy, items);
+}
 function showCtx(x, y, items) {
   const m = $("ctx");
   m.innerHTML = items.map((it, i) => it[0] === "-" ? `<hr>` : `<button type="button" data-i="${i}" class="${it[2] || ""}">${esc(it[0])}</button>`).join("");
@@ -963,7 +1057,7 @@ $("bNext").onclick = () => setFrom(shiftMonth(S.view.from, 1));
 $("bToday").onclick = () => {
   setFrom(todayKey().slice(0, 7));
   const i = dayDiff(range().from, todayKey());
-  $("wrap").scrollLeft = Math.max(0, i * DW() - 60);
+  $("wrap").scrollLeft = Math.max(0, i * pxDay() - 60);
 };
 $("bReload").onclick = () => pull().then(() => toast("最新にしました"));
 $("tabs").addEventListener("click", e => {
@@ -1001,6 +1095,108 @@ function toast(msg, ms = 3000) {
   const el = $("toast"); el.textContent = msg; el.classList.add("on");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("on"), ms);
 }
+
+/* ---------- 拡大縮小（2026-10-13 ユーザー：Ctrl＋ホイールでブラウザごと拡大すると誤動作する → 表だけを拡大縮小）
+   Ctrl＋ホイール・Ctrl＋＋／－／0・上の「－ 100% ＋」・2本指ピンチ。上の操作や小窓の大きさは変えない。
+   倍率はその人のブラウザに覚える（kotei_zoom）。CSS の zoom を表（#chart・人の流れ・一覧の表）にかける ---------- */
+let ZOOM = 1;
+try { ZOOM = Math.min(2, Math.max(0.4, +localStorage.getItem("kotei_zoom") || 1)); } catch (e) { }
+const scroller = () => S.tab === "chart" ? $("wrap") : S.tab === "flow" ? $("flow") : $("list");
+function applyZoom() {
+  document.documentElement.style.setProperty("--z", ZOOM);
+  $("bZoom").textContent = Math.round(ZOOM * 100) + "%";
+}
+// ax, ay：画面上でこの点が動かないように拡大する（指やマウスの位置）。省けば表示の左上
+function setZoom(z, ax, ay) {
+  z = Math.min(2, Math.max(0.4, Math.round(z * 100) / 100));
+  const sc = scroller(), r = sc.getBoundingClientRect();
+  const mx = ax == null ? 0 : ax - r.left, my = ay == null ? 0 : ay - r.top;
+  const cx = (sc.scrollLeft + mx) / ZOOM, cy = (sc.scrollTop + my) / ZOOM;
+  ZOOM = z; applyZoom();
+  sc.scrollLeft = cx * z - mx; sc.scrollTop = cy * z - my;
+  try { localStorage.setItem("kotei_zoom", z); } catch (e) { }
+}
+// Ctrl＋ホイール（ノートのタッチパッドのピンチも Ctrl＋ホイールで来る）はブラウザの拡大を止めて表だけ
+window.addEventListener("wheel", e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  if (document.querySelector("dialog[open]")) return;
+  const d = Math.max(-100, Math.min(100, e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY));
+  setZoom(ZOOM * Math.exp(-d * 0.0015), e.clientX, e.clientY);
+}, { passive: false });
+window.addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key;
+  if (k === "+" || k === "=" || k === ";") { e.preventDefault(); setZoom(ZOOM * 1.1); }
+  else if (k === "-" || k === "_") { e.preventDefault(); setZoom(ZOOM / 1.1); }
+  else if (k === "0") { e.preventDefault(); setZoom(1); }
+});
+$("bZoomIn").onclick = () => setZoom(ZOOM * 1.1);
+$("bZoomOut").onclick = () => setZoom(ZOOM / 1.1);
+$("bZoom").onclick = () => setZoom(1);
+applyZoom();
+
+/* 2本指：スワイプ＝スクロール、ピンチ＝拡大縮小（タブレット）。工程表・人の流れ・一覧で */
+let g2 = null;
+const dist2 = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+const mid2 = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+["wrap", "flow", "list"].forEach(id => {
+  const sc = $(id);
+  sc.addEventListener("touchstart", e => {
+    if (e.touches.length !== 2) { if (e.touches.length > 2) g2 = null; return; }
+    tp = null; cancelDrag(); hideCtx();
+    const [x, y] = mid2(e.touches), r = sc.getBoundingClientRect();
+    g2 = { sc, d0: dist2(e.touches), z0: ZOOM, zoomed: false,
+      cx: (sc.scrollLeft + x - r.left) / ZOOM, cy: (sc.scrollTop + y - r.top) / ZOOM };
+  }, { passive: false });
+  sc.addEventListener("touchmove", e => {
+    if (!g2 || g2.sc !== sc || e.touches.length !== 2) return;
+    if (e.cancelable) e.preventDefault();
+    const k = dist2(e.touches) / g2.d0;
+    // 指の間が少し動いただけでは拡大しない（2本指で横に流したいとき）
+    if (!g2.zoomed && Math.abs(k - 1) > 0.12) g2.zoomed = true;
+    const z = Math.min(2, Math.max(0.4, g2.zoomed ? g2.z0 * k : g2.z0));
+    if (z !== ZOOM) { ZOOM = Math.round(z * 100) / 100; applyZoom(); }
+    const [x, y] = mid2(e.touches), r = sc.getBoundingClientRect();
+    sc.scrollLeft = g2.cx * ZOOM - (x - r.left); sc.scrollTop = g2.cy * ZOOM - (y - r.top);
+  }, { passive: false });
+  sc.addEventListener("touchend", e => {
+    if (!g2 || e.touches.length >= 2) return;
+    if (g2.zoomed) try { localStorage.setItem("kotei_zoom", ZOOM); } catch (x) { }
+    g2 = null;
+  });
+});
+// 工程表の上で動かしているときは、ブラウザに画面を流させない（iPad の Safari 向け。touch-action が効かないときの保険）
+$("wrap").addEventListener("touchmove", e => { if ((drag || (tp && tp.pan)) && e.cancelable) e.preventDefault(); }, { passive: false });
+
+/* ---------- 印刷・PDF（2026-10-13 ユーザー指定）
+   いま開いているタブ（工程表／人の流れ／一覧）の表示中の期間を、用紙の横幅に合わせて縮めて出す。
+   PDF はブラウザの印刷画面で「送信先：PDF に保存」。Ctrl＋P でも同じ形になる ---------- */
+const PAPER = { A3: [420, 297], A4: [297, 210] };
+function preparePrint() {
+  const size = $("inPaper").value || "A3";
+  const [w, h] = PAPER[size], mm = 8;
+  let st = $("printPage");
+  if (!st) { st = document.createElement("style"); st.id = "printPage"; document.head.appendChild(st); }
+  st.textContent = `@page { size: ${size} landscape; margin: ${mm}mm; }`;
+  const { from, end } = range();
+  const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
+  $("printHead").innerHTML = `<b>${tabName}</b>　${from.slice(0, 4)}年${+from.slice(5, 7)}月${+from.slice(8)}日 〜 ${+end.slice(5, 7)}月${+end.slice(8)}日` +
+    `<span>印刷 ${new Date().toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>`;
+  // 表の横幅（倍率1のとき）を測って、用紙の幅に収まる倍率にする
+  document.documentElement.style.setProperty("--z", 1);
+  const el = S.tab === "chart" ? $("chart") : $(S.tab === "flow" ? "flow" : "list").querySelector("table");
+  const natural = el ? el.scrollWidth : 1;
+  const printable = (w - mm * 2) * 96 / 25.4;
+  document.documentElement.style.setProperty("--pz", Math.min(1, printable / natural).toFixed(3));
+  document.body.classList.add("printing");
+}
+function afterPrint() { document.body.classList.remove("printing"); applyZoom(); }
+window.addEventListener("beforeprint", preparePrint);
+window.addEventListener("afterprint", afterPrint);
+$("bPrint").onclick = () => window.print();
+try { $("inPaper").value = localStorage.getItem("kotei_paper") || "A3"; } catch (e) { }
+$("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } };
 
 /* ---------- 試しのデータ（?demo のときだけ。社員名は入れない） ---------- */
 function seedDemo() {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/08 19:43">
+<link rel="stylesheet" href="app.css?v=Vr001 10/13 15:05">
 </head>
 <body>
 <header id="top">
@@ -27,13 +27,22 @@
     <button id="bToday" class="sub">今日</button>
     <label class="chk" title="完了にした現場も表示する"><input type="checkbox" id="inShowDone"> 完了も出す</label>
   </span>
+  <span class="grp zoom" title="表だけを拡大縮小（Ctrl＋ホイール・2本指ピンチでも）。数字を押すと 100%">
+    <button id="bZoomOut" class="sub">－</button><button id="bZoom" class="sub">100%</button><button id="bZoomIn" class="sub">＋</button>
+  </span>
+  <span class="grp">
+    <select id="inPaper" title="用紙（横向き）"><option value="A3">A3横</option><option value="A4">A4横</option></select>
+    <button id="bPrint" class="sub" title="いま開いている表を印刷。PDF は印刷画面の送信先で「PDF に保存」">印刷・PDF</button>
+  </span>
   <span class="grp right">
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/08 19:43</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 15:05</span>
   </span>
 </header>
+
+<div id="printHead"></div>
 
 <div id="signin" class="center" hidden>
   <p>会社の Microsoft アカウントでサインインしてください。</p>
@@ -46,7 +55,8 @@
 <main id="pChart" hidden>
   <div id="help" class="help">
     バーをつかんで横に動かす／バーの端で期間を延ばす・縮める／空いている所を横になぞると新しいバー／バーを押すと中身を直せます。右クリック＝メニュー（同じ期間で工種を足す・消す など）／日付を押す＝会社の休み。
-    現場名を押すと現場の設定（工種の追加・並べ替え）。
+    現場名を押すと現場の設定（工種の追加・並べ替え）。表だけの拡大縮小＝Ctrl＋ホイール。<br>
+    タブレット：タップ＝バーを選ぶ／ダブルタップ＝直す（空いている所は新しいバー）／選んだバーを1本指で動かす・端で延ばす／空いている所を1本指でなぞる＝新しいバー／長押し＝メニュー／2本指＝画面を動かす・ピンチで拡大縮小。
   </div>
   <div id="wrap"><div id="chart"></div></div>
 </main>
@@ -148,7 +158,7 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/08 19:43"></script>
-<script src="app.js?v=Vr001 10/08 19:43"></script>
+<script src="config.js?v=Vr001 10/13 15:05"></script>
+<script src="app.js?v=Vr001 10/13 15:05"></script>
 </body>
 </html>
