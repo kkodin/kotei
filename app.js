@@ -425,12 +425,7 @@ function renderChart() {
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
       const { pos, rows } = packLane(bars);
       h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}">${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
-      // 段の休みの日に薄い斜線。日曜・祝日は赤い色で分かるので斜線は付けない（2026-10-07 ユーザー指定）。右クリックで休みにした日は付ける
-      days.forEach((k, i) => {
-        if (isRest(k) || laneWorks(ln, k)) return;
-        if (dayDow(k) === 0 || holidayOf(k)) return;
-        h.push(`<div class="off" style="left:${i * dw}px"></div>`);
-      });
+      // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
       const avail = {};
       for (const b of bars) {
