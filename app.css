@@ -278,3 +278,4 @@ header .zoom #bZoom { min-width: 3.6em; }
 #pSites input { margin-right: 6px; }
 
 .pwarn { margin-top: 4px; font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d090; border-radius: 4px; padding: 4px 8px; }
+.oldrow.fin .onm b { color: #555; }

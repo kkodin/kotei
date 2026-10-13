@@ -1074,20 +1074,25 @@ $("sName").addEventListener("change", () => {
   if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
   if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
 });
-/* 工種を足すとき、終わった工種（どのバーも今日より前に終わっている）があれば、たたむ／そのまま／消す を選ぶ（2026-10-13 ユーザー指定） */
+/* 工種を足すとき、たたむ／そのまま／消す を選ぶ（2026-10-13 ユーザー指定）
+   出すのは ①終わった工種（バーがあって、どのバーも今日より前に終わっている）がある ②完了でない工種がもう3つ以上ある（増えすぎないように）とき。
+   一覧は完了でない工種ぜんぶ。終わった工種は「たたむ」、まだの工種は「そのまま」をはじめに選んでおく */
+const LANE_MAX = 3;
 function addLaneRow() { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 区分: "昼", 名前: "" })); $("sLanes").lastElementChild.querySelector("input.wk").focus(); }
 $("bLaneAdd").onclick = () => {
   const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
-  const rows = s ? [...$("sLanes").children].filter(r => {
-    const l = s.段.find(x => x.id === r.dataset.id);
-    return l && !r.querySelector("input[data-done]").checked && laneFinished(s, l);
-  }) : [];
-  if (!rows.length) { addLaneRow(); return; }
+  const live = [...$("sLanes").children].filter(r => !r.querySelector("input[data-done]").checked);
+  const rows = s ? live.filter(r => s.段.some(x => x.id === r.dataset.id)) : [];
+  const fin = rows.filter(r => laneFinished(s, s.段.find(x => x.id === r.dataset.id)));
+  if (!fin.length && (live.length < LANE_MAX || !rows.length)) { addLaneRow(); return; }
+  $("dOldTtl").textContent = fin.length ? "終わった工種があります" : `工種が ${live.length} つあります`;
   $("oldBody").innerHTML = rows.map(r => {
     const l = s.段.find(x => x.id === r.dataset.id), bs = s.バー.filter(b => b.段 === l.id);
-    const last = bs.map(b => b.終了).sort().pop();
-    return `<div class="oldrow" data-id="${esc(l.id)}"><div class="onm"><b>${esc(laneName(l))}</b><span class="note">バー ${bs.length} 本・${md(last)} に終了</span></div>` +
-      ["たたむ", "そのまま", "消す"].map((v, i) => `<label class="${i === 2 ? "del" : ""}"><input type="radio" name="o_${esc(l.id)}" value="${v}" ${i === 0 ? "checked" : ""}>${v}</label>`).join("") + `</div>`;
+    const last = bs.map(b => b.終了).sort().pop(), done = laneFinished(s, l);
+    const note = !bs.length ? "バーなし" : done ? `バー ${bs.length} 本・${md(last)} に終了` : `バー ${bs.length} 本・${md(last)} まで（まだ終わっていない）`;
+    const def = done ? 0 : 1;
+    return `<div class="oldrow ${done ? "fin" : ""}" data-id="${esc(l.id)}"><div class="onm"><b>${esc(laneName(l))}</b><span class="note">${note}</span></div>` +
+      ["たたむ", "そのまま", "消す"].map((v, i) => `<label class="${i === 2 ? "del" : ""}"><input type="radio" name="o_${esc(l.id)}" value="${v}" ${i === def ? "checked" : ""}>${v}</label>`).join("") + `</div>`;
   }).join("");
   openDlg($("dOld"));
 };
