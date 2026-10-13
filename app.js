@@ -260,9 +260,18 @@ function namesFor(field) {
 }
 
 /* ---------- 表示する期間 ---------- */
+/* 開始日は好きな日にできる（2026-10-13 ユーザー指定。前は月の1日だけ）。S.view.from＝"YYYY-MM-DD"。前の "YYYY-MM" は1日とみなす。
+   終わりは 開始日から「nか月」先の前の日（10/15 から2か月なら 12/14） */
+const fromKey = v => /^\d{4}-\d{2}$/.test(v || "") ? v + "-01" : v;
+// n か月先の同じ日（無い日は月末：1/31 の1か月先は 2/28）
+function addMonths(k, n) {
+  const y = +k.slice(0, 4), m = +k.slice(5, 7) - 1 + n, d = +k.slice(8, 10);
+  const last = new Date(y, m + 1, 0).getDate();
+  return keyOf(new Date(y, m, Math.min(d, last)));
+}
 function range() {
-  const from = S.view.from + "-01";
-  const end = dayAdd(keyOf(new Date(+S.view.from.slice(0, 4), +S.view.from.slice(5, 7) - 1 + S.view.months, 1)), -1);
+  const from = fromKey(S.view.from);
+  const end = dayAdd(addMonths(from, S.view.months), -1);
   const days = [];
   for (let k = from; k <= end; k = dayAdd(k, 1)) days.push(k);
   return { from, end, days };
@@ -382,7 +391,7 @@ function renderChart() {
   const h = [];
   // 見出し：月・日・曜
   h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年 <button type="button" class="sub small fold" data-fold="all">▸ 全部たたむ</button><button type="button" class="sub small fold" data-fold="none">▾ 全部ひらく</button></div>` +
-    days.map(k => `<div class="hd ${k.endsWith("-01") ? "mon" : ""}">${k.endsWith("-01") ? (+k.slice(5, 7)) + "月" : ""}</div>`).join("") + "</div>");
+    days.map((k, i) => { const m = k.endsWith("-01") || (i === 0 && +k.slice(8) < 25); return `<div class="hd ${m ? "mon" : ""}">${m ? (+k.slice(5, 7)) + "月" : ""}</div>`; }).join("") + "</div>");
   h.push(`<div class="hrow d"><div class="corner"></div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
   h.push(`<div class="hrow w"><div class="corner">現場／工種</div>` +
@@ -1070,21 +1079,17 @@ $("bSiteUp").onclick = () => moveSite(-1);
 $("bSiteDown").onclick = () => moveSite(1);
 
 /* ---------- 上の操作 ---------- */
-function setFrom(ym) {
-  S.view.from = ym; $("inFrom").value = ym;
+function setFrom(k) {
+  S.view.from = fromKey(k); $("inFrom").value = S.view.from;
   try { localStorage.setItem("kotei_view", JSON.stringify(S.view)); } catch (e) { }
   render();
 }
-const shiftMonth = (ym, n) => { const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1); return d.getFullYear() + "-" + pad2(d.getMonth() + 1); };
 $("inFrom").onchange = e => e.target.value && setFrom(e.target.value);
 $("inMonths").onchange = e => { S.view.months = +e.target.value; setFrom(S.view.from); };
-$("bPrev").onclick = () => setFrom(shiftMonth(S.view.from, -1));
-$("bNext").onclick = () => setFrom(shiftMonth(S.view.from, 1));
-$("bToday").onclick = () => {
-  setFrom(todayKey().slice(0, 7));
-  const i = dayDiff(range().from, todayKey());
-  $("wrap").scrollLeft = Math.max(0, i * pxDay() - 60);
-};
+// ◀ ▶ は1か月ずつ（日はそのまま）。今日＝今日から
+$("bPrev").onclick = () => setFrom(addMonths(fromKey(S.view.from), -1));
+$("bNext").onclick = () => setFrom(addMonths(fromKey(S.view.from), 1));
+$("bToday").onclick = () => { setFrom(todayKey()); $("wrap").scrollLeft = 0; };
 $("bReload").onclick = () => pull().then(() => toast("最新にしました"));
 $("tabs").addEventListener("click", e => {
   const t = e.target.dataset.tab;
@@ -1215,7 +1220,7 @@ function preparePrint() {
   st.textContent = `@page { size: ${size} landscape; margin: ${mm}mm; }`;
   const { from, end, days } = range();
   const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
-  $("printHead").innerHTML = `<b>${tabName}</b>　${from.slice(0, 4)}年${+from.slice(5, 7)}月${+from.slice(8)}日 〜 ${+end.slice(5, 7)}月${+end.slice(8)}日` +
+  $("printHead").innerHTML = `<b>${tabName}</b>　${from.slice(0, 4)}年${+from.slice(5, 7)}月${+from.slice(8)}日 〜 ${end.slice(0, 4) !== from.slice(0, 4) ? end.slice(0, 4) + "年" : ""}${+end.slice(5, 7)}月${+end.slice(8)}日` +
     `<span>印刷 ${new Date().toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>`;
   root.setProperty("--z", 1);
   const W = (w - mm * 2) * 96 / 25.4 - 4;            // 用紙の中の幅（px）。少しだけ控える
@@ -1299,7 +1304,7 @@ function seedDemo() {
 if ($("ver").textContent === "__VER__") $("ver").textContent = "開発中";
 async function start() {
   try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
-  if (!S.view.from) S.view.from = todayKey().slice(0, 7);
+  S.view.from = fromKey(S.view.from) || todayKey().slice(0, 8) + "01";
   $("inFrom").value = S.view.from; $("inMonths").value = S.view.months;
 
   if (DEMO) {

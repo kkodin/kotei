@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/13 15:22">
+<link rel="stylesheet" href="app.css?v=Vr001 10/13 15:25">
 </head>
 <body>
 <header id="top">
@@ -16,7 +16,7 @@
   </nav>
   <span class="grp">
     <button id="bPrev" class="sub" title="前の月">◀</button>
-    <input type="month" id="inFrom">
+    <input type="date" id="inFrom" title="表示する最初の日（好きな日にできます）">
     <select id="inMonths">
       <option value="1">1か月</option>
       <option value="2" selected>2か月</option>
@@ -24,7 +24,7 @@
       <option value="4">4か月</option>
     </select>
     <button id="bNext" class="sub" title="次の月">▶</button>
-    <button id="bToday" class="sub">今日</button>
+    <button id="bToday" class="sub" title="今日から表示">今日</button>
     <select id="inSort" title="現場の並び（自分の画面だけ）">
       <option value="manual">並び：設定順</option>
       <option value="name">並び：現場名</option>
@@ -44,7 +44,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 15:22</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 15:25</span>
   </span>
 </header>
 
@@ -165,7 +165,7 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/13 15:22"></script>
-<script src="app.js?v=Vr001 10/13 15:22"></script>
+<script src="config.js?v=Vr001 10/13 15:25"></script>
+<script src="app.js?v=Vr001 10/13 15:25"></script>
 </body>
 </html>
