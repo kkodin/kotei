@@ -129,7 +129,20 @@ const sites = () => siteFiles().map(n => S.files[n].doc).sort((a, b) => (a.並�
 // 終わった現場（完了）は、上の「完了も出す」にチェックしたときだけ出す（その人のブラウザに覚える）
 let showDone = false;
 try { showDone = localStorage.getItem("kotei_showDone") === "1"; } catch (e) { }
-const shownSites = () => sites().filter(s => showDone || !s.完了);
+/* 現場の並び（2026-10-13 ユーザー指定：現場名・工事コード・工程の最初の日付でも並べたい）。
+   画面の並びだけ変える（その人のブラウザに覚える kotei_sort）。「設定順」は現場の設定の ▲▼ で決めた並び（全員共通） */
+let sortBy = "manual";
+try { sortBy = localStorage.getItem("kotei_sort") || "manual"; } catch (e) { }
+const firstDay = s => s.バー.reduce((m, b) => !m || b.開始 < m ? b.開始 : m, "");
+function sortSites(list) {
+  const byName = (a, b) => String(a.名前).localeCompare(String(b.名前), "ja");
+  const last = (x, y, f) => (!x && y) ? 1 : (x && !y) ? -1 : f();   // 空は後ろ
+  if (sortBy === "name") return [...list].sort(byName);
+  if (sortBy === "code") return [...list].sort((a, b) => { const x = String(a.コード || ""), y = String(b.コード || ""); return last(x, y, () => x.localeCompare(y, "ja", { numeric: true })) || byName(a, b); });
+  if (sortBy === "start") return [...list].sort((a, b) => { const x = firstDay(a), y = firstDay(b); return last(x, y, () => x.localeCompare(y)) || byName(a, b); });
+  return list;
+}
+const shownSites = () => sortSites(sites().filter(s => showDone || !s.完了));
 const fileOfSite = id => "現場_" + id + ".json";
 const stamp = d => { d.更新 = { だれ: me.name, いつ: new Date().toLocaleString("ja-JP") }; };
 
@@ -433,7 +446,18 @@ function renderChart() {
   const hidden = sites().length - shownSites().length;
   if (hidden) h.push(`<div class="addsite note">完了した現場 ${hidden} 件を隠しています（上の「完了も出す」で表示）</div>`);
   $("chart").innerHTML = h.join("");
+  fitLaneWidth();
   $("bAddSite").onclick = () => openSite(null);
+}
+
+/* 工種名の列：いちばん長い工種名が収まる幅にする（2026-10-13 ユーザー指定）。狭すぎ・広すぎは 56〜280px で止める */
+function fitLaneWidth() {
+  let w = 0;
+  document.querySelectorAll("#chart .llab").forEach(el => {
+    measureCtx.font = (el.classList.contains("night") ? "bold " : "") + '13px "Yu Gothic UI", Meiryo, sans-serif';
+    w = Math.max(w, measureCtx.measureText(el.textContent).width);
+  });
+  $("chart").style.setProperty("--lw", Math.min(280, Math.max(56, Math.ceil(w) + 12)) + "px");
 }
 
 /* ---------- 一覧 ---------- */
@@ -977,6 +1001,8 @@ function openSite(id) {
   const lanes = s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }];
   $("sLanes").innerHTML = lanes.map(laneRow).join("");
   $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
+  // ▲▼ は「設定順」の並びを変える。ほかの並びで見ているときは、その旨を出す
+  $("sOrdNote").hidden = sortBy === "manual";
   openDlg($("dSite"));
   if (!s) $("sName").focus();
 }
@@ -1070,6 +1096,8 @@ $("tabs").addEventListener("click", e => {
   render();
 });
 $("inShowDone").checked = showDone;
+$("inSort").value = sortBy;
+$("inSort").onchange = e => { sortBy = e.target.value; try { localStorage.setItem("kotei_sort", sortBy); } catch (x) { } render(); };
 $("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
 $("inListRange").onchange = renderList;
 $("inListQ").oninput = renderList;
