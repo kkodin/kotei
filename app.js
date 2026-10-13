@@ -440,8 +440,14 @@ function renderChart() {
         continue;
       }
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
+      if (laneFold.has(ln.id)) {
+        // たたんだ工種：細い1行に色の線だけ（押すとひらく）
+        h.push(`<div class="lane lfold" data-lane="${esc(ln.id)}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="lanefold" title="押すとひらく">▸ ${esc(laneName(ln))}</div><div class="track sum" data-act="lanefold" style="width:${width}px">` +
+          bars.map(b => { const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了; return `<div class="lfbar" style="left:${dayDiff(from, a) * dw}px;width:${(dayDiff(a, z) + 1) * dw}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}"></div>`; }).join("") + `</div></div>`);
+        continue;
+      }
       const { pos, rows } = packLane(bars);
-      h.push(`<div class="lane" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}">${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      h.push(`<div class="lane" data-lane="${esc(ln.id)}" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}"><span class="ltg" data-act="lanefold" title="この工種をたたむ">▾</span>${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
       // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
       const avail = {};
@@ -488,6 +494,15 @@ function visibleLanes(s) {
   const done = s.段.filter(l => l.完了);
   if (!done.length) return s.段;
   return [...(showLanes.has(s.id) ? s.段 : s.段.filter(l => !l.完了)), DONE_ROW];
+}
+/* 工種を1つずつたたむ／ひらく（2026-10-13 ユーザー指定）。その人のブラウザだけに覚える（kotei_laneFold）。工種名の左の ▾／▸ */
+let laneFold = new Set();
+try { laneFold = new Set(JSON.parse(localStorage.getItem("kotei_laneFold")) || []); } catch (e) { }
+function toggleLaneFold(id) {
+  if (!id) return;
+  laneFold.has(id) ? laneFold.delete(id) : laneFold.add(id);
+  try { localStorage.setItem("kotei_laneFold", JSON.stringify([...laneFold])); } catch (e) { }
+  render();
 }
 function toggleShowLanes(id) {
   showLanes.has(id) ? showLanes.delete(id) : showLanes.add(id);
@@ -826,6 +841,7 @@ $("wrap").addEventListener("click", e => {
   if (fb) { setFold(shownSites().map(s => s.id), fb.dataset.fold === "all"); return; }
   const hd = e.target.closest(".hd[data-day]");
   if (hd) { toggleRest(hd.dataset.day); return; }
+  if (e.target.closest("[data-act=lanefold]")) { toggleLaneFold(e.target.closest(".lane").dataset.lane); return; }
   if (e.target.closest("[data-act=donelanes]")) { toggleShowLanes(e.target.closest(".site").dataset.site); return; }
   if (e.target.closest(".tg") || e.target.closest("[data-act=fold]")) {
     const id = e.target.closest(".site").dataset.site;
@@ -1592,7 +1608,7 @@ $("bPrint").onclick = () => {
     `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
   $("pTab").textContent = { chart: "工程表", flow: "人の流れ", list: "一覧" }[S.tab];
   $("pNy").disabled = S.tab !== "chart"; $("pNx").disabled = S.tab === "list";
-  fmtView();
+  snapMonday(); fmtView();
   printCount();
   openDlg($("dPrint"));
 };
@@ -1601,13 +1617,16 @@ function fmtView() {
   document.querySelectorAll("#dPrint .fmt-chart").forEach(el => { el.hidden = isWeek(); });
   document.querySelectorAll("#dPrint .fmt-week").forEach(el => { el.hidden = !isWeek(); });
 }
-$("pFmt").addEventListener("change", () => { fmtView(); printCount(); try { localStorage.setItem("kotei_printFmt", $("pFmt").value); } catch (x) { } });
+// 週間工程表は必ず月曜はじまり（2026-10-13 ユーザー指定）：開始日を月曜に寄せる
+function snapMonday() { if (isWeek() && $("pFrom").value) $("pFrom").value = monday($("pFrom").value); }
+$("pFrom").addEventListener("change", () => { snapMonday(); printCount(); });
+$("pFmt").addEventListener("change", () => { snapMonday(); fmtView(); printCount(); try { localStorage.setItem("kotei_printFmt", $("pFmt").value); } catch (x) { } });
 function printCount() {
   const n = $("pSites").querySelectorAll("input:checked").length, a = $("pFrom").value, z = $("pTo").value;
   if (isWeek()) {
     const m = a ? monday(a) : "";
     $("pSum").textContent = `現場 ${n} 件・${m ? md(m) + "（月）〜 " + md(dayAdd(m, 20)) + "（日）の3週間" : "開始日を入れてください"}・${n} ページ`;
-    $("bPrintGo").disabled = !n || !a;
+    $("bPrintGo").disabled = $("bPrintXlsx").disabled = !n || !a;
     return;
   }
   const days = a && z && z >= a ? dayDiff(a, z) + 1 : 0;

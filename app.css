@@ -319,3 +319,12 @@ header .zoom #bZoom { min-width: 3.6em; }
 .wk .wkmap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .wk .wkmap .nomap { position: absolute; inset: 0; }
 .wk .wkmap .nomap { height: 100%; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 20px; }
+
+/* 工種を1つずつたたむ */
+.llab .ltg { display: inline-block; width: 1.1em; color: #8a96a3; cursor: pointer; font-size: 11px; }
+.llab .ltg:hover { color: var(--head); background: #d6e4f2; border-radius: 3px; }
+.lane.lfold { height: 16px !important; }
+.lane.lfold .llab { line-height: 16px; font-size: 11px; color: #666; cursor: pointer; }
+.lane.lfold .llab:hover { color: var(--head); }
+.lane.lfold .track { cursor: pointer; }
+.lfbar { position: absolute; top: 6px; height: 4px; border-radius: 2px; }
