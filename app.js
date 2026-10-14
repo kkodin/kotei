@@ -450,7 +450,7 @@ function renderChart() {
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="押すと会社の休みにする／戻す">${isRest(k) ? "休" : WD[dayDow(k)]}</div>`).join("") + "</div>");
   // 本体
   h.push(`<div id="body">`);
-  const left = `calc(var(--sw) + var(--lw))`;
+  const left = `calc((var(--sw) + var(--lw)) * var(--lz, 1))`;
   days.forEach((k, i) => { const c = dayClass(k); if (c) h.push(`<div class="col ${c}" style="left:calc(${left} + ${i * dw}px)"></div>`); });
   for (const s of shownSites()) {
     const fold = folded.has(s.id);
@@ -1586,6 +1586,8 @@ try { ZOOM = Math.min(2, Math.max(0.4, +localStorage.getItem("kotei_zoom") || 1)
 const scroller = () => S.tab === "chart" ? $("wrap") : S.tab === "flow" ? $("flow") : $("list");
 function applyZoom() {
   document.documentElement.style.setProperty("--z", ZOOM);
+  // 拡大したときも現場名・工種名の列は広げない（2026-10-14 ユーザー指定）：左の列だけ 1/倍率 をかけて、見た目を 100% のままにする。縮小のときは一緒に縮む
+  document.documentElement.style.setProperty("--lz", ZOOM > 1 ? 1 / ZOOM : 1);
   $("bZoom").textContent = Math.round(ZOOM * 100) + "%";
 }
 // ax, ay：画面上でこの点が動かないように拡大する（指やマウスの位置）。省けば表示の左上
@@ -1802,7 +1804,7 @@ function preparePrint() {
   setPageStyle();
   const size = $("inPaper").value || "A3";
   const [w, h] = PAPER[size];
-  root.setProperty("--z", 1);
+  root.setProperty("--z", 1); root.setProperty("--lz", 1);
   const W = ((w - PAGE_MM * 2) * 96 / 25.4) * 0.985;          // 用紙の中の幅（px）。少し控える
   const H = ((h - PAGE_MM * 2) * 96 / 25.4 - 30) * 0.97;      // 上の題の行の分を引き、少し控える（はみ出して2ページになるのを防ぐ）
   const view = range();

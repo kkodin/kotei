@@ -51,10 +51,11 @@ table.fl, #list table { zoom: var(--z, 1); }
 .hrow { display: flex; position: sticky; z-index: 6; background: #fff; }
 .hrow.m { top: 0; }
 .hrow.m .corner { white-space: nowrap; overflow: hidden; }
+.hrow > .corner { font-size: calc(12px * var(--lz, 1)); padding-left: calc(6px * var(--lz, 1)); }
 .hrow.d { top: 22px; }
 .hrow.w { top: 44px; border-bottom: 2px solid #888; }
 .hrow > div { height: 22px; line-height: 22px; font-size: 12px; text-align: center; flex: none; }
-.corner { position: sticky; left: 0; z-index: 7; background: #fff; width: calc(var(--sw) + var(--lw)); text-align: left !important; padding-left: 6px; }
+.corner { position: sticky; left: 0; z-index: 7; background: #fff; width: calc((var(--sw) + var(--lw)) * var(--lz, 1)); text-align: left !important; padding-left: 6px; }
 .hd { width: var(--dw); border-right: 1px solid var(--line); }
 .hd.mon { text-align: left; padding-left: 3px; font-weight: bold; border-right: none; overflow: visible; white-space: nowrap; }
 .hd.sun, .hd.hol { color: #c62828; background: var(--sun); }
@@ -74,24 +75,27 @@ table.fl, #list table { zoom: var(--z, 1); }
 table.fl .rest { background: repeating-linear-gradient(45deg, #d5d8dc 0 3px, #f3f4f5 3px 7px); }
 
 .site { display: flex; border-bottom: 1px solid #9aa3ad; position: relative; }
-.sname { position: sticky; left: 0; z-index: 4; width: var(--sw); flex: none; background: #fff; border-right: 1px solid var(--line); padding: 4px 6px; font-weight: bold; font-size: 14px; cursor: pointer; overflow: hidden; }
+.sname { position: sticky; left: 0; z-index: 4; width: calc(var(--sw) * var(--lz, 1)); flex: none; background: #fff; border-right: 1px solid var(--line); padding: calc(4px * var(--lz, 1)) calc(6px * var(--lz, 1)); font-weight: bold; font-size: calc(14px * var(--lz, 1)); cursor: pointer; overflow: hidden; }
 .sname:hover { background: #eef4fb; }
 .site.done .sname { color: #888; }
-.donemark { font-size: 11px; font-weight: normal; background: #888; color: #fff; border-radius: 3px; padding: 0 4px; margin-right: 4px; }
+.donemark { font-size: .79em; font-weight: normal; background: #888; color: #fff; border-radius: 3px; padding: 0 4px; margin-right: 4px; }
 header .chk { font-size: 13px; white-space: nowrap; cursor: pointer; }
 .chk2 { font-size: 14px; text-align: left !important; color: #222 !important; }
-.sname .tg { display: inline-block; width: 1.2em; color: var(--head); cursor: pointer; font-size: 13px; }
-.sname .tg:hover { background: #d6e4f2; border-radius: 3px; }
-.site.folded .sname { padding-top: 6px; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+/* たたむ ▾／▸（2026-10-14 ユーザー：小さすぎて押せない → 枠付きのボタンに。指の端末はさらに大きく） */
+.sname .tg { display: inline-flex; align-items: center; justify-content: center; width: 1.3em; height: 1.3em; margin-right: .3em; vertical-align: middle;
+  border: 1px solid #b8c7d8; border-radius: 4px; background: #f3f7fb; color: var(--head); cursor: pointer; font-size: 1.3em; line-height: 1; }
+@media (pointer: coarse) { .sname .tg { width: 1.45em; height: 1.45em; font-size: 1.5em; } }
+.sname .tg:hover { background: #d6e4f2; border-color: var(--head); }
+.site.folded .sname { padding-top: calc(6px * var(--lz, 1)); font-size: calc(13px * var(--lz, 1)); white-space: nowrap; text-overflow: ellipsis; }
 .site.folded .llab { color: #666; cursor: pointer; }
 .track.sum { cursor: default; }
 .bar.sumbar { background: #9fb3c8; color: #1f2d3a; cursor: pointer; box-shadow: none; }
-.corner .fold { font-size: 11px; padding: 0 5px; margin-left: 4px; }
-.sname .code, .sname .tanto { display: block; font-weight: normal; font-size: 12px; color: #666; }
+.corner .fold { font-size: .92em; padding: 0 5px; margin-left: 4px; }
+.sname .code, .sname .tanto { display: block; font-weight: normal; font-size: .86em; color: #666; }
 .lanes { flex: none; }
 .lane { display: flex; height: var(--rh); border-bottom: 1px dotted var(--line); }
 .lane:last-child { border-bottom: none; }
-.llab { position: sticky; left: var(--sw); z-index: 4; width: var(--lw); flex: none; background: #fff; border-right: 1px solid #9aa3ad; font-size: 13px; padding: 0 4px; line-height: var(--rh); overflow: hidden; white-space: nowrap; }
+.llab { position: sticky; left: calc(var(--sw) * var(--lz, 1)); z-index: 4; width: calc(var(--lw) * var(--lz, 1)); flex: none; background: #fff; border-right: 1px solid #9aa3ad; font-size: calc(13px * var(--lz, 1)); padding: 0 calc(4px * var(--lz, 1)); line-height: var(--rh); overflow: hidden; white-space: nowrap; }
 .track { position: relative; flex: none; z-index: 1; cursor: crosshair;
   background-image: repeating-linear-gradient(to right, transparent 0 calc(var(--dw) - 1px), var(--line) calc(var(--dw) - 1px) var(--dw)); }
 
@@ -285,7 +289,7 @@ header .zoom #bZoom { min-width: 3.6em; }
 
 /* 完了した工種（たたむ） */
 .lane.donerow { height: 20px !important; background: #f6f7f9; }
-.lane.donerow .llab { line-height: 20px; font-size: 12px; color: #666; cursor: pointer; background: #f6f7f9; }
+.lane.donerow .llab { line-height: 20px; font-size: calc(12px * var(--lz, 1)); color: #666; cursor: pointer; background: #f6f7f9; }
 .lane.donerow .llab:hover { color: var(--head); text-decoration: underline; }
 .lane.donerow .track { background-image: none; cursor: pointer; }
 .llab.ldone { color: #999; text-decoration: line-through; }
@@ -360,10 +364,10 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .wk .wkmap .nomap { height: 100%; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 20px; }
 
 /* 工種を1つずつたたむ */
-.llab .ltg { display: inline-block; width: 1.1em; color: #8a96a3; cursor: pointer; font-size: 11px; }
+.llab .ltg { display: inline-block; width: 1.1em; color: #8a96a3; cursor: pointer; font-size: .85em; }
 .llab .ltg:hover { color: var(--head); background: #d6e4f2; border-radius: 3px; }
 .lane.lfold { height: 16px !important; }
-.lane.lfold .llab { line-height: 16px; font-size: 11px; color: #666; cursor: pointer; }
+.lane.lfold .llab { line-height: 16px; font-size: calc(11px * var(--lz, 1)); color: #666; cursor: pointer; }
 .lane.lfold .llab:hover { color: var(--head); }
 .lane.lfold .track { cursor: pointer; }
 .lfbar { position: absolute; top: 6px; height: 4px; border-radius: 2px; }
