@@ -902,6 +902,15 @@ function showCtx(x, y, items) {
 function hideCtx() { $("ctx").hidden = true; }
 document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctx")) hideCtx(); }, true);
 document.addEventListener("keydown", e => { if (e.key === "Escape") hideCtx(); });
+/* 小窓の入力欄で Enter を押しても保存して閉じない（2026-10-14 ユーザー：タブレットのキーボードのエンターで小窓が閉じた）。
+   欄を離れるだけ（キーボードがしまわれる）。日本語の変換中の Enter はそのまま。複数行の欄（メモ）は改行のまま。保存は帯の「保存」で */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  const t = e.target;
+  if (!t.closest || !t.closest("dialog") || t.tagName !== "INPUT" || /^(button|submit|checkbox|radio|file|range)$/.test(t.type)) return;
+  e.preventDefault();
+  t.blur();
+});
 $("wrap").addEventListener("scroll", hideCtx);
 $("wrap").addEventListener("click", e => {
   const fb = e.target.closest("[data-fold]");
