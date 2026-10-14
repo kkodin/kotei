@@ -387,25 +387,31 @@ window.HAICHI_VIEWER = {
     if(!r.ok) throw new Error("合言葉のデータがまだありません（" + r.status + "）");
     this.meta = await r.json();
   },
-  checkKey: async function(key){
-    var c = this.b64(this.meta.check);
-    try{ var p = await crypto.subtle.decrypt({name: "AES-GCM", iv: c.slice(0, 12)}, key, c.slice(12));
-      return new TextDecoder().decode(p) === "haichi-ok"; }catch(e){ return false; }
+  /* 合言葉の鍵（kek）で「データの鍵」を開く。meta.keys に合言葉ごとに包んだものが並ぶ（変えた直後は前の合言葉の分もある） */
+  openDk: async function(kek, k){
+    var w = this.b64(k.wrap);
+    try{ var dk = await crypto.subtle.decrypt({name: "AES-GCM", iv: w.slice(0, 12)}, kek, w.slice(12));
+      return await crypto.subtle.importKey("raw", dk, {name: "AES-GCM"}, false, ["decrypt"]); }catch(e){ return null; }
   },
   unlock: async function(pw){
     pw = this.norm(pw);
     if(!this.meta) await this.loadMeta();
     var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
-    var key = await crypto.subtle.deriveKey({name: "PBKDF2", salt: this.b64(this.meta.salt), iterations: this.meta.iter, hash: "SHA-256"},
-      base, {name: "AES-GCM", length: 256}, true, ["decrypt"]);
-    if(!(await this.checkKey(key))) return false;
-    try{
-      var raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
-      localStorage.setItem("haichi_pw_key", btoa(String.fromCharCode.apply(null, raw)));
-      localStorage.setItem("haichi_pw_id", this.meta.id);
-    }catch(e){}
-    this.key = key; this.mode = "pw";
-    return true;
+    for(var i = 0; i < this.meta.keys.length; i++){
+      var k = this.meta.keys[i];
+      var kek = await crypto.subtle.deriveKey({name: "PBKDF2", salt: this.b64(k.salt), iterations: k.iter, hash: "SHA-256"},
+        base, {name: "AES-GCM", length: 256}, true, ["decrypt"]);
+      var dk = await this.openDk(kek, k);
+      if(!dk) continue;
+      try{
+        var raw = new Uint8Array(await crypto.subtle.exportKey("raw", kek));
+        localStorage.setItem("haichi_pw_key", btoa(String.fromCharCode.apply(null, raw)));
+        localStorage.setItem("haichi_pw_id", k.id);
+      }catch(e){}
+      this.key = dk; this.mode = "pw";
+      return true;
+    }
+    return false;
   },
   ready: async function(){
     var c = this.cfg;
@@ -421,14 +427,16 @@ window.HAICHI_VIEWER = {
     if(keep && !location.search) history.replaceState(null, "", location.pathname + keep);
     var acc = this.msal.getActiveAccount() || this.msal.getAllAccounts()[0];
     if(acc){ this.msal.setActiveAccount(acc); this.mode = "ms"; return true; }
-    /* 覚えている合言葉（の鍵）で入る。合言葉が変わっていれば聞き直す */
+    /* 覚えている合言葉（の鍵）で入る。その合言葉がもう使えなければ聞き直す */
     var saved = null, sid = null;
     try{ saved = localStorage.getItem("haichi_pw_key"); sid = localStorage.getItem("haichi_pw_id"); }catch(e){}
     try{ await this.loadMeta(); }catch(e){ return false; }
     if(saved){
-      if(sid === this.meta.id){
-        var key = await crypto.subtle.importKey("raw", this.b64(saved), {name: "AES-GCM"}, false, ["decrypt"]);
-        if(await this.checkKey(key)){ this.key = key; this.mode = "pw"; return true; }
+      var k = (this.meta.keys || []).filter(function(x){ return x.id === sid; })[0];
+      if(k){
+        var kek = await crypto.subtle.importKey("raw", this.b64(saved), {name: "AES-GCM"}, false, ["decrypt"]);
+        var dk = await this.openDk(kek, k);
+        if(dk){ this.key = dk; this.mode = "pw"; return true; }
       }
       this.changed = true;
       try{ localStorage.removeItem("haichi_pw_key"); localStorage.removeItem("haichi_pw_id"); }catch(e){}
@@ -491,8 +499,8 @@ window.HAICHI_VIEWER = {
   <button class="btn" id="btnXlsx" title="いまある配置表（Excel）を開く。前日の続きから作るときはこれ。フォルダから一括で「保存した日」に入れることもできる">Excelを読み込む</button>
   <button class="btn main" id="btnOut" title="この日の配置表をExcel（9月26日.xlsx の形）で保存する。保存先を選べる（NASの配置予定表／配置確定へ直接置ける）">Excelに出力</button>
   <button class="btn" id="btnPrint" title="A4横1枚で印刷する。PDFにするときのファイル名は「人員配置予定表_9月26日」になる">印刷</button>
-  <button class="btn" id="btnLine" hidden title="この日の予定ができたことを、LINE のグループに知らせる（見るだけ版のリンク付き）"
-    style="background:#06C755;border-color:#06C755;color:#fff;font-weight:600">LINE で知らせる</button>
+  <button class="btn" id="btnLine" hidden title="予定が決まったら押す。LINE のグループに、スマホで見るリンクと合言葉を送る"
+    style="background:#06C755;border-color:#06C755;color:#fff;font-weight:600">📣 予定を皆に知らせる</button>
 </div>
 <div class="bar noprint" style="top:45px;padding-top:5px;padding-bottom:5px">
   <span class="undogrp editonly">
@@ -2181,54 +2189,55 @@ function fitProblems(data){
 
 function toast(m){ $("#state").textContent = m; }
 
-/* ---- LINE で知らせる（008.0017・2026-10-14 ユーザー要望）----
-   いまは翌日の予定を PDF にして LINE のグループ「ハシックス」に上げている。それをやめ、
-   見るだけ版のリンク（その日を直接開く ?d=…&k=予定）を送る。LINE には本人に代わってグループへ送る仕組みが無いので、
-   LINE の「送る」画面（social-plugins.line.me/lineit/share。url と text を入れられる）を開き、送り先と送信は本人が選ぶ。
-   念のため 同じ文をクリップボードにも入れる（画面に文が入らなかったときは Ctrl+V で貼る） */
+/* ---- 予定を皆に知らせる（008.0017・2026-10-14 ユーザー要望）----
+   いまは翌日の予定を PDF にして LINE のグループ「ハシックス」に上げている。それをやめ、予定が決まったら このボタンで
+   見るだけ版のリンク（その日を直接開く ?d=…&k=予定）と、いまの合言葉を送る（合言葉がわからない人は いちばん新しい知らせを見ればよい）。
+   LINE には本人に代わってグループへ送る仕組みが無いので、LINE の「送る」画面（social-plugins.line.me/lineit/share。
+   url と text を入れられる）を開き、送り先と送信は本人が選ぶ。念のため 同じ文をクリップボードにも入れる */
 var VIEW_URL = "https://kkodin.github.io/kotei/haichi/";
-/* ---- 合言葉を変える（008.0017・2026-10-14 ユーザー指定）----
-   スマホの見るだけ版は、LINE のグループで伝える合言葉（ひらがな6文字）で見る。合言葉は**でたらめな6文字をツールが出す**（人は打てない。
-   意味のある言葉は すぐ破られるため）。「別のを出す」で出し直せる。決めたら NAS の 配置表データ\合言葉.json に保存し、
-   OWNER の PC のタスク（tools/encrypt_viewer_data.py）が次の更新で全部を新しい合言葉の暗号にかけ直す（古い合言葉では見られなくなる）。
+/* ---- 合言葉（008.0017・2026-10-14 ユーザー指定）----
+   スマホの見るだけ版は、LINE のグループで伝える合言葉（ひらがな6文字・でたらめ）で見る。
+   合言葉は NAS の 配置表データ\合言葉.js（window.HAICHI_AIKOTOBA。<script> で読む）。毎月1日を過ぎると OWNER の PC のタスク
+   （tools/encrypt_viewer_data.py）が自動で変える（前の合言葉も7日は使える）。手で変えるときは「合言葉を変える」：
+   でたらめな6文字をツールが出す（人は打てない。意味のある言葉は すぐ破られるため）・「別のを出す」で出し直せる。
    字は encrypt_viewer_data.py の CHARS と同じ */
 var AIKOTOBA_CHARS = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわん" +
   "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ";
 var AIKOTOBA_DIR = "\\\\192.168.0.15\\share\\33_配置表\\配置表データ";
+var AIKOTOBA_KEEP_DAYS = 7;
 function randomAikotoba(){
   var n = AIKOTOBA_CHARS.length, lim = 256 - (256 % n), out = "", b = new Uint8Array(1);
   while(out.length < 6){ crypto.getRandomValues(b); if(b[0] < lim) out += AIKOTOBA_CHARS[b[0] % n]; }   /* 偏らないよう 余りの分は捨てる */
   return out;
 }
-function openAikotobaDialog(){
+/* いまの合言葉を NAS から読む（毎回 読み直す） */
+function loadAikotoba(){
+  window.HAICHI_AIKOTOBA = null;
+  return vScript(PAST_DIR + "合言葉.js?t=" + Date.now()).then(function(){ return window.HAICHI_AIKOTOBA; }).catch(function(){ return null; });
+}
+var BIG_PW = 'font-size:30px;letter-spacing:.3em;font-weight:700;text-align:center;background:#fff8d6;border:2px solid #d4a300;margin:8px 0;padding:4px';
+function openAikotobaDialog(cur){
   var pw = randomAikotoba();
   var dlg = document.createElement("div");
   dlg.className = "mdlg";
   var draw = function(){
     dlg.innerHTML = '<div class="mbox" style="width:min(620px,96vw)"><h2>🔑 合言葉を変える</h2>' +
       '<div class="mbody" style="font-size:15px;line-height:1.9;padding:12px 16px">' +
+      "ふだんは毎月1日に自動で変わります。すぐに変えたいとき（漏れたかもしれないときなど）だけ使います。<br>" +
       "新しい合言葉です（ツールがでたらめに作ります。自分で打つことはできません）。" +
-      '<div style="font-size:34px;letter-spacing:.3em;font-weight:700;text-align:center;background:#fff8d6;border:2px solid #d4a300;margin:8px 0;padding:4px">' + esc(pw) + "</div>" +
+      '<div style="' + BIG_PW + '">' + esc(pw) + "</div>" +
       '<div style="text-align:center"><button class="btn" data-a="again">別のを出す</button></div>' +
       '<ol style="margin:8px 0 6px 1.2em;padding:0"><li>「これにする（保存）」を押す</li>' +
-      "<li>保存する画面で、NAS の <b>33_配置表 ＞ 配置表データ</b> を開き、名前は <b>合言葉.json</b> のまま保存（同じ名前は置き換える）</li>" +
-      "<li>出てくる文を LINE のグループに送る</li></ol>" +
+      "<li>保存する画面で、NAS の <b>33_配置表 ＞ 配置表データ</b> を開き、名前は <b>合言葉.js</b> のまま保存（「置き換える」を選ぶ）</li>" +
+      "<li>あとは「予定を皆に知らせる」で送るたびに、新しい合言葉が文に入ります</li></ol>" +
       '<div style="background:#f5f5f5;padding:6px 8px;font-size:13px;word-break:break-all">' + esc(AIKOTOBA_DIR) +
       ' <button class="btn" data-a="dir" style="font-size:12px;padding:2px 8px">場所をコピー</button></div>' +
-      '<div style="font-size:13px;color:#555;margin-top:6px">新しい合言葉に切り替わるのは、次の配置表データの更新（毎日 7:30・12:30・17:30）のあとです。それまでは前の合言葉で見られます。</div>' +
+      '<div style="font-size:13px;color:#555;margin-top:6px">新しい合言葉で見られるのは、次の配置表データの更新のあとです。前の合言葉も ' + AIKOTOBA_KEEP_DAYS + ' 日は使えます。</div>' +
       '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="save" style="font-size:15px;padding:6px 16px">これにする（保存）</button> ' +
       '<button class="btn" data-a="close">やめる</button></div></div></div>';
   };
   draw();
   document.body.appendChild(dlg);
-  var done = function(){
-    var text = "配置表（スマホで見る）の合言葉が変わりました。\n新しい合言葉：" + pw + "\n（次の更新から。毎日 7:30・12:30・17:30）";
-    dlg.querySelector(".mbody").innerHTML = "保存しました。次の文を LINE のグループに送ってください。" +
-      '<div style="background:#f1f8e9;border:1px solid #c5e1a5;padding:8px 10px;margin:6px 0;white-space:pre-wrap">' + esc(text) + "</div>" +
-      '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="line" style="background:#06C755;border-color:#06C755;font-size:15px;padding:6px 16px">LINE の送る画面を開く</button> ' +
-      '<button class="btn" data-a="close">閉じる</button></div>';
-    dlg.dataset.text = text;
-  };
   dlg.addEventListener("click", function(e){
     var t = e.target.closest ? e.target.closest("button") : null;
     if(!t) return;
@@ -2237,49 +2246,58 @@ function openAikotobaDialog(){
     if(a === "again"){ pw = randomAikotoba(); draw(); return; }
     if(a === "dir"){ (navigator.clipboard ? navigator.clipboard.writeText(AIKOTOBA_DIR) : Promise.reject()).then(function(){ toast("場所をコピーしました"); })
       .catch(function(){ prompt("この場所をコピーしてください", AIKOTOBA_DIR); }); return; }
-    if(a === "line"){
-      var text = dlg.dataset.text;
-      window.open("https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(VIEW_URL) + "&text=" + encodeURIComponent(text), "haichi_line", "width=560,height=720");
-      (navigator.clipboard ? navigator.clipboard.writeText(text + "\n" + VIEW_URL) : Promise.reject()).catch(function(){});
-      return;
-    }
     if(a === "save"){
-      var body = JSON.stringify({合言葉: pw, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), 作成: new Date().toISOString().slice(0, 16).replace("T", " ")});
+      var now = new Date(), p2 = function(n){ return (n < 10 ? "0" : "") + n; };
+      var keep = new Date(now.getTime() + AIKOTOBA_KEEP_DAYS * 86400000);
+      var v = {合言葉: pw, id: now.getTime().toString(36) + Math.random().toString(36).slice(2, 8),
+        作成: now.getFullYear() + "-" + p2(now.getMonth() + 1) + "-" + p2(now.getDate()) + " " + p2(now.getHours()) + ":" + p2(now.getMinutes()), 変えた: "手で"};
+      if(cur && cur.合言葉) v.前 = {合言葉: cur.合言葉, id: cur.id, 期限: keep.getFullYear() + "-" + p2(keep.getMonth() + 1) + "-" + p2(keep.getDate())};
+      var body = "window.HAICHI_AIKOTOBA = " + JSON.stringify(v) + ";\n";
       if(!window.showSaveFilePicker){ alert("このブラウザでは保存できません。Edge か Chrome で開いてください。"); return; }
       /* 保存の画面はボタンを押した直後に開く（id で 2回目からは前の場所） */
-      window.showSaveFilePicker({id: "haichi_aikotoba", suggestedName: "合言葉.json",
-        types: [{description: "合言葉", accept: {"application/json": [".json"]}}]})
+      window.showSaveFilePicker({id: "haichi_aikotoba", suggestedName: "合言葉.js",
+        types: [{description: "合言葉", accept: {"text/javascript": [".js"]}}]})
         .then(function(h){
-          if(h.name !== "合言葉.json"){ alert("名前は「合言葉.json」にしてください（いまは「" + h.name + "」）。もう一度「これにする」を押してください。"); return; }
-          return h.createWritable().then(function(w){ return w.write(body).then(function(){ return w.close(); }); }).then(done);
+          if(h.name !== "合言葉.js"){ alert("名前は「合言葉.js」にしてください（いまは「" + h.name + "」）。もう一度「これにする」を押してください。"); return; }
+          return h.createWritable().then(function(w){ return w.write(body).then(function(){ return w.close(); }); }).then(function(){
+            dlg.remove();
+            toast("合言葉を変えました。次の「予定を皆に知らせる」から新しい合言葉が入ります");
+            alert("合言葉を「" + pw + "」に変えました。\n次に「予定を皆に知らせる」で送るとき、新しい合言葉が文に入ります。");
+          });
         })
         .catch(function(err){ if(err && err.name !== "AbortError") alert("保存できませんでした: " + err.message); });
     }
   });
 }
-function lineText(iso){
+function lineText(iso, pw){
   var p = String(iso).split("-");
-  return (+p[1]) + "月" + (+p[2]) + "日（" + dowOf(iso) + "）の配置予定表を更新しました。";
+  return (+p[1]) + "月" + (+p[2]) + "日（" + dowOf(iso) + "）の配置予定表ができました。" +
+    (pw ? "\n見るときの合言葉：" + pw : "");
 }
 function lineLink(iso){ return VIEW_URL + "?d=" + iso + "&k=" + encodeURIComponent("予定"); }
 function openLineDialog(){
   if(!D || !D.日付){ toast("日付のある表を開いてから押してください"); return; }
-  if(MODE !== "予定"){ toast("LINE で知らせるのは予定だけです"); return; }
-  var iso = D.日付, text = lineText(iso), link = lineLink(iso), all = text + "\n" + link;
+  if(MODE !== "予定"){ toast("知らせるのは予定だけです"); return; }
+  loadAikotoba().then(function(cur){ lineDialog(cur); });
+}
+function lineDialog(cur){
+  var iso = D.日付, pw = cur && cur.合言葉, text = lineText(iso, pw), link = lineLink(iso), all = text + "\n" + link;
   var dlg = document.createElement("div");
   dlg.className = "mdlg";
-  dlg.innerHTML = '<div class="mbox" style="width:min(600px,96vw)"><h2>LINE で知らせる</h2>' +
+  dlg.innerHTML = '<div class="mbox" style="width:min(620px,96vw)"><h2>📣 予定を皆に知らせる</h2>' +
     '<div class="mbody" style="font-size:15px;line-height:1.9;padding:12px 16px">' +
-    "次の文を LINE のグループに送ります。" +
+    "次の文を LINE のグループに送ります（リンクを押すと、スマホでこの日の予定が見られます）。" +
     '<div style="background:#f1f8e9;border:1px solid #c5e1a5;padding:8px 10px;margin:6px 0;white-space:pre-wrap;word-break:break-all">' + esc(all) + "</div>" +
+    (pw ? "" : '<div style="color:#b00020;font-weight:600">合言葉を読めませんでした（NAS の 配置表データ\\合言葉.js）。合言葉なしの文になっています。</div>') +
     '<ol style="margin:6px 0 6px 1.2em;padding:0"><li>下の「LINE の送る画面を開く」を押す</li>' +
     "<li>送り先に <b>ハシックス</b> を選ぶ</li><li>「送信」を押す</li></ol>" +
     '<div style="font-size:13px;color:#555">文はコピーもしてあります。開いた画面に文が入っていなければ、Ctrl＋V で貼ってください。' +
-    "<br>見るだけ版に出るのは、この日の Excel が NAS に置かれて、配置表データが作り直されたあとです。</div>" +
+    "<br>スマホに出るのは、この日の Excel が NAS に置かれて、配置表データが作り直されたあとです。</div>" +
     '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="open" style="background:#06C755;border-color:#06C755;font-size:15px;padding:6px 16px">LINE の送る画面を開く</button> ' +
     '<button class="btn" data-a="copy">文だけコピー</button> <button class="btn" data-a="close">閉じる</button></div>' +
-    '<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ddd;font-size:13px;color:#555">スマホで見るときの合言葉を変えるとき（3〜6か月ごとが目安）：' +
-    '<button class="btn" data-a="pw">🔑 合言葉を変える</button></div></div></div>';
+    '<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ddd;font-size:13px;color:#555">' +
+    (pw ? "いまの合言葉は <b style=\"font-size:16px\">" + esc(pw) + "</b>（" + esc(String(cur.作成 || "").slice(0, 10)) + " から）。毎月1日に自動で変わります。" : "") +
+    ' すぐに変えたいとき：<button class="btn" data-a="pw">🔑 合言葉を変える</button></div></div></div>';
   document.body.appendChild(dlg);
   var copy = function(){
     return (navigator.clipboard ? navigator.clipboard.writeText(all) : Promise.reject()).then(function(){ toast("LINE に送る文をコピーしました"); })
@@ -2289,7 +2307,7 @@ function openLineDialog(){
     var t = e.target.closest ? e.target.closest("button") : null;
     if(e.target === dlg || (t && t.dataset.a === "close")){ dlg.remove(); return; }
     if(t && t.dataset.a === "copy") copy();
-    if(t && t.dataset.a === "pw"){ dlg.remove(); openAikotobaDialog(); return; }
+    if(t && t.dataset.a === "pw"){ dlg.remove(); openAikotobaDialog(cur); return; }
     if(t && t.dataset.a === "open"){
       /* 開くのはボタンを押した直後（先に待つものを挟むと、ブラウザが新しい窓を止める） */
       window.open("https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text),
@@ -5056,8 +5074,8 @@ function downloadText(name, text){
 var APP_VER = "008.0017";
 var HISTORY = [
   {v: "008.0017", d: "2026-10-14", t: [
-    "予定の表のとき、上に緑の「LINE で知らせる」ボタンを出しました。押すと送る文（日付と、スマホで見られるリンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）",
-    "スマホで見るときの合言葉は、「LINE で知らせる」の小窓の下の「🔑 合言葉を変える」で変えられます（3〜6か月ごとが目安）。合言葉はツールがでたらめに作ります"]},
+    "予定の表のとき、上に緑の「📣 予定を皆に知らせる」ボタンを出しました。予定が決まったら押してください。送る文（日付・スマホで見る合言葉・リンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）",
+    "スマホで見る合言葉は毎月1日に自動で変わります（前の合言葉も7日は使えます）。送る文にはいつも今の合言葉が入るので、覚えておく必要はありません。すぐに変えたいときは、小窓の下の「🔑 合言葉を変える」で変えられます（合言葉はツールがでたらめに作ります）"]},
   {v: "008.0016", d: "2026-10-14", t: [
     "スマホ・タブレットで配置表を見るための「見るだけ版」の準備をしました。この入力の画面の使い方は変わりません"]},
   {v: "008.0015", d: "2026-10-13", t: [
@@ -5744,7 +5762,7 @@ function updateProtUI(){
   b.title = PROT || view ? "押すと、カレンダーで日を選んで 作る・直す・削除 ができます" : "押すと保護（見るだけ）に戻します";
   $("#dayBtn").textContent = "📅 " + fmtDayBtn(D && D.日付);
   var bl = $("#btnLine");
-  if(bl) bl.hidden = VIEWER || MODE !== "予定";      /* LINE で知らせるのは予定だけ（2026-10-14 ユーザー指定） */
+  if(bl) bl.hidden = VIEWER || MODE !== "予定";      /* 予定を皆に知らせるのは予定だけ（2026-10-14 ユーザー指定） */
 }
 /* 「配置表を見る」の閲覧を、もとの画面に戻さずに抜ける（その日を写して新しい日を作るとき） */
 function leaveView(){
@@ -6472,7 +6490,8 @@ if(VIEWER){
     msg.innerHTML = '<div style="max-width:520px;line-height:1.8">' +
       '<div style="font-size:20px;font-weight:700;margin-bottom:8px">配置表（見るだけ）</div>' +
       (V.changed ? '<div style="color:#b00020;font-weight:600">合言葉が変わりました。新しい合言葉を入れてください。</div>' : "") +
-      '<div>LINE のグループで伝えた<b>合言葉</b>（ひらがな6文字）を入れてください。<br>このスマホが覚えるので、次からは入れなくても見られます。</div>' +
+      '<div><b>合言葉</b>（ひらがな6文字）を入れてください。<br>合言葉は、LINE のグループ「ハシックス」に流れている<b>いちばん新しい配置表の知らせ</b>に書いてあります。' +
+      '<br>このスマホが覚えるので、次からは入れなくても見られます（合言葉が月に1回変わったときだけ入れ直します）。</div>' +
       '<input id="bootPw" autocomplete="off" lang="ja" style="font-size:24px;padding:6px 10px;width:9em;letter-spacing:.2em;margin:8px 0" placeholder="あいうえお">' +
       '<div><button id="bootPwGo" style="' + bs + 'background:#06C755">見る</button></div>' +
       '<div id="bootPwMsg" style="color:#b00020;min-height:1.8em"></div>' +
