@@ -344,7 +344,7 @@ function barWorks(ln, b, k) {
    バー.人数＝合計（前の版でも読める）、バー.人数内訳＝"1+3"（＋で分けたときだけ）、
    バー.人数日＝{ "YYYY-MM-DD": "2+4" }（その日だけの人数。無い日はふだんの人数） */
 function parseHead(t) {
-  const s = String(t ?? "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/＋/g, "+").replace(/[名人\s　]/g, "");
+  const s = String(t ?? "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[＋*＊]/g, "+").replace(/[名人\s　]/g, "");
   if (!s) return null;
   const parts = s.split("+").filter(x => x !== "");
   if (!parts.length || parts.some(x => !/^\d+$/.test(x))) return null;
@@ -909,13 +909,21 @@ const onBackdrop = e => e.target instanceof HTMLDialogElement && e.target.open;
   if (onBackdrop(e) && e.cancelable && !(ev === "wheel" && e.ctrlKey)) e.preventDefault();
 }, { passive: false, capture: true }));
 /* 小窓の入力欄で Enter を押しても保存して閉じない（2026-10-14 ユーザー：タブレットのキーボードのエンターで小窓が閉じた）。
-   欄を離れるだけ（キーボードがしまわれる）。日本語の変換中の Enter はそのまま。複数行の欄（メモ）は改行のまま。保存は帯の「保存」で */
+   Enter＝次の入力欄へ（同日 ユーザー：パソコンもタブレットも次の欄へ。タブレットは次の欄に合ったキーボード＝数字の欄は inputmode で数字）。
+   次の欄＝同じ小窓の中の、文字を打つ欄（見えていて、使えるもの）。選ぶ欄・チェックは飛ばす。最後の欄なら欄を離れる（キーボードがしまわれる）。
+   日本語の変換中の Enter はそのまま。複数行の欄（メモ）は改行のまま。保存は帯の「保存」で */
+const TYPE_FIELDS = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=button]):not([type=submit]):not([type=color]), textarea';
 document.addEventListener("keydown", e => {
-  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-  const t = e.target;
-  if (!t.closest || !t.closest("dialog") || t.tagName !== "INPUT" || /^(button|submit|checkbox|radio|file|range)$/.test(t.type)) return;
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.shiftKey || e.ctrlKey || e.altKey) return;
+  const t = e.target, d = t.closest && t.closest("dialog");
+  if (!d || t.tagName !== "INPUT" || !t.matches(TYPE_FIELDS)) return;
   e.preventDefault();
-  t.blur();
+  const list = [...d.querySelectorAll(TYPE_FIELDS)].filter(x => !x.disabled && !x.readOnly && x.offsetParent !== null && x.getClientRects().length);
+  const next = list[list.indexOf(t) + 1];
+  if (!next) { t.blur(); return; }
+  next.focus();
+  // 数字の欄は中身を選んでおく（すぐ打ち直せる）
+  if (/^(numeric|tel|decimal)$/.test(next.inputMode) && next.value) { try { next.select(); } catch (x) { } }
 });
 $("wrap").addEventListener("scroll", hideCtx);
 $("wrap").addEventListener("click", e => {
@@ -1152,7 +1160,7 @@ function drawHeadCal() {
       if (k < a || k > z) { h.push(`<div class="cald out">${num}</div>`); continue; }
       if (!barWorks(ln, b, k)) { h.push(`<div class="cald hd hoff" title="休み">${num}<i>休</i></div>`); continue; }
       const v = barCtx.人数日[k] || "";
-      h.push(`<div class="cald hd ${v ? "ov" : ""}">${num}<input type="text" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" title="${esc(md(k) + "の人数（空＝ふだん " + (fmtHead(ph) || "なし") + "）")}"></div>`);
+      h.push(`<div class="cald hd ${v ? "ov" : ""}">${num}<input type="text" inputmode="tel" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" title="${esc(md(k) + "の人数（空＝ふだん " + (fmtHead(ph) || "なし") + "）")}"></div>`);
     }
     h.push(`</div></div>`);
   }
