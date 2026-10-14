@@ -2201,8 +2201,8 @@ var VIEW_URL = "https://kkodin.github.io/kotei/haichi/";
    （tools/encrypt_viewer_data.py）が自動で変える（前の合言葉も7日は使える）。手で変えるときは「合言葉を変える」：
    でたらめな6文字をツールが出す（人は打てない。意味のある言葉は すぐ破られるため）・「別のを出す」で出し直せる。
    字は encrypt_viewer_data.py の CHARS と同じ */
-var AIKOTOBA_CHARS = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわん" +
-  "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ";
+/* 濁点・半濁点は使わない（2026-10-14 ユーザー指定：難しくなって間違う人が出る） */
+var AIKOTOBA_CHARS = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわん";
 var AIKOTOBA_DIR = "\\\\192.168.0.15\\share\\33_配置表\\配置表データ";
 var AIKOTOBA_KEEP_DAYS = 7;
 function randomAikotoba(){
@@ -6449,15 +6449,27 @@ if(VIEWER){
   setProtect(true);
   /* LINE で送ったリンク（?d=2026-10-15&k=予定）なら その日を開く。まだ届いていなければ知らせて いちばん新しい日 */
   var q = new URLSearchParams(location.search), qd = q.get("d") || "", qk = q.get("k") === "確定" ? "確定" : "予定";
+  /* 見るだけ版は はじめに予定を出す（2026-10-14 ユーザー指定）：今日以降でいちばん新しい予定（明日の予定ができていれば明日、
+     まだなら今日）。今日以降が無ければ いちばん新しい予定 */
+  var openPlan = function(){
+    var y = todayStr().slice(0, 4), ny = String(+y + 1), today = todayStr();
+    return vIndex().catch(function(){}).then(function(){ return Promise.all([nasLoad("予定", y), nasLoad("予定", ny)]); }).then(function(){
+      var all = Object.assign({}, nasMap("予定", y), nasMap("予定", ny));
+      var ks = Object.keys(all).sort(), up = ks.filter(function(k){ return k >= today; });
+      var k = up.length ? up[up.length - 1] : ks[ks.length - 1];
+      if(k){ openNas(k, "予定", all[k], true); return; }
+      return openStartDay();
+    }).catch(function(){ openStartDay(); });
+  };
   if(/^\d{4}-\d\d-\d\d$/.test(qd)){
     vIndex().catch(function(){}).then(function(){ return nasLoad(qk, qd.slice(0, 4)); }).then(function(){
       var nm = nasMap(qk, qd.slice(0, 4));
       if(nm[qd]){ openNas(qd, qk, nm[qd], true); return; }
-      vh.textContent = "⚠ " + fmtDayBtn(qd) + " の" + qk + "は、まだここに届いていません。しばらくしてから開き直してください（いまは いちばん新しい日を出しています）。";
+      vh.textContent = "⚠ " + fmtDayBtn(qd) + " の" + qk + "は、まだここに届いていません。しばらくしてから開き直してください（いまは いちばん近い予定を出しています）。";
       vh.style.cssText = "display:block;color:#b00020;font-weight:600";
-      return openStartDay();
-    }).catch(function(){ openStartDay(); });
-  }else openStartDay();
+      return openPlan();
+    }).catch(function(){ openPlan(); });
+  }else openPlan();
 }else{
   setProtect(true);
   openStartDay();
