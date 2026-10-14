@@ -2,7 +2,7 @@
    元にした書式：現場別\510012金沢線配水\金沢週間工程.xlsx（1週＝1シート、月曜はじまり・31日分の列、A4 横）。
    - 作業は1つにつき4行（A:E を結合した作業名・2行目の日の欄に色の文字「青」など → 条件付き書式でその色に塗る。文字の色も同じにして見えなくする）
    - 下の 53〜55 行に 日付・「休」・曜日。「休」を選んだ列は、上の表がグラデーション（灰→白→灰の縦じま）になる条件付き書式
-   - 地図や細かい直しは Excel の上で（地図の場所＝右の AA〜AJ 列のあたりを空けてある）
+   - 地図：現場の設定で入れた地図を AA4 から 幅 247.5pt×高さ 528pt（AA〜AJ 列・4行目〜記事の下）に置く（2026-10-14 ユーザー指定）。無ければ空けておく
    ライブラリは使わず、OOXML を文字で組んで無圧縮の zip にする（app.js の関数・値を使う） */
 
 const XL_COLORS = { 黒: "FF000000", 青: "FF0070C0", 赤: "FFFF0000", 緑: "FF00A040", 黄: "FFFFC000", 橙: "FFFF7F00", 紫: "FF7030A0", 茶: "FF8D6E63", 灰: "FF8A96A3" };
@@ -90,7 +90,7 @@ function xlStyles() {
 }
 
 /* ---- 1現場・1週のシート ---- */
-function xlSheet(s, mon) {
+function xlSheet(s, mon, withMap) {
   const days = Array.from({ length: XL_DAYS }, (_, i) => dayAdd(mon, i)), end = days[XL_DAYS - 1];
   const lastCol = XL_FIRST + XL_DAYS - 1;                 // AJ
   const laneOf = b => s.段.find(l => l.id === b.段);
@@ -155,7 +155,7 @@ function xlSheet(s, mon) {
     });
   }
   // 作業員（その日に作業するバーの人数の合計）・人員予定（昼間／夜間）
-  const sumAt = (k, f) => s.バー.reduce((a, b) => { const ln = laneOf(b); return a + (f(ln) && k >= b.開始 && k <= b.終了 && barWorks(ln, b, k) ? headAt(b, k) : 0); }, 0);
+  const sumAt = (k, f) => s.バー.reduce((a, b) => { const ln = laneOf(b); return a + (f(ln) && k >= b.開始 && k <= b.終了 && barWorks(ln, b, k) ? headAt(b, k, ln) : 0); }, 0);
   box(rWork, 1, rWork + 3, 5, XS.label, str("作業員"));
   box(rPlan, 1, rPlan + 3, 4, XS.label, str("人員予定"));
   box(rPlan, 5, rPlan + 1, 5, XS.box, str("昼間")); box(rPlan + 2, 5, rPlan + 3, 5, XS.box, str("夜間"));
@@ -236,9 +236,26 @@ ${dv}
 <printOptions horizontalCentered="1"/>
 <pageMargins left="0.2" right="0.2" top="0.35" bottom="0.35" header="0.3" footer="0.3"/>
 <pageSetup paperSize="${($("inPaper").value || "A3") === "A3" ? 8 : 9}" orientation="landscape" fitToWidth="1" fitToHeight="1"/>
+${withMap ? `<drawing r:id="rId1"/>` : ""}
 </worksheet>`;
   return { xml, printArea: `$A$1:$${xlCol(lastCol)}$${rNote + 4}` };
 }
+
+/* ---- 地図（画像）。AA4 の左上から、Excel の地図の場所の大きさで置く（セルに合わせて伸び縮みしない） ---- */
+const XL_EMU = 12700;   // 1pt
+function xlDrawing(m) {
+  // 枠と縦横の比が違う地図（前に保存したもの）は、枠の中に収まるよう縮める（左上に寄せる）
+  const k = m.w && m.h ? Math.min(247.5 / m.w, 528 / m.h) : 0;
+  const cx = Math.round((k ? m.w * k : 247.5) * XL_EMU), cy = Math.round((k ? m.h * k : 528) * XL_EMU);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<xdr:oneCellAnchor><xdr:from><xdr:col>26</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/>
+<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="地図"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>
+<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
+<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></xdr:spPr></xdr:pic>
+<xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>`;
+}
+const dataUrlBytes = u => { const b = atob(u.slice(u.indexOf(",") + 1)), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; };
 
 /* ---- 無圧縮の zip ---- */
 const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -247,7 +264,7 @@ function zipStore(files) {
   const enc = new TextEncoder(), parts = [], central = [];
   let off = 0;
   for (const [name, text] of files) {
-    const nb = enc.encode(name), db = enc.encode(text), crc = crc32(db);
+    const nb = enc.encode(name), db = typeof text === "string" ? enc.encode(text) : text, crc = crc32(db);
     const h = new DataView(new ArrayBuffer(30));
     h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
     h.setUint32(14, crc, true); h.setUint32(18, db.length, true); h.setUint32(22, db.length, true); h.setUint16(26, nb.length, true);
@@ -265,8 +282,9 @@ function zipStore(files) {
 }
 
 /* ---- ブック ---- */
-function weekXlsx(list, mon) {
-  const sheets = list.map(s => ({ s, ...xlSheet(s, mon) }));
+// maps[i]＝その現場の地図 { url:data URL, w, h }（画像の大きさ）か null
+function weekXlsx(list, mon, maps = []) {
+  const sheets = list.map((s, i) => ({ s, map: maps[i] || null, ...xlSheet(s, mon, !!maps[i]) }));
   const used = new Set();
   const sheetName = s => {
     let n = ((s.略称 || s.名前) + " " + mon.slice(5, 7) + "月" + mon.slice(8, 10) + "日～").replace(/[\[\]:*?\/\\]/g, "").slice(0, 31);
@@ -274,13 +292,21 @@ function weekXlsx(list, mon) {
   };
   const names = sheets.map(x => sheetName(x.s));
   const files = [
-    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`],
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}${sheets.map((x, i) => x.map ? `<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : "").join("")}</Types>`],
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xlEsc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets><definedNames>${sheets.map((x, i) => `<definedName name="_xlnm.Print_Area" localSheetId="${i}">'${xlEsc(names[i].replace(/'/g, "''"))}'!${x.printArea}</definedName>`).join("")}</definedNames><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`],
     ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml", xlStyles()],
     ...sheets.map((x, i) => [`xl/worksheets/sheet${i + 1}.xml`, x.xml])
   ];
+  sheets.forEach((x, i) => {
+    if (!x.map) return;
+    const n = i + 1, rel = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
+    files.push([`xl/worksheets/_rels/sheet${n}.xml.rels`, rel + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${n}.xml"/></Relationships>`]);
+    files.push([`xl/drawings/drawing${n}.xml`, xlDrawing(x.map)]);
+    files.push([`xl/drawings/_rels/drawing${n}.xml.rels`, rel + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${n}.jpeg"/></Relationships>`]);
+    files.push([`xl/media/image${n}.jpeg`, dataUrlBytes(x.map.url)]);
+  });
   return zipStore(files);
 }
 function downloadBlob(blob, name) {
@@ -290,11 +316,17 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 // 印刷の小窓の「Excel で出す」
-$("bPrintXlsx").onclick = () => {
+$("bPrintXlsx").onclick = async () => {
   const ids = [...$("pSites").querySelectorAll("input:checked")].map(c => c.value);
   if (!ids.length || !$("pFrom").value) return;
   const mon = monday($("pFrom").value), list = shownSitesOf(ids);
   const name = "週間工程_" + (list.length === 1 ? (list[0].略称 || list[0].名前) + "_" : "") + mon.replace(/-/g, "") + ".xlsx";
-  downloadBlob(weekXlsx(list, mon), name.replace(/[\\\/:*?"<>|]/g, ""));
+  // 地図は現場の設定で入れたもの（読んでから組む）
+  if (list.some(s => s.地図)) toast("地図を読んでいます…", 1500);
+  const maps = await Promise.all(list.map(async s => {
+    try { const u = await loadMap(s); if (!u || !u.startsWith("data:")) return null; const im = await loadImg(u); return { url: u, w: im ? im.naturalWidth : 0, h: im ? im.naturalHeight : 0 }; }
+    catch (e) { return null; }
+  }));
+  downloadBlob(weekXlsx(list, mon, maps), name.replace(/[\\\/:*?"<>|]/g, ""));
   toast("Excel を作りました：" + name);
 };
