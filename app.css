@@ -144,7 +144,7 @@ table.fl td.un { color: #c62828; cursor: pointer; }
 /* ---- 小窓 ---- */
 dialog { border: 1px solid #888; border-radius: 6px; padding: 0; min-width: 340px; max-width: 96vw; }
 /* 現場の設定は横に広がりすぎないように（2026-10-14 ユーザー指定） */
-#dSite { width: 760px; }
+#dSite { width: 840px; }
 #dSite .frm { grid-template-columns: 6.5em 1fr; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h3 { margin: 0; padding: 10px 16px; background: var(--head); color: #fff; font-size: 16px; cursor: move; user-select: none; touch-action: none; }
@@ -197,6 +197,12 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .lnhead { display: flex; gap: 4px; font-size: 12px; color: #666; margin-bottom: 2px; }
 .lnhead .h1 { width: 3.6em; } .lnhead .h2 { flex: 1; } .lnhead .h5 { width: 8.6em; }
 #sLanes .ln .lhd { flex: none; white-space: nowrap; font-size: 13px; }
+/* 作業員（自社）／外注（2026-10-14）。外注の行は 業者名＋人数 */
+#sLanes .ln select.sb { width: 5.2em; flex: none; }
+#sLanes .ln .lgai { display: none; flex: none; white-space: nowrap; font-size: 13px; }
+#sLanes .ln.gai .lhd { display: none; }
+#sLanes .ln.gai .lgai { display: inline; }
+#sLanes .ln input.gy { width: 7.4em; min-width: 0; }
 #sLanes .ln input.hn { flex: none; width: 2.6em; min-width: 0; text-align: right; padding-left: 2px; padding-right: 4px; } .lnhead .h3 { width: 8em; } .lnhead .h4 { width: 12.5em; }
 .llab.night { color: #1f3c88; font-weight: bold; }
 #sLanes .dw { font-size: 13px; white-space: nowrap; }
@@ -244,6 +250,13 @@ header .ver { font-size: 11px; opacity: .75; white-space: nowrap; }
 
 /* タブレットで選んだバー：太い枠と、端をつかむ所 */
 .bar.sel .stripe { outline: 3px solid #000; outline-offset: 1px; }
+/* 指の長押し（2026-10-14）：移動＝影を付けて少し浮かせる／延長・短縮＝その端に矢印／書く＝点線の枠 */
+.bar.lift { z-index: 6; }
+.bar.lift .stripe { box-shadow: 0 6px 12px rgba(0,0,0,.5); transform: translateY(-3px); }
+.bar.edge-l::before, .bar.edge-r::after { content: "⇔"; position: absolute; top: -7px; z-index: 6; font-size: 18px; line-height: 18px; color: #000;
+  background: #fff; border: 2px solid #000; border-radius: 9px; padding: 0 2px; }
+.bar.edge-l::before { left: -16px; } .bar.edge-r::after { right: -16px; }
+.bar.ghost.drawing { outline: 2px dashed #1f4e79; }
 .bar.sel .h { width: 14px; }
 .bar.sel .h.l { left: -4px; border-left: 4px solid #000; border-radius: 3px; height: 9px; }
 .bar.sel .h.r { right: -4px; border-right: 4px solid #000; border-radius: 3px; height: 9px; }
