@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>配置表（見るだけ）</title>
 
 <!-- 既存の配置表(xlsx)を読む／Excelに出力するときのzipに使う。塗り（黄色＝社員）も読める。 -->
@@ -191,6 +191,20 @@ body.viewer .sheetbox{padding:4px;overflow:auto}
 body.viewer .bar{gap:6px;padding:6px 8px}
 body.viewer .bar .btn{font-size:15px;padding:6px 10px}
 body.viewer .bar b{font-size:15px}
+/* スマホのブラウザが細いマスの字を勝手に大きくして はみ出すのを止める（2026-10-14 スマホで字が切れた） */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body.viewer .where{display:none!important}
+body.viewer .bar{position:sticky;top:0;z-index:30}
+body.viewer #sheetbox{touch-action:pan-x pan-y}
+/* 自分の名前（初回に選ぶ）を表の中で目立たせる */
+table.xl td.me{background:#ffcdd2!important;outline:calc(var(--bw, 1px) * 2) solid #d32f2f;outline-offset:calc(var(--bw, 1px) * -2);font-weight:700}
+table.xl td.me .nm{color:#b71c1c}
+.mebar{display:none;font-size:15px;line-height:1.5;padding:6px 10px;margin:0 2px 6px;background:#fff3e0;border-left:6px solid #d32f2f;border-radius:4px}
+body.viewer .mebar{display:block}
+.mebar b{color:#b71c1c}
+.mebar .btn{font-size:13px;padding:2px 8px;margin-left:6px}
+.mepick{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.5em,1fr));gap:6px;margin:8px 0}
+.mepick button{font-size:16px;padding:10px 4px;border:1px solid #999;border-radius:6px;background:#fff}
 .vhint{font-size:13px;color:#555;margin:0 2px 6px}
 @media (orientation: landscape){.vhint{display:none}}
 #dayBtn{font-size:14px;padding:4px 10px;font-weight:600}
@@ -926,6 +940,7 @@ table.btns td:first-child{white-space:nowrap;width:1%}
 /* 見るだけ版（閲覧版。008.0016・2026-10-14 ユーザー要望：スマホ・タブレットでは確認だけ）。
    tools/build_viewer.py が window.HAICHI_VIEWER（データの読み方）を入れて作る。入力用の画面では false */
 var VIEWER = !!window.HAICHI_VIEWER;
+var VZ = 1;            /* 見るだけ版：2本指で拡大した倍率（画面の幅に合わせた大きさを 1 とする） */
 /* =====================================================================
    配置表 入力 Vr002（6人目からの行は現場名を空白・本社内勤欄の枠・入力チェック・名簿をExcel風に）
    ── 以下は Vr001 の説明
@@ -2010,8 +2025,15 @@ function fitSheet(){
   var box = $("#sheetbox"), t = $("#sheet");
   if(!box || !t) return;
   var avail = VIEWER ? box.clientWidth - 10 : box.clientWidth - 22 - RC_W, full = t.offsetWidth;
-  /* 見るだけ版は スマホの幅まで縮める（細かいところは指で拡大して見る） */
-  var z = full > avail ? Math.max(VIEWER ? .2 : .55, avail / full) : 1;
+  if(VIEWER){
+    /* 見るだけ版：まず画面の幅に合わせ、そこから 2本指で拡大した分（VZ）を掛ける。幅は倍率をはずして測る */
+    var z0 = t.style.zoom; t.style.zoom = ""; full = t.offsetWidth; t.style.zoom = z0;
+    var zv = Math.min(1, avail / full) * VZ;
+    t.style.zoom = String(zv);
+    t.style.setProperty("--bw", zv >= 1 ? "1px" : (1 / zv).toFixed(3) + "px");
+    return;
+  }
+  var z = full > avail ? Math.max(.55, avail / full) : 1;
   t.style.zoom = z === 1 ? "" : String(z);
   t.style.setProperty("--bw", z === 1 ? "1px" : (1 / z).toFixed(3) + "px");
 }
@@ -6437,6 +6459,113 @@ resetHist("新規");
 (function(){ var r0 = render; render = function(){ r0.apply(this, arguments); updateProtUI(); keepDay(); }; })();
 /* 直すボタンは保護中は隠す（Excelの読み込み・出力、保存した日、バックアップ、名簿は保護中も使える） */
 ["btnUndo", "btnRedo", "btnIns", "btnDel", "btnPrev"].forEach(function(id){ var b = $("#" + id); if(b) b.classList.add("editonly"); });
+/* ---- 見るだけ版：自分の行き先（2026-10-14 ユーザー要望「要は自分の行き先がわかるのが優先」）----
+   初回に名簿から自分の名前を選んでもらい（打たせない。同じ名字の人を取り違えないため）、このスマホに覚える（localStorage haichi_me）。
+   表の中の自分の名前のマスを赤く目立たせ、表の上に「○○さん：現場名（昼勤）」の1行を出す。
+   担当の欄（名字だけ）は、社員で 同じ名字の社員がいないときだけ自分とみなす */
+var ME = null;
+try{ ME = localStorage.getItem("haichi_me") || null; }catch(e){}
+function meSurname(n){ return String(n || "").trim().split(/[\s　]+/)[0]; }
+function meIsTan(n){
+  var sur = meSurname(n), all = MASTER.作業員 || [];
+  var me = all.filter(function(w){ return nk(w.氏名) === nk(n); })[0];
+  if(!me || !me.社員 || sur.length < 2) return false;
+  return all.filter(function(w){ return w.社員 && meSurname(w.氏名) === sur; }).length === 1;
+}
+function mePlaces(n){
+  var key = nk(n), tan = meIsTan(n) ? nk(meSurname(n)) : null, out = [];
+  var kb = function(s){ return String(s.区分 || "").replace(/[（）()]/g, ""); };
+  (D.現場 || []).forEach(function(s){
+    if(!s) return;
+    var nm = s.現場名 || "現場";
+    if((s.作業員 || []).some(function(w){ return nk(w.氏名) === key; })) out.push(nm + (kb(s) ? "（" + kb(s) + "）" : ""));
+    else if(tan && nk(s.担当) === tan) out.push(nm + (kb(s) ? "（" + kb(s) + "・担当）" : "（担当）"));
+  });
+  (D.外注 || []).forEach(function(b){ if(b && tan && nk(b.担当) === tan) out.push((b.現場名 || "外注") + "（外注の担当）"); });
+  (D.本社 || []).forEach(function(o){ if(o && nk(o.氏名) === key) out.push(o.記載 || "本社"); });
+  ((D.機材センター || {}).人 || []).forEach(function(p){ if(p && nk(p.氏名) === key) out.push("機材センター"); });
+  (D.休み || []).forEach(function(row){ (row || []).forEach(function(v){
+    var sp = splitComment(v); if(v && nk(sp.name) === key) out.push("休み" + (sp.note ? "（" + sp.note + "）" : "")); }); });
+  return out.filter(function(x, i){ return out.indexOf(x) === i; });
+}
+function meMark(){
+  var bar = $("#meBar");
+  if(!bar) return;
+  if(!ME){ bar.innerHTML = '自分の名前を選ぶと、行き先が赤く目立ちます。<button class="btn" data-me="pick">名前を選ぶ</button>'; return; }
+  var key = nk(ME), tan = meIsTan(ME) ? nk(meSurname(ME)) : null;
+  Array.prototype.forEach.call(document.querySelectorAll("#sheet td"), function(td){
+    var nmEl = td.querySelector(".nm"), txt = nk(nmEl ? nmEl.textContent : td.textContent);
+    var hit = txt && (txt === key || (tan && td.dataset.k === "担当" && txt === tan));
+    td.classList.toggle("me", !!hit);
+  });
+  var pl = D && D.日付 ? mePlaces(ME) : [];
+  bar.innerHTML = "<b>" + esc(ME) + "</b> さん：" + (pl.length ? "<b>" + pl.map(esc).join("、") + "</b>" : "この表には名前がありません") +
+    '<button class="btn" data-me="pick">名前を変える</button>';
+}
+function mePicker(){
+  var old = document.querySelector(".mdlg.mepk");
+  if(old) old.remove();
+  var ws = (MASTER.作業員 || []).slice().sort(function(a, b){ return (b.社員 - a.社員) || ((b.回数 || 0) - (a.回数 || 0)); });
+  var dlg = document.createElement("div");
+  dlg.className = "mdlg mepk";
+  dlg.innerHTML = '<div class="mbox" style="width:min(620px,96vw)"><h2>自分の名前を選んでください</h2>' +
+    '<div class="mbody" style="font-size:15px;line-height:1.7;padding:10px 12px">' +
+    "選んだ名前は、表の中で赤く目立ちます（このスマホだけに覚えます。あとで変えられます）。" +
+    '<div class="mepick">' + ws.map(function(w){ return '<button data-n="' + esc(w.氏名) + '">' + esc(w.氏名) + "</button>"; }).join("") + "</div>" +
+    '<div style="text-align:right"><button class="btn" data-n="">選ばない</button></div></div></div>';
+  document.body.appendChild(dlg);
+  dlg.addEventListener("click", function(e){
+    var t = e.target.closest ? e.target.closest("button[data-n]") : null;
+    if(!t) return;
+    ME = t.dataset.n || null;
+    try{ if(ME) localStorage.setItem("haichi_me", ME); else localStorage.removeItem("haichi_me"); }catch(err){}
+    dlg.remove();
+    meMark();
+    var first = document.querySelector("#sheet td.me");
+    if(first) first.scrollIntoView({block: "center", inline: "center"});
+  });
+}
+function viewerMe(){
+  var bar = document.createElement("div");
+  bar.id = "meBar";
+  bar.className = "mebar noprint";
+  $("#sheetbox").parentNode.insertBefore(bar, $("#sheetbox"));
+  bar.addEventListener("click", function(e){ if(e.target.dataset && e.target.dataset.me === "pick") mePicker(); });
+  /* 描くたびに目立たせ直す */
+  var r0 = render;
+  render = function(){ r0.apply(this, arguments); meMark(); };
+  if(!ME) setTimeout(mePicker, 600);       /* 初回だけ（表が出てから） */
+}
+/* ---- 見るだけ版：2本指で表だけを拡大縮小（上の帯は大きさを変えず上に止めておく。2026-10-14 ユーザー要望）----
+   ページそのものの拡大は止め（viewport の user-scalable=no・iOS は gesturestart を止める）、表の倍率 VZ を変える。
+   1本指はふつうのスクロール（横は表の枠、縦はページ） */
+function viewerPinch(){
+  try{ VZ = Math.min(6, Math.max(1, +localStorage.getItem("haichi_vz") || 1)); }catch(e){}
+  var sb = $("#sheetbox"), g = null;
+  var dist = function(t){ return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); };
+  document.addEventListener("gesturestart", function(e){ e.preventDefault(); });
+  sb.addEventListener("touchstart", function(e){
+    if(e.touches.length !== 2) return;
+    var t = $("#sheet"), r = t.getBoundingClientRect(), z = parseFloat(t.style.zoom) || 1;
+    var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    g = {d0: dist(e.touches), vz0: VZ, cx: (mx - r.left) / z, cy: (my - r.top) / z, mx: mx, my: my};
+  }, {passive: true});
+  sb.addEventListener("touchmove", function(e){
+    if(!g || e.touches.length !== 2) return;
+    e.preventDefault();
+    VZ = Math.min(6, Math.max(1, g.vz0 * dist(e.touches) / g.d0));
+    fitSheet();
+    /* 指の間の点が同じところに来るよう、横は表の枠、縦はページを動かす */
+    var t = $("#sheet"), r = t.getBoundingClientRect(), z = parseFloat(t.style.zoom) || 1;
+    sb.scrollLeft += (r.left + g.cx * z) - g.mx;
+    window.scrollBy(0, (r.top + g.cy * z) - g.my);
+  }, {passive: false});
+  sb.addEventListener("touchend", function(e){
+    if(!g || e.touches.length >= 2) return;
+    g = null;
+    try{ localStorage.setItem("haichi_vz", VZ); }catch(err){}
+  });
+}
 if(VIEWER){
   /* 見るだけ版：いつも保護。このPCへの保存・バックアップの声かけはしない */
   document.body.classList.add("viewer");
@@ -6444,8 +6573,10 @@ if(VIEWER){
   document.title = "配置表（見るだけ）";
   var vh = document.createElement("div");
   vh.className = "vhint noprint";
-  vh.textContent = "📱 横向きにする・指で広げると大きく見えます。日付を押すとカレンダーで日を選べます。";
+  vh.textContent = "📱 表は2本指で広げると大きくなります。日付を押すとカレンダーで日を選べます。";
   $("#sheetbox").parentNode.insertBefore(vh, $("#sheetbox"));
+  viewerMe();
+  viewerPinch();
   setProtect(true);
   /* LINE で送ったリンク（?d=2026-10-15&k=予定）なら その日を開く。まだ届いていなければ知らせて いちばん新しい日 */
   var q = new URLSearchParams(location.search), qd = q.get("d") || "", qk = q.get("k") === "確定" ? "確定" : "予定";
