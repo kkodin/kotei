@@ -394,9 +394,17 @@ function barLabel(b, avail, ln) {
     [w, num, st.map(shortStaff).join("・")],
     [w, num, ""], [w, "", ""]
   ];
-  let pick = cands[cands.length - 1];
-  for (const c of cands) { if (textW(c.filter(Boolean).join(" ")) <= avail) { pick = c; break; } }
-  return [esc(pick[0]), esc(pick[1]), pick[2] ? `<span class="st">${esc(pick[2])}</span>` : ""].filter(Boolean).join(" ");
+  const fmt = c => [esc(c[0]), esc(c[1]), c[2] ? `<span class="st">${esc(c[2])}</span>` : ""].filter(Boolean).join(" ");
+  for (const c of cands.slice(0, 3)) if (textW(c.filter(Boolean).join(" ")) <= avail) return { html: fmt(c), two: false };
+  // 略して「埋戻 1+3」（同日 ユーザー：字が長すぎるなら 1+3 と略してよい）
+  const raw = headTxt(b, ln), short = raw ? (raw.includes("+") ? raw : raw + "名") + (dayHeads(b).length ? "※" : "") : "";
+  if (short && w && textW(w + " " + short) <= avail) return { html: fmt([w, short, ""]), two: false };
+  // 1行に入らないときは、人数（と社員）を2行目へ（2026-10-14 ユーザー：短い工程で人数が消えた）。その工種の行は少し高くなる
+  if (num && w) {
+    const l2 = [[num, st.map(shortStaff).join("・")], [num, ""], [short, ""]].find(c => c[0] && textW(c.filter(Boolean).join(" ")) <= avail) || [short || num, ""];
+    return { html: esc(w) + "<br>" + [esc(l2[0]), l2[1] ? `<span class="st">${esc(l2[1])}</span>` : ""].filter(Boolean).join(" "), two: true };
+  }
+  return { html: fmt(cands[cands.length - 1]), two: false };
 }
 function barTitle(s, b) {
   const ln = s.段.find(l => l.id === b.段);
@@ -481,15 +489,18 @@ function renderChart() {
         continue;
       }
       const { pos, rows } = packLane(bars);
-      h.push(`<div class="lane" data-lane="${esc(ln.id)}" style="height:${rows * rh}px"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}"><span class="ltg" data-act="lanefold" title="この工種をたたむ">▾</span>${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
-      // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
-      const avail = {};
+      const avail = {}, lbl = {};
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始;
         const next = bars.filter(o => o !== b && pos[o.id] === pos[b.id] && o.開始 > b.開始).map(o => o.開始).sort()[0];
         avail[b.id] = Math.max(dw, (next ? dayDiff(a, next) : dayDiff(a, end) + 1) * dw - 6);
+        lbl[b.id] = barLabel(b, avail[b.id], ln);
       }
+      // 2行の文字があれば、この工種の行だけ高くする（--rh をこの行で上書き）
+      const lrh = bars.some(b => lbl[b.id].two) ? rh + 14 : rh;
+      h.push(`<div class="lane" data-lane="${esc(ln.id)}" style="height:${rows * lrh}px;${lrh !== rh ? `--rh:${lrh}px` : ""}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}"><span class="ltg" data-act="lanefold" title="この工種をたたむ">▾</span>${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
         const x = dayDiff(from, a) * dw, w = (dayDiff(a, z) + 1) * dw;
@@ -501,10 +512,10 @@ function renderChart() {
           if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
         }
         h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.id === selBar ? "sel" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
-          `style="left:${x}px;top:${pos[b.id] * rh + Math.max(3, (rh - 26) / 2)}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
+          `style="left:${x}px;top:${pos[b.id] * lrh + Math.max(3, (rh - 26) / 2)}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
-          `<span class="h l"></span><span class="lbl" style="max-width:${avail[b.id]}px">${barLabel(b, avail[b.id], ln)}</span><span class="h r"></span></div>`);
+          `<span class="h l"></span><span class="lbl ${lbl[b.id].two ? "two" : ""}" style="max-width:${avail[b.id]}px">${lbl[b.id].html}</span><span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
     }
@@ -1629,7 +1640,7 @@ $("inMonths").onchange = e => { S.view.months = +e.target.value; setFrom(S.view.
 $("bPrev").onclick = () => setFrom(addMonths(fromKey(S.view.from), -1));
 $("bNext").onclick = () => setFrom(addMonths(fromKey(S.view.from), 1));
 $("bToday").onclick = () => { setFrom(todayKey()); $("wrap").scrollLeft = 0; };
-$("bReload").onclick = () => pull().then(() => toast("最新にしました"));
+$("bReload").onclick = () => { checkVersion(); pull().then(() => toast("最新にしました")); };
 $("tabs").addEventListener("click", e => {
   const t = e.target.dataset.tab;
   if (!t) return;
@@ -2089,6 +2100,27 @@ function seedDemo() {
 /* ---------- 起動 ---------- */
 // 版の表示（公開するとき tools\公開する.py が __VER__ を「Vr001 10/07 19:15」のように書き換える）
 if ($("ver").textContent === "__VER__") $("ver").textContent = "開発中";
+/* 新しい版の知らせ（2026-10-14 ユーザー：ホーム画面に置いた Web アプリには読み直すボタンが無く、新しい版にできない）。
+   公開中の index.html を読んで版（id="ver" の中身）を比べ、違えば下に「更新する」の帯を出す。押すと読み直す。
+   見るのは 開いたとき・画面に戻ったとき・5分ごと・「↻ 最新にする」のとき。右上の版を押しても読み直す */
+const MY_VER = $("ver").textContent;
+async function checkVersion(say) {
+  if (!/^Vr/.test(MY_VER)) return;   // 手元の試し（開発中）は見ない
+  try {
+    const t = await (await fetch("index.html?check=" + Date.now(), { cache: "no-store" })).text();
+    const m = t.match(/id="ver"[^>]*>([^<]+)</), v = m && m[1].trim();
+    if (v && v !== MY_VER && /^Vr/.test(v)) { $("updVer").textContent = v; $("updBar").hidden = false; }
+    else if (say) toast("いまの画面が最新の版です（" + MY_VER + "）");
+  } catch (e) { console.warn("版の確認に失敗", e); }
+}
+const hardReload = () => { const q = new URLSearchParams(location.search); q.set("r", Date.now()); location.replace(location.pathname + "?" + q.toString().replace(/=(&|$)/g, "$1") + location.hash); };
+$("bUpd").onclick = hardReload;
+$("ver").style.cursor = "pointer";
+$("ver").title = "いま開いている版。押すと新しい版があるか確かめます";
+$("ver").onclick = () => checkVersion(true);
+setInterval(checkVersion, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkVersion(); });
+setTimeout(checkVersion, 3000);
 async function start() {
   try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
   S.view.from = fromKey(S.view.from) || todayKey().slice(0, 8) + "01";
