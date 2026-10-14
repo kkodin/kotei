@@ -902,6 +902,12 @@ function showCtx(x, y, items) {
 function hideCtx() { $("ctx").hidden = true; }
 document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctx")) hideCtx(); }, true);
 document.addEventListener("keydown", e => { if (e.key === "Escape") hideCtx(); });
+/* 小窓が開いている間は、小窓の外（灰色の所）を触っても後ろが動かない（2026-10-14 ユーザー：タブレットで後ろがスクロールした）。
+   外を触ると target は dialog そのもの（中身は form）。そこでの指の動き・ホイールを止める。小窓の中のスクロールは CSS の overscroll-behavior で後ろへ伝えない */
+const onBackdrop = e => e.target instanceof HTMLDialogElement && e.target.open;
+["touchstart", "touchmove", "wheel"].forEach(ev => document.addEventListener(ev, e => {
+  if (onBackdrop(e) && e.cancelable && !(ev === "wheel" && e.ctrlKey)) e.preventDefault();
+}, { passive: false, capture: true }));
 /* 小窓の入力欄で Enter を押しても保存して閉じない（2026-10-14 ユーザー：タブレットのキーボードのエンターで小窓が閉じた）。
    欄を離れるだけ（キーボードがしまわれる）。日本語の変換中の Enter はそのまま。複数行の欄（メモ）は改行のまま。保存は帯の「保存」で */
 document.addEventListener("keydown", e => {

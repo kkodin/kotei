@@ -153,7 +153,10 @@ dialog { border: 1px solid #888; border-radius: 6px; padding: 0; min-width: 340p
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h3 { margin: 0; padding: 10px 16px; background: var(--head); color: #fff; font-size: 16px; cursor: move; user-select: none; touch-action: none; }
 /* 見出しの帯は上に止め、右に 保存・やめる など（2026-10-14 ユーザー指定。app.js で .btns の右側のボタンを移す） */
-dialog:modal { max-height: calc(100dvh - 16px); overflow: auto; }
+dialog:modal { max-height: calc(100dvh - 16px); overflow: auto; overscroll-behavior: contain; }
+/* 小窓が開いている間は後ろの画面を止める（2026-10-14 ユーザー：タブレットで小窓の外を触ると後ろがスクロールした） */
+html:has(dialog:modal), html:has(dialog:modal) body { overflow: hidden; overscroll-behavior: none; }
+html:has(dialog:modal) #wrap, html:has(dialog:modal) #flow, html:has(dialog:modal) #list { overflow: hidden; touch-action: none; }
 .dhead { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; background: var(--head); }
 .dhead h3 { flex: 1; min-width: 0; }
 .dhead h3:focus { outline: none; }
