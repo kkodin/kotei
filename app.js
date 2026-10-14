@@ -142,7 +142,11 @@ let store = DEMO ? DemoStore : GraphStore;
 const S = { files: {}, view: { from: "", months: 2 }, tab: "chart" };
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const siteFiles = () => Object.keys(S.files).filter(n => n.startsWith("現場_") && S.files[n].doc && !S.files[n].doc.消した);
-const sites = () => siteFiles().map(n => S.files[n].doc).sort((a, b) => (a.並び ?? 0) - (b.並び ?? 0) || String(a.名前).localeCompare(b.名前, "ja"));
+/* 現場名＝社内の工事名＝略称（2026-10-14 ユーザー指定：略称の欄は現場名にまとめる。正式な名前は「正式工事名」）。
+   前のデータで 略称 と 名前 が違う現場は、略称を現場名、名前を正式工事名とみなす（現場の設定を保存し直すと そのように入る） */
+const nm = s => s.略称 || s.名前;
+const officialOf = s => s.工事名 || (s.略称 && s.略称 !== s.名前 ? s.名前 : "");
+const sites = () => siteFiles().map(n => S.files[n].doc).sort((a, b) => (a.並び ?? 0) - (b.並び ?? 0) || String(nm(a)).localeCompare(nm(b), "ja"));
 // 終わった現場（完了）は、上の「完了も出す」にチェックしたときだけ出す（その人のブラウザに覚える）
 let showDone = false;
 try { showDone = localStorage.getItem("kotei_showDone") === "1"; } catch (e) { }
@@ -152,7 +156,7 @@ let sortBy = "manual";
 try { sortBy = localStorage.getItem("kotei_sort") || "manual"; } catch (e) { }
 const firstDay = s => s.バー.reduce((m, b) => !m || b.開始 < m ? b.開始 : m, "");
 function sortSites(list) {
-  const byName = (a, b) => String(a.名前).localeCompare(String(b.名前), "ja");
+  const byName = (a, b) => String(nm(a)).localeCompare(String(nm(b)), "ja");
   const last = (x, y, f) => (!x && y) ? 1 : (x && !y) ? -1 : f();   // 空は後ろ
   if (sortBy === "name") return [...list].sort(byName);
   if (sortBy === "code") return [...list].sort((a, b) => { const x = String(a.コード || ""), y = String(b.コード || ""); return last(x, y, () => x.localeCompare(y, "ja", { numeric: true })) || byName(a, b); });
@@ -336,6 +340,24 @@ function barWorks(ln, b, k) {
   if (b && (b.出勤 || []).includes(k)) return true;
   return laneWorks(ln, k);
 }
+/* 作業員の人数（2026-10-14 ユーザー：「〇名＋〇名」と書きたい（中身の名前は書かない）・日ごとに変えたい）
+   バー.人数＝合計（前の版でも読める）、バー.人数内訳＝"1+3"（＋で分けたときだけ）、
+   バー.人数日＝{ "YYYY-MM-DD": "2+4" }（その日だけの人数。無い日はふだんの人数） */
+function parseHead(t) {
+  const s = String(t ?? "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/＋/g, "+").replace(/[名人\s　]/g, "");
+  if (!s) return null;
+  const parts = s.split("+").filter(x => x !== "");
+  if (!parts.length || parts.some(x => !/^\d+$/.test(x))) return null;
+  const n = parts.map(Number);
+  return { txt: n.join("+"), parts: n, total: n.reduce((a, x) => a + x, 0) };
+}
+const headTxt = b => b.人数内訳 || (b.人数 !== "" && b.人数 != null ? String(b.人数) : "");
+const headTxtAt = (b, k) => (b.人数日 && b.人数日[k] != null && b.人数日[k] !== "") ? b.人数日[k] : headTxt(b);
+const headAt = (b, k) => { const p = parseHead(headTxtAt(b, k)); return p ? p.total : 0; };
+const fmtHead = t => { const p = parseHead(t); return p ? p.parts.map(x => x + "名").join("＋") : ""; };
+const dayHeads = b => Object.keys(b.人数日 || {}).sort();
+// バーに出す人数：ふだんの人数。日ごとに変えた日があれば ※
+const headLabel = b => { const t = fmtHead(headTxt(b)); return dayHeads(b).length ? (t || "0名") + "※" : t; };
 
 function dayClass(k) {
   if (isRest(k)) return "rest";
@@ -356,7 +378,7 @@ const noSpace = n => String(n).replace(/[\s　]+/g, "");
 // 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
 function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
 function barLabel(b, avail) {
-  const w = b.作業 || "", num = b.人数 ? b.人数 + "名" : "", st = b.社員 || [];
+  const w = b.作業 || "", num = headLabel(b), st = b.社員 || [];
   const cands = [
     [w, num, st.map(noSpace).join("・")],
     [w, num, st.map(shortStaff).join("・")],
@@ -370,8 +392,9 @@ function barTitle(s, b) {
   const ln = s.段.find(l => l.id === b.段);
   let work = 0;
   for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
-  return `${s.名前}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
-    (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (b.人数 ? "\n作業員：" + b.人数 + "名" : "") + (b.メモ ? "\n" + b.メモ : "");
+  return `${nm(s)}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
+    (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (headTxt(b) ? "\n作業員：" + fmtHead(headTxt(b)) : "") +
+    (dayHeads(b).length ? "\n日ごとの人数：" + dayHeads(b).map(k => md(k) + " " + (fmtHead(b.人数日[k]) || "0名")).join("、") : "") + (b.メモ ? "\n" + b.メモ : "");
 }
 
 /* 同じ段で日が重なるバー（複数の工種）は、下に行を足して並べる。開始の早い順に、空いている一番上の行へ */
@@ -420,7 +443,7 @@ function renderChart() {
   days.forEach((k, i) => { const c = dayClass(k); if (c) h.push(`<div class="col ${c}" style="left:calc(${left} + ${i * dw}px)"></div>`); });
   for (const s of shownSites()) {
     const fold = folded.has(s.id);
-    h.push(`<div class="site ${fold ? "folded" : ""} ${s.完了 ? "done" : ""}" data-site="${esc(s.id)}"><div class="sname" data-act="site"><span class="tg" title="${fold ? "ひらく" : "たたむ"}">${fold ? "▸" : "▾"}</span>${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}` +
+    h.push(`<div class="site ${fold ? "folded" : ""} ${s.完了 ? "done" : ""}" data-site="${esc(s.id)}"><div class="sname" data-act="site"><span class="tg" title="${fold ? "ひらく" : "たたむ"}">${fold ? "▸" : "▾"}</span>${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(nm(s))}` +
       (fold ? "" : (s.コード ? `<span class="code">${esc(s.コード)}</span>` : "") + (s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : "")) + `</div><div class="lanes">`);
     if (fold) {
       // たたんだ現場：1行に、工事のある期間だけを帯で出す
@@ -533,22 +556,22 @@ function renderList() {
   for (const s of shownSites()) for (const b of s.バー) {
     if (only && (b.終了 < from || b.開始 > end)) continue;
     const ln = s.段.find(l => l.id === b.段);
-    const text = [s.名前, ln && laneName(ln), b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
+    const text = [nm(s), officialOf(s), ln && laneName(ln), b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
     if (q && !q.split(/\s+/).every(w => text.includes(w))) continue;
     rows.push({ s, b, ln });
   }
   rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
   const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
   $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員</th><th>メモ</th><th>更新</th></tr>` +
-    rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(s.名前)}</td><td>${esc(ln ? laneName(ln) : "")}</td>` +
+    rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(nm(s))}</td><td>${esc(ln ? laneName(ln) : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
-      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${b.人数 ? esc(b.人数) + "名" : ""}</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${esc(headLabel(b))}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
 
 /* ---------- 人の流れ（工程表のバーから、社員の行き先と作業員の日ごとの人数を出す） ---------- */
-const shortOf = s => s.略称 || String(s.名前).slice(0, 4);
+const shortOf = nm;
 const isNight = ln => laneKubun(ln) === "夜";
 
 function renderFlow() {
@@ -574,9 +597,9 @@ function renderFlow() {
       const hits = (at[k] || []).filter(x => (x.b[field] || []).includes(n));
       const siteIds = [...new Set(hits.map(x => x.s.id))];
       if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
-      else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
+      else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
       else { const x = hits[0];
-        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + x.s.名前 + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + nm(x.s) + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
     }
     h.push(`</tr>`);
   } };
@@ -588,7 +611,7 @@ function renderFlow() {
   for (const k of days) {
     const un = (at[k] || []).filter(x => !(x.b.社員 || []).length);
     const ss = [...new Set(un.map(x => shortOf(x.s)))];
-    h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => x.s.名前 + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
+    h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
   }
   h.push(`</tr><tr class="tot"><th class="nm">社員 計</th>`);
   for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.社員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
@@ -604,10 +627,10 @@ function renderFlow() {
 
   // 2. 作業員の人数（現場ごと・昼夜）
   h.push(`<tr class="sec"><th colspan="${cols}">作業員の人数（工程表のバーの「作業員」の合計。段の名前に「夜」があれば夜間）</th></tr>`);
-  const sum = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + (+x.b.人数 || 0), 0);
+  const sum = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + headAt(x.b, k), 0);
   for (const s of shownSites()) {
-    if (!s.バー.some(b => b.人数 && b.終了 >= from && b.開始 <= end)) continue;
-    h.push(`<tr><th class="nm">${esc(s.名前)}</th>` + days.map(k => { const v = sum(k, x => x.s === s); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
+    if (!s.バー.some(b => (headTxt(b) || dayHeads(b).length) && b.終了 >= from && b.開始 <= end)) continue;
+    h.push(`<tr><th class="nm">${esc(nm(s))}</th>` + days.map(k => { const v = sum(k, x => x.s === s); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
   }
   [["昼間 計", x => !isNight(x.ln)], ["夜間 計", x => isNight(x.ln)], ["作業員 計", () => true]].forEach(([nm, f]) => {
     h.push(`<tr class="tot"><th class="nm">${nm}</th>` + days.map(k => { const v = sum(k, f); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
@@ -620,7 +643,7 @@ function render() {
   if (S.tab === "chart") renderChart(); else if (S.tab === "flow") renderFlow(); else renderList();
   // 候補（マスタ＋入力済み）
   $("staffList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
-  $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? "配置表：" + x.略称 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
+  $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.略称 || x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? x.名前 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
 }
 
 /* ---------- ドラッグ（動かす・延ばす・作る） ----------
@@ -858,17 +881,17 @@ const splitNames = s => s.split(/[、,，・\n]+/).map(x => x.trim()).filter(Boo
 const toHalf = s => s.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 
 function openBar(site, b, init) {
-  barCtx = { siteId: site.id, barId: b ? b.id : null, 休み: [...((b && b.休み) || [])], 出勤: [...((b && b.出勤) || [])] };
+  barCtx = { siteId: site.id, barId: b ? b.id : null, 休み: [...((b && b.休み) || [])], 出勤: [...((b && b.出勤) || [])], 人数日: { ...((b && b.人数日) || {}) } };
   const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
   $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
-  $("dBarSite").textContent = site.名前;
+  $("dBarSite").textContent = nm(site);
   $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(laneName(l))}${l.完了 ? "（完了）" : ""}</option>`).join("");
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
   setStaffRows(joinSplit(v.社員 || [], M().社員 || []));
   $("bEmp").value = joinSplit(v.従業員 || [], M().従業員 || []).join("、");
-  $("bNum").value = v.人数 || "";
+  $("bNum").value = headTxt(v);
   autoNum = SHOW_EMP && (!v.人数 || v.人数 === (v.従業員 || []).length);
   document.querySelectorAll("#dBar .emp").forEach(el => { el.hidden = !SHOW_EMP; });
   drawPick("従業員");
@@ -877,18 +900,21 @@ function openBar(site, b, init) {
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
   $("bBarDel").hidden = !b;
   openDlg($("dBar"));
-  showOffInfo();
+  showOffInfo(); showHeadInfo();
   if (!b) $("bWork").focus();
 }
 let lastColor = "青";
 function readBarForm() {
   let a = $("bFrom").value, z = $("bTo").value;
   if (z < a) [a, z] = [z, a];
-  const n = parseInt(toHalf($("bNum").value), 10);
+  const p = parseHead($("bNum").value);
+  // その日だけの人数は、期間の中でふだんの人数と違う日だけ残す
+  const hd = {};
+  for (const [k, t] of Object.entries(barCtx.人数日 || {})) { const q = parseHead(t); if (k >= a && k <= z && q && q.txt !== (p ? p.txt : "")) hd[k] = q.txt; }
   return {
     段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
     社員: [...new Set(getStaffRows().map(x => resolveName(x, namesFor("社員"))))],
-    従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: isNaN(n) ? "" : n,
+    従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: p ? p.total : "", 人数内訳: p && p.parts.length > 1 ? p.txt : undefined, 人数日: Object.keys(hd).length ? hd : undefined,
     色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim(),
     // 期間の外になった休工日は捨てる
     休み: (barCtx.休み || []).filter(k => k >= a && k <= z).sort(), 出勤: (barCtx.出勤 || []).filter(k => k >= a && k <= z).sort()
@@ -987,6 +1013,7 @@ document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e =
 $("fBar").addEventListener("submit", e => {
   e.preventDefault();
   if (!$("bFrom").value || !$("bTo").value) return;
+  if ($("bNum").value.trim() && !parseHead($("bNum").value)) { alert("作業員は数字で入れてください（例：3、1+3）。"); $("bNum").focus(); return; }
   const v = readBarForm(), { siteId, barId } = barCtx;
   lastColor = v.色;
   const id = barId || newId("b");
@@ -1005,7 +1032,79 @@ $("bBarDel").onclick = () => {
   $("dBar").close();
 };
 // 「続きを作る」は 2026-10-07 にやめた（休みをはさむ工程は「休工日を設定」で1本に書く。ユーザー指定）
-$("bNum").addEventListener("input", e => { const t = toHalf(e.target.value); if (t !== e.target.value) e.target.value = t; autoNum = false; });
+$("bNum").addEventListener("input", e => { const t = toHalf(e.target.value).replace(/＋/g, "+"); if (t !== e.target.value) e.target.value = t; autoNum = false; showHeadInfo(); });
+
+/* ---------- 日ごとの人数（2026-10-14 ユーザー：工種の作業員の人数を日ごとに変えたい） ----------
+   作業する日ごとに欄。空＝ふだんの人数（バーの小窓の「作業員」）。決めると barCtx.人数日 に入り、バーの「保存」で決まる */
+function showHeadInfo() {
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (z < a) [a, z] = [z, a];
+  const ks = Object.keys(barCtx.人数日 || {}).filter(k => k >= a && k <= z);
+  $("bHeadInfo").textContent = ks.length ? `日ごとに変えた日 ${ks.length}日（${ks.sort().slice(0, 3).map(md).join("・")}${ks.length > 3 ? "…" : ""}）` : "";
+}
+["bFrom", "bTo"].forEach(id => $(id).addEventListener("change", showHeadInfo));
+function drawHeadCal() {
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (z < a) [a, z] = [z, a];
+  const ln = calLane(), b = { 休み: barCtx.休み, 出勤: barCtx.出勤 };
+  const base = parseHead($("bNum").value), ph = base ? base.txt : "";
+  const h = [];
+  for (let m = a.slice(0, 7) + "-01"; m <= z; m = keyOf(new Date(+m.slice(0, 4), +m.slice(5, 7), 1))) {
+    h.push(`<div class="cal"><div class="calm">${+m.slice(0, 4)}年${+m.slice(5, 7)}月</div><div class="calg hg">` +
+      [...WD].map((x, i) => `<div class="calw ${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${x}</div>`).join("") +
+      `<div></div>`.repeat(dayDow(m)));
+    for (let k = m; k.slice(0, 7) === m.slice(0, 7); k = dayAdd(k, 1)) {
+      const hol = holidayOf(k), wd = dayDow(k), num = `<span class="${hol || wd === 0 ? "red" : wd === 6 ? "blue" : ""}">${+k.slice(8)}</span>`;
+      if (k < a || k > z) { h.push(`<div class="cald out">${num}</div>`); continue; }
+      if (!barWorks(ln, b, k)) { h.push(`<div class="cald hd hoff" title="休み">${num}<i>休</i></div>`); continue; }
+      const v = barCtx.人数日[k] || "";
+      h.push(`<div class="cald hd ${v ? "ov" : ""}">${num}<input type="text" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" title="${esc(md(k) + "の人数（空＝ふだん " + (fmtHead(ph) || "なし") + "）")}"></div>`);
+    }
+    h.push(`</div></div>`);
+  }
+  $("headBody").innerHTML = h.join("");
+  sumHeadCal();
+}
+function sumHeadCal() {
+  const base = parseHead($("bNum").value);
+  let tot = 0, n = 0, bad = 0;
+  $("headBody").querySelectorAll("input[data-k]").forEach(i => {
+    const v = i.value.trim(), p = v ? parseHead(v) : base;
+    i.parentElement.classList.toggle("ov", !!v); i.classList.toggle("bad", !!v && !p);
+    if (v && !p) bad++;
+    if (p) tot += p.total;
+    n++;
+  });
+  $("headSum").textContent = `作業する日 ${n}日　のべ ${tot}人` + (bad ? `　（数字でない欄が ${bad} か所）` : "");
+}
+$("headBody").addEventListener("input", e => {
+  const i = e.target;
+  if (!i.dataset.k) return;
+  const t = toHalf(i.value).replace(/＋/g, "+");
+  if (t !== i.value) i.value = t;
+  sumHeadCal();
+});
+$("bHeadBtn").onclick = () => {
+  if (!$("bFrom").value || !$("bTo").value) { alert("先に開始と終了を入れてください。"); return; }
+  if ($("bNum").value.trim() && !parseHead($("bNum").value)) { alert("先に「作業員」を数字で入れてください（例：3、1+3）。"); return; }
+  $("dHeadTtl").textContent = "日ごとの人数　" + ($("bWork").value || "（作業名なし）");
+  drawHeadCal();
+  openDlg($("dHead"));
+};
+$("bHeadReset").onclick = () => { $("headBody").querySelectorAll("input[data-k]").forEach(i => { i.value = ""; }); sumHeadCal(); };
+$("bHeadCancel").onclick = () => $("dHead").close();
+$("fHead").addEventListener("submit", e => {
+  e.preventDefault();
+  const ins = [...$("headBody").querySelectorAll("input[data-k]")];
+  const bad = ins.find(i => i.value.trim() && !parseHead(i.value));
+  if (bad) { alert(md(bad.dataset.k) + " の人数が数字ではありません（例：3、1+3、0）。"); bad.focus(); return; }
+  // 欄の無い日（休みの日など）に前から入っていた分は残す（休みを戻したときのため。期間の外はバーの保存で捨てる）
+  const keep = Object.fromEntries(Object.entries(barCtx.人数日).filter(([k]) => !ins.some(i => i.dataset.k === k)));
+  for (const i of ins) if (i.value.trim()) keep[i.dataset.k] = parseHead(i.value).txt;
+  barCtx.人数日 = keep;
+  $("dHead").close();
+  showHeadInfo();
+});
 
 // 社員・従業員を名簿の一覧（フルネーム）から選ぶ。選んである人は ✓。もう一度選ぶと外す
 let autoNum = true;
@@ -1067,16 +1166,15 @@ function openSite(id) {
   const s = id ? S.files[fileOfSite(id)].doc : null;
   siteCtx = { id, lanes: s ? s.段.map(l => l.id) : [] };
   $("dSiteTtl").textContent = s ? "現場の設定" : "現場を追加";
-  $("sName").value = s ? s.名前 : "";
+  $("sName").value = s ? nm(s) : "";
   $("sCode").value = s ? s.コード || "" : "";
-  $("sShort").value = s ? s.略称 || "" : "";
   $("sDone").checked = !!(s && s.完了);
   $("sTanto").value = s ? s.担当 || "" : "";
   // 週間工程表に出す（2026-10-13）
-  $("sKouji").value = s ? s.工事名 || "" : "";
+  $("sKouji").value = s ? officialOf(s) : "";
   $("sKiFrom").value = s ? s.工期自 || "" : ""; $("sKiTo").value = s ? s.工期至 || "" : "";
   $("sAddr").value = s ? s.住所 || "" : "";
-  siteCtx.map = undefined;   // undefined＝変えない／{blob,url}＝新しい画像／null＝外す
+  siteCtx.map = undefined;   // undefined＝変えない／mapCrop＝新しい画像・切り取りを直した／null＝外す
   showMapBox(null);
   if (s && s.地図) loadMap(s).then(u => { if (siteCtx && siteCtx.id === s.id && siteCtx.map === undefined) showMapBox(u); });
   const lanes = s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }];
@@ -1103,11 +1201,13 @@ $("sLanes").addEventListener("click", e => {
   }
 });
 $("sName").addEventListener("change", () => {
-  const n = $("sName").value.trim(), x = M().現場.find(s => s.名前 === n) || M().現場.find(s => s.略称 === n);
+  const n = $("sName").value.trim(), x = M().現場.find(s => s.略称 === n) || M().現場.find(s => s.名前 === n);
   if (!x) return;
+  // 現場名は配置表の書き方（略称）、マスタの正式な名前は 正式工事名 へ
+  if (x.略称 && n !== x.略称) $("sName").value = x.略称;
+  if (!$("sKouji").value && x.名前 && x.名前 !== $("sName").value) $("sKouji").value = x.名前;
   if (!$("sCode").value) $("sCode").value = x.コード || "";
   if (!$("sTanto").value && x.担当) $("sTanto").value = resolveName(x.担当, namesFor("社員"));
-  if (!$("sShort").value && x.略称 && x.略称 !== x.名前) $("sShort").value = x.略称;
   if (!$("sAddr").value && x.場所) $("sAddr").value = x.場所;
 });
 /* 工種を足すとき、たたむ／そのまま／消す を選ぶ（2026-10-13 ユーザー指定）
@@ -1163,14 +1263,14 @@ $("fSite").addEventListener("submit", e => {
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
   const keepDays = (doc, l) => { const o = (doc.段 || []).find(x => x.id === l.id); return { ...l, 休み: o ? o.休み || [] : [], 出勤: o ? o.出勤 || [] : [] }; };
-  const v = { 名前: name, 完了: $("sDone").checked, 略称: $("sShort").value.trim(), コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")),
+  const v = { 名前: name, 完了: $("sDone").checked, 略称: name, コード: toHalf($("sCode").value.trim()), 担当: resolveName($("sTanto").value.trim(), namesFor("社員")),
     工事名: $("sKouji").value.trim(), 工期自: $("sKiFrom").value, 工期至: $("sKiTo").value, 住所: $("sAddr").value.trim() };
   if (siteCtx.map === null) v.地図 = null;
   const newMap = siteCtx.map;
   if (siteCtx.id) {
     // この小窓で消した工種（開いたときにあって、いま無いもの）のバーも消す。ほかの人が同時に足した工種は残す
     const opened = siteCtx.lanes || [], gone = opened.filter(id => !lanes.some(l => l.id === id));
-    if (newMap) saveMap(siteCtx.id, newMap);
+    if (newMap) { const sid = siteCtx.id; renderMap(newMap).then(m => saveMap(sid, m)); }
     mutate(fileOfSite(siteCtx.id), doc => {
       Object.assign(doc, v);
       const extra = (doc.段 || []).filter(l => !opened.includes(l.id) && !lanes.some(x => x.id === l.id));
@@ -1182,7 +1282,7 @@ $("fSite").addEventListener("submit", e => {
     const maxOrd = Math.max(0, ...sites().map(s => s.並び ?? 0));
     S.files[file] = { doc: { id, ...v, 段: lanes, バー: [], 並び: maxOrd + 10 }, eTag: null, pending: [], saving: false, timer: null, err: null };
     mutate(file, () => { });
-    if (newMap) saveMap(id, newMap);
+    if (newMap) renderMap(newMap).then(m => saveMap(id, m));
   }
   $("dSite").close();
 });
@@ -1209,39 +1309,117 @@ function saveMap(id, m) {
 }
 // 画像を読み終わるまで待つ（decode() は画面が隠れていると終わらないことがあるので onload。5秒で諦める）
 const loadImg = src => new Promise(ok => { const i = new Image(); const t = setTimeout(() => ok(null), 5000); i.onload = () => { clearTimeout(t); ok(i); }; i.onerror = () => { clearTimeout(t); ok(null); }; i.src = src; });
-async function shrinkImage(file) {
-  const src = URL.createObjectURL(file);
+/* 地図の切り取り（2026-10-14 ユーザー：Excel の週間工程表にちょうどいい縦横比に加工したい・ドラッグ＆ドロップでも入れたい）
+   枠＝Excel の地図の場所（AA〜AJ 列 × 4行目〜記事の下。作業8行のとき 幅 285pt・高さ 530pt）と同じ縦横の比。
+   画像は枠の中でつかんで動かす・大きさを変える。はじめは「全体を入れる」（余りは白）。保存は 754×1400px の JPEG。
+   mapCrop＝{ img, s:倍率, x, y }（枠の左上からの位置・枠の px）。siteCtx.map に入れると「保存」で書く */
+const MAP_RATIO = 285 / 530, MAP_FH = 300, MAP_FW = Math.round(MAP_FH * MAP_RATIO), MAP_OUT_H = 1400, MAP_OUT_W = Math.round(MAP_OUT_H * MAP_RATIO);
+let mapCrop = null;
+const mapFit = img => Math.min(MAP_FW / img.naturalWidth, MAP_FH / img.naturalHeight);
+const mapFill = img => Math.max(MAP_FW / img.naturalWidth, MAP_FH / img.naturalHeight);
+const mapMax = img => mapFill(img) * 4;
+function mapClamp() {
+  const c = mapCrop, W = c.img.naturalWidth * c.s, H = c.img.naturalHeight * c.s;
+  c.x = W <= MAP_FW ? Math.min(Math.max(c.x, 0), MAP_FW - W) : Math.min(Math.max(c.x, MAP_FW - W), 0);
+  c.y = H <= MAP_FH ? Math.min(Math.max(c.y, 0), MAP_FH - H) : Math.min(Math.max(c.y, MAP_FH - H), 0);
+}
+function mapZoomTo(ns, cx = MAP_FW / 2, cy = MAP_FH / 2) {
+  const c = mapCrop, lo = mapFit(c.img), hi = mapMax(c.img);
+  ns = Math.min(Math.max(ns, lo), hi);
+  c.x = cx - (cx - c.x) * ns / c.s; c.y = cy - (cy - c.y) * ns / c.s; c.s = ns;
+  mapClamp(); mapDraw();
+}
+function mapSetFit(fill) {
+  const c = mapCrop; c.s = fill ? mapFill(c.img) : mapFit(c.img);
+  c.x = (MAP_FW - c.img.naturalWidth * c.s) / 2; c.y = (MAP_FH - c.img.naturalHeight * c.s) / 2; mapDraw();
+}
+function mapDraw() {
+  const box = $("sMapBox"), c = mapCrop;
+  box.style.width = MAP_FW + "px"; box.style.height = MAP_FH + "px";
+  box.classList.toggle("has", !!c);
+  $("sMapDel").hidden = !c; $("sMapAdj").hidden = !c;
+  if (!c) { box.innerHTML = `<span class="note">（地図なし）<br>この枠を押して Ctrl＋V で貼り付け、<br>または画像ファイルをドラッグ</span>`; return; }
+  let im = box.querySelector("img");
+  if (!im || im.src !== c.img.src) { box.innerHTML = ""; im = c.img; im.alt = "地図"; im.draggable = false; box.appendChild(im); }
+  Object.assign(im.style, { left: c.x + "px", top: c.y + "px", width: c.img.naturalWidth * c.s + "px", height: c.img.naturalHeight * c.s + "px" });
+  const lo = mapFit(c.img), hi = mapMax(c.img);
+  $("sMapZoom").value = Math.round(100 * Math.log(c.s / lo) / Math.log(hi / lo));
+}
+// 画像を読んで枠に入れる。changed＝新しい画像（保存のとき書く）
+async function setMapImage(src, changed) {
   const img = await loadImg(src);
   if (!img) throw new Error("画像を読めません");
-  const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
-  const c = document.createElement("canvas");
-  c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-  const x = c.getContext("2d");
-  x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
-  URL.revokeObjectURL(src);
-  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-  return { blob, url: c.toDataURL("image/jpeg", 0.85) };
+  mapCrop = { img, s: 1, x: 0, y: 0 };
+  mapSetFit(false);
+  if (changed) siteCtx.map = mapCrop;
+}
+function mapTouched() { if (mapCrop) siteCtx.map = mapCrop; }
+async function renderMap(c) {
+  const cv = document.createElement("canvas"), k = MAP_OUT_W / MAP_FW;
+  cv.width = MAP_OUT_W; cv.height = MAP_OUT_H;
+  const x = cv.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height);
+  x.imageSmoothingQuality = "high";
+  x.drawImage(c.img, c.x * k, c.y * k, c.img.naturalWidth * c.s * k, c.img.naturalHeight * c.s * k);
+  const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.85));
+  return { blob, url: cv.toDataURL("image/jpeg", 0.85) };
 }
 function showMapBox(url) {
-  $("sMapBox").innerHTML = url ? `<img src="${url}" alt="地図">` : `<span class="note">（地図なし）この枠を押して Ctrl＋V で貼り付け</span>`;
-  $("sMapDel").hidden = !url;
+  mapCrop = null; mapDraw();
+  if (url) setMapImage(url, false).catch(e => console.error(e));
 }
 async function takeMap(file) {
-  if (!file || !/^image\//.test(file.type)) return;
-  try { const m = await shrinkImage(file); siteCtx.map = m; showMapBox(m.url); toast("地図を入れました（「保存」で決まります）"); }
+  if (!file || !/^image\//.test(file.type)) { toast("画像のファイルではありません"); return; }
+  try { await setMapImage(URL.createObjectURL(file), true); toast("地図を入れました。枠に合わせて動かせます（「保存」で決まります）"); }
   catch (e) { console.error(e); toast("画像を読めませんでした"); }
 }
 $("sMapFile").onchange = e => { takeMap(e.target.files[0]); e.target.value = ""; };
-$("sMapDel").onclick = () => { siteCtx.map = null; showMapBox(null); };
+$("sMapDel").onclick = () => { siteCtx.map = null; mapCrop = null; mapDraw(); };
+$("sMapFit").onclick = () => { mapSetFit(false); mapTouched(); };
+$("sMapFill").onclick = () => { mapSetFit(true); mapTouched(); };
+$("sMapZoom").addEventListener("input", e => {
+  const c = mapCrop; if (!c) return;
+  const lo = mapFit(c.img), hi = mapMax(c.img);
+  mapZoomTo(lo * Math.pow(hi / lo, e.target.value / 100)); mapTouched();
+});
+$("sMapBox").addEventListener("wheel", e => {
+  if (!mapCrop) return;
+  e.preventDefault();
+  const r = $("sMapBox").getBoundingClientRect();
+  mapZoomTo(mapCrop.s * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - r.left, e.clientY - r.top); mapTouched();
+}, { passive: false });
+$("sMapBox").addEventListener("pointerdown", e => {
+  $("sMapBox").focus();
+  if (!mapCrop || e.button > 0) return;
+  e.preventDefault();
+  const box = $("sMapBox"), sx = e.clientX, sy = e.clientY, ox = mapCrop.x, oy = mapCrop.y;
+  try { box.setPointerCapture(e.pointerId); } catch (x) { }
+  const mv = ev => { mapCrop.x = ox + ev.clientX - sx; mapCrop.y = oy + ev.clientY - sy; mapClamp(); mapDraw(); mapTouched(); };
+  const up = () => { box.removeEventListener("pointermove", mv); box.removeEventListener("pointerup", up); box.removeEventListener("pointercancel", up); };
+  box.addEventListener("pointermove", mv); box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
+});
 // 小窓の中で画像を貼り付け（文字の欄に貼るときは文字のまま）
 $("dSite").addEventListener("paste", e => {
   const it = [...(e.clipboardData || {}).items || []].find(i => i.type.startsWith("image/"));
   if (!it) return;
   e.preventDefault(); takeMap(it.getAsFile());
 });
+// ドラッグ＆ドロップ（現場の小窓のどこへ落としてもよい）。ほかの所へ落としてもブラウザが画像を開いてしまわないように止める
+const hasFiles = e => [...((e.dataTransfer || {}).types || [])].includes("Files");
+document.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener("drop", e => { if (hasFiles(e)) e.preventDefault(); });
+$("dSite").addEventListener("dragover", e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; $("sMapBox").classList.add("drop"); });
+$("dSite").addEventListener("dragleave", e => { if (!$("dSite").contains(e.relatedTarget)) $("sMapBox").classList.remove("drop"); });
+$("dSite").addEventListener("drop", e => {
+  $("sMapBox").classList.remove("drop");
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  const f = [...e.dataTransfer.files].find(x => /^image\//.test(x.type));
+  if (f) takeMap(f); else toast("画像のファイルを落としてください（jpg・png など）");
+});
 $("bSiteDel").onclick = () => {
   const s = S.files[fileOfSite(siteCtx.id)].doc;
-  if (!confirm(`「${s.名前}」を工程表から消します（バー ${s.バー.length} 本も見えなくなります）。よろしいですか？`)) return;
+  if (!confirm(`「${nm(s)}」を工程表から消します（バー ${s.バー.length} 本も見えなくなります）。よろしいですか？`)) return;
   mutate(fileOfSite(siteCtx.id), doc => { doc.消した = true; });
   $("dSite").close();
 };
@@ -1493,7 +1671,7 @@ function weekPage(s, mon) {
   const offCls = k => (isRest(k) || dayDow(k) === 0 || dayDow(k) === 6 || holidayOf(k)) ? "wkoff" : "";
   const numCls = k => (dayDow(k) === 0 || holidayOf(k)) ? "red" : dayDow(k) === 6 ? "blue" : "";
   // 作業員：その日に作業するバーの人数の合計
-  const workers = days.map(k => s.バー.reduce((a, b) => a + (k >= b.開始 && k <= b.終了 && barWorks(laneOf(b), b, k) ? (+b.人数 || 0) : 0), 0));
+  const workers = days.map(k => s.バー.reduce((a, b) => a + (k >= b.開始 && k <= b.終了 && barWorks(laneOf(b), b, k) ? headAt(b, k) : 0), 0));
   // 記事：その週に始まる（1週目はそれより前から続く）バーのメモ
   const notes = [0, 1, 2].map(w => {
     const a = days[w * 7], z = days[w * 7 + 6];
@@ -1506,15 +1684,17 @@ function weekPage(s, mon) {
   days.forEach(k => { const m = +k.slice(5, 7), last = months[months.length - 1]; if (last && last.m === m) last.n++; else months.push({ m, n: 1 }); });
   const map = S.maps[s.id] && s.地図 && S.maps[s.id].ver === s.地図 ? S.maps[s.id].url : null;
   const totalRows = 4 + nRows + 2;
+  // 地図の列は Excel の地図の場所と同じ縦横の比（現場の設定の枠で切り取ってある）
+  const mapW = Math.round((weekH + nRows * rowH + workerH + noteH) * MAP_RATIO);
   return `<div class="wkpage">
   <table class="wkhd"><colgroup><col style="width:34px"><col style="width:380px"><col style="width:34px"><col style="width:230px"><col style="width:34px"><col style="width:250px"><col></colgroup>
     <tr><td colspan="5" class="wkttl">週　　間　　工　　程　　表</td><td class="wkmade">${reiwa(todayKey(), true)}作成</td><td class="wkco" rowspan="2">${esc(COMPANY)}</td></tr>
-    <tr><td class="vt">工事名</td><td class="wkname"><div>${esc(s.工事名 || s.名前)}</div><div>工事略称　　${esc(s.略称 || s.名前)}</div></td>
+    <tr><td class="vt">工事名</td><td class="wkname"><div>${esc(officialOf(s) || nm(s))}</div><div>工事略称　　${esc(nm(s))}</div></td>
       <td class="vt">工期</td><td class="wkki"><div>自　　${s.工期自 ? reiwa(s.工期自) : ""}</div><div>至　　${s.工期至 ? reiwa(s.工期至) : ""}</div></td>
       <td class="vt">住所</td><td class="wkaddr">${esc(s.住所 || "")}</td></tr>
     <tr><td colspan="6"></td><td class="wktanto">担当：　${esc(s.担当 || "")}</td></tr>
   </table>
-  <table class="wk"><colgroup><col style="width:180px">${days.map(() => `<col>`).join("")}<col style="width:220px"></colgroup>
+  <table class="wk"><colgroup><col style="width:180px">${days.map(() => `<col>`).join("")}<col style="width:${mapW}px"></colgroup>
     <tr style="height:26px"><td rowspan="2" class="wkym">令和${+mon.slice(0, 4) - 2018}年${+mon.slice(5, 7)}月</td>
       <td colspan="7" class="wkw">今　　　　週</td><td colspan="7" class="wkw">来　　　　週</td><td colspan="7" class="wkw">再　来　週</td>
       <td rowspan="${totalRows}" class="wkmap">${map ? `<img src="${map}" alt="">` : `<div class="nomap">地図</div>`}</td></tr>
@@ -1605,7 +1785,7 @@ $("bPrint").onclick = () => {
   try { off = JSON.parse(localStorage.getItem(PRINT_OFF_KEY)) || []; } catch (e) { }
   const all = sortSites(sites());
   $("pSites").innerHTML = all.map(s => `<label class="${s.完了 ? "done" : ""}"><input type="checkbox" value="${esc(s.id)}" ${(showDone || !s.完了) && !off.includes(s.id) ? "checked" : ""}>` +
-    `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(s.名前)}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
+    `${s.完了 ? '<span class="donemark">完了</span>' : ""}${esc(nm(s))}${s.コード ? ` <span class="note">${esc(s.コード)}</span>` : ""}</label>`).join("");
   $("pTab").textContent = { chart: "工程表", flow: "人の流れ", list: "一覧" }[S.tab];
   $("pNy").disabled = S.tab !== "chart"; $("pNx").disabled = S.tab === "list";
   snapMonday(); fmtView();

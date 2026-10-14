@@ -123,9 +123,9 @@ function xlSheet(s, mon) {
   box(1, 20, 1, 26, XS.made, num(xlDate(todayKey())));
   box(1, 27, 2, 36, XS.co, str(COMPANY));
   box(2, 1, 3, 1, XS.boxV, str("工事名"));
-  box(2, 2, 2, 12, XS.boxL, str(s.工事名 || s.名前));
+  box(2, 2, 2, 12, XS.boxL, str(officialOf(s) || nm(s)));
   box(3, 2, 3, 4, XS.box, str("工事略称"));
-  box(3, 5, 3, 12, XS.boxL, str(s.略称 || s.名前));
+  box(3, 5, 3, 12, XS.boxL, str(nm(s)));
   box(2, 13, 3, 13, XS.boxV, str("工期"));
   box(2, 14, 2, 14, XS.box, str("自")); box(3, 14, 3, 14, XS.box, str("至"));
   box(2, 15, 2, 18, XS.boxDate, s.工期自 ? num(xlDate(s.工期自)) : {});
@@ -155,7 +155,7 @@ function xlSheet(s, mon) {
     });
   }
   // 作業員（その日に作業するバーの人数の合計）・人員予定（昼間／夜間）
-  const sumAt = (k, f) => s.バー.reduce((a, b) => { const ln = laneOf(b); return a + (f(ln) && k >= b.開始 && k <= b.終了 && barWorks(ln, b, k) ? (+b.人数 || 0) : 0); }, 0);
+  const sumAt = (k, f) => s.バー.reduce((a, b) => { const ln = laneOf(b); return a + (f(ln) && k >= b.開始 && k <= b.終了 && barWorks(ln, b, k) ? headAt(b, k) : 0); }, 0);
   box(rWork, 1, rWork + 3, 5, XS.label, str("作業員"));
   box(rPlan, 1, rPlan + 3, 4, XS.label, str("人員予定"));
   box(rPlan, 5, rPlan + 1, 5, XS.box, str("昼間")); box(rPlan + 2, 5, rPlan + 3, 5, XS.box, str("夜間"));

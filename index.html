@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/13 16:37">
+<link rel="stylesheet" href="app.css?v=Vr001 10/14 16:45">
 </head>
 <body>
 <header id="top">
@@ -43,7 +43,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/13 16:37</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/14 16:45</span>
   </span>
 </header>
 
@@ -94,7 +94,8 @@
       <label>社員</label><div><div id="bStaffRows"></div><button type="button" id="bStaffAdd" class="sub small">＋ 社員の欄を足す</button></div>
       <!-- 従業員の名前は将来の仕様（2026-10-07 ユーザー指定：いまは何人必要かだけ）。SHOW_EMP で出す -->
       <label for="bEmp" class="emp">従業員</label><div class="pickrow emp"><input type="text" id="bEmp" placeholder="決まっていなければ空で、人数だけ"><select id="bEmpPick" class="pick" title="名簿から選ぶ。もう一度選ぶと外す"></select></div>
-      <label for="bNum">作業員</label><span><input type="text" id="bNum" inputmode="numeric" class="num"> 名 <span class="note">何人必要か</span></span>
+      <label for="bNum">作業員</label><div><input type="text" id="bNum" class="num" placeholder="例：1+3"> 名 <span class="note">何人必要か。「1+3」と打つと「1名＋3名」</span>
+        <div><button type="button" id="bHeadBtn" class="sub small">日ごとの人数</button> <span id="bHeadInfo" class="note"></span></div></div>
       <label>色</label><div id="bColors" class="colors"></div>
       <label for="bMemo">メモ</label><textarea id="bMemo" rows="2"></textarea>
     </div>
@@ -113,18 +114,25 @@
   <form method="dialog" id="fSite">
     <h3 id="dSiteTtl">現場</h3>
     <div class="frm">
-      <label for="sName">現場名</label><input type="text" id="sName" list="siteList" required placeholder="候補から選ぶとコード・担当が入ります">
-      <label for="sShort">略称</label><input type="text" id="sShort" placeholder="人の流れの表に出す短い名前（例：浄明寺）">
+      <label for="sName">現場名 <b class="req">必須</b></label><input type="text" id="sName" list="siteList" required placeholder="社内の工事名（略称。例：浄明寺）。候補から選ぶとコード・担当が入ります">
       <label for="sCode">現場コード</label><input type="text" id="sCode" inputmode="numeric" class="num" placeholder="例：510015">
       <label for="sTanto">担当</label><input type="text" id="sTanto" list="staffList">
-      <label for="sKouji">工事名</label><input type="text" id="sKouji" placeholder="正式な工事名（週間工程表に出す）">
+      <label for="sKouji">正式工事名</label><input type="text" id="sKouji" placeholder="任意。週間工程表の「工事名」に出す（空なら現場名）">
       <label for="sKiFrom">工期</label><div><input type="date" id="sKiFrom"> 〜 <input type="date" id="sKiTo"></div>
       <label for="sAddr">住所</label><input type="text" id="sAddr" placeholder="現場の住所（週間工程表に出す）">
       <label>地図</label>
-      <div><div id="sMapBox" class="mapbox" tabindex="0" title="押してから Ctrl＋V で貼り付け"></div>
-        <div class="pquick"><label class="filebtn">画像ファイルを選ぶ<input type="file" id="sMapFile" accept="image/*" hidden></label>
-          <button type="button" id="sMapDel" class="sub small">地図を外す</button></div>
-        <div class="note">週間工程表の右に出す地図です。画像ファイルを選ぶか、枠を押して Ctrl＋V で貼り付けます（「保存」で決まります）。</div></div>
+      <div class="maprow"><div id="sMapBox" class="mapbox" tabindex="0" title="押してから Ctrl＋V で貼り付け／画像ファイルをここへドラッグ"></div>
+        <div class="mapctl">
+          <div class="pquick"><label class="filebtn">画像ファイルを選ぶ<input type="file" id="sMapFile" accept="image/*" hidden></label>
+            <button type="button" id="sMapDel" class="sub small">地図を外す</button></div>
+          <div id="sMapAdj" hidden>
+            <div>大きさ <input type="range" id="sMapZoom" min="0" max="100" step="1"></div>
+            <div class="pquick"><button type="button" id="sMapFit" class="sub small">全体を入れる</button><button type="button" id="sMapFill" class="sub small">枠いっぱい</button></div>
+            <div class="note">枠の中の画像はつかんで動かせます（ホイールでも大きさが変わります）。枠の中が週間工程表に出る範囲です。</div>
+          </div>
+          <div class="note">週間工程表の右に出す地図です。画像ファイルを選ぶ・この小窓へドラッグ＆ドロップ・枠を押して Ctrl＋V で貼り付け、のどれかで入れます。
+            枠は Excel の週間工程表の地図の場所（AA〜AJ 列）と同じ縦横の比です（「保存」で決まります）。</div>
+        </div></div>
       <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
       <label>工種</label>
       <div>
@@ -215,6 +223,23 @@
   </form>
 </dialog>
 
+<!-- 日ごとの人数（2026-10-14。空の日＝ふだんの人数） -->
+<dialog id="dHead">
+  <form method="dialog" id="fHead">
+    <h3 id="dHeadTtl">日ごとの人数</h3>
+    <div class="calhelp">作業する日ごとに人数を入れられます。<b>空の日はふだんの人数</b>（薄い字）です。「1+3」のように＋で分けられます。<br>
+      <span class="note">灰色の日は休み（休工日・会社の休み・作業しない曜日）です。</span></div>
+    <div id="headBody"></div>
+    <div id="headSum" class="calsum"></div>
+    <div class="btns">
+      <button type="button" id="bHeadReset" class="sub">全部ふだんの人数に戻す</button>
+      <span class="sp"></span>
+      <button type="button" id="bHeadCancel" class="sub">やめる</button>
+      <button type="submit">決める</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- 右クリックのメニュー -->
 <div id="ctx" class="ctx" hidden></div>
 
@@ -223,8 +248,8 @@
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/13 16:37"></script>
-<script src="app.js?v=Vr001 10/13 16:37"></script>
-<script src="weekxlsx.js?v=Vr001 10/13 16:37"></script>
+<script src="config.js?v=Vr001 10/14 16:45"></script>
+<script src="app.js?v=Vr001 10/14 16:45"></script>
+<script src="weekxlsx.js?v=Vr001 10/14 16:45"></script>
 </body>
 </html>

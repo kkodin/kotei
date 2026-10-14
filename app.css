@@ -165,6 +165,18 @@ dialog[style*="left"] { position: fixed; right: auto; bottom: auto; }
 .cald .red { color: #c62828; } .cald .blue { color: #1565c0; }
 .cald.con:hover, .cald.coff:hover { outline: 2px solid #000; }
 .calsum { padding: 0 16px; font-weight: bold; }
+/* 日ごとの人数（2026-10-14） */
+#headBody { display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 16px; max-height: 60vh; overflow: auto; }
+.calg.hg { grid-template-columns: repeat(7, 52px); }
+.calg.hg .cald { height: 48px; line-height: 18px; }
+.cald.hd { height: 48px; line-height: 18px; border: 1px solid #c9ced4; background: #fff; }
+.cald.hd input { width: 46px; box-sizing: border-box; padding: 2px; font-size: 13px; text-align: center; border: 1px solid #bbb; border-radius: 3px; }
+.cald.hd input::placeholder { color: #aaa; }
+.cald.hd.ov { background: #fff4d6; border-color: #e0a800; }
+.cald.hd.ov input { font-weight: bold; }
+.cald.hd input.bad { background: #ffd9d9; border-color: #c62828; }
+.cald.hd.hoff { background: #e3e5e8; color: #777; }
+.cald.hd.hoff i { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-style: normal; }
 .frm { display: grid; grid-template-columns: 5em 1fr; gap: 8px 10px; padding: 14px 16px 4px; align-items: center; }
 .frm > label { text-align: right; color: #444; font-size: 14px; }
 .frm input[type=text], .frm textarea, .frm select { width: 100%; }
@@ -281,9 +293,18 @@ header .zoom #bZoom { min-width: 3.6em; }
 .oldrow.fin .onm b { color: #555; }
 
 /* 現場の地図（現場の設定） */
-.mapbox { width: 100%; height: 120px; border: 1px dashed #9aa3ad; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fafbfc; cursor: pointer; }
+.maprow { display: flex; gap: 12px; align-items: flex-start; }
+.mapctl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+#sMapZoom { width: 160px; vertical-align: middle; }
+/* 枠の大きさは app.js（MAP_FH・Excel の地図の場所と同じ縦横の比） */
+.mapbox { flex: none; position: relative; border: 1px dashed #9aa3ad; border-radius: 2px; overflow: hidden; background: #fff; cursor: pointer; touch-action: none;
+  display: flex; align-items: center; justify-content: center; text-align: center; }
+.mapbox.has { border-style: solid; border-color: #333; cursor: grab; }
+.mapbox.drop { outline: 3px dashed var(--head); outline-offset: 2px; background: #eef4fb; }
 .mapbox:focus { outline: 2px solid var(--head); }
-.mapbox img { max-width: 100%; max-height: 100%; }
+.mapbox img { position: absolute; max-width: none; max-height: none; pointer-events: none; -webkit-user-drag: none; user-select: none; }
+.mapbox .note { padding: 6px; font-size: 12px; }
+label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .filebtn { display: inline-block; font-size: 13px; padding: 2px 8px; border: 1px solid var(--head); color: var(--head); background: #fff; border-radius: 4px; cursor: pointer; }
 
 /* 週間工程表（印刷。1500×1040px で組む） */
@@ -316,7 +337,7 @@ header .zoom #bZoom { min-width: 3.6em; }
   background: repeating-linear-gradient(to bottom, transparent 0 18px, #999 18px 19px); }
 .wk .wkmap { padding: 0; border: 2px solid #000; vertical-align: top; overflow: hidden; }
 .wk .wkmap { position: relative; }
-.wk .wkmap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.wk .wkmap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: top; display: block; }
 .wk .wkmap .nomap { position: absolute; inset: 0; }
 .wk .wkmap .nomap { height: 100%; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 20px; }
 
