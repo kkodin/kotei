@@ -374,9 +374,39 @@ body:not(.viewer) > *:not(#bootMsg){display:none!important}</style>
    データ（名簿 master.js・index.js・年ごとの 2026.js・追加分.js）を読む。
    中身は window.MASTER などへの代入なので、文字で取ってきて そのまま動かす */
 window.HAICHI_VIEWER = {
-  cfg: {"clientId": "9a4c8447-3e6a-437b-85d0-4662ded35f42", "tenantId": "acd238cd-b6aa-4b5a-8056-44ed0177515f", "driveId": "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW", "path": "社内共有フォルダ/02_配置表/配置表データ"},
+  cfg: {"clientId": "9a4c8447-3e6a-437b-85d0-4662ded35f42", "tenantId": "acd238cd-b6aa-4b5a-8056-44ed0177515f", "driveId": "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW", "path": "社内共有フォルダ/02_配置表/配置表データ", "data": "https://kkodin.github.io/haichi-data/"},
   scopes: ["User.Read", "Files.ReadWrite.All"],   /* 全体工程表と同じ（管理者の同意済み。読むだけに使う） */
   msal: null,
+  /* 入り方は2つ：ms＝会社のアカウント（OneDrive から読む）／pw＝合言葉（暗号にかけたデータを haichi-data から読む。
+     現場の人はメールもアカウントも使わないため。2026-10-14 ユーザー指定）。tools/encrypt_viewer_data.py と同じ決まりで戻す */
+  mode: null, key: null, meta: null, changed: false,
+  b64: function(s){ var b = atob(s), u = new Uint8Array(b.length); for(var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; },
+  norm: function(s){ return String(s || "").normalize("NFKC").replace(/[ァ-ヶ]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0x60); }).replace(/\s+/g, ""); },
+  loadMeta: async function(){
+    var r = await fetch(this.cfg.data + "meta.json?t=" + Date.now(), {cache: "no-store"});
+    if(!r.ok) throw new Error("合言葉のデータがまだありません（" + r.status + "）");
+    this.meta = await r.json();
+  },
+  checkKey: async function(key){
+    var c = this.b64(this.meta.check);
+    try{ var p = await crypto.subtle.decrypt({name: "AES-GCM", iv: c.slice(0, 12)}, key, c.slice(12));
+      return new TextDecoder().decode(p) === "haichi-ok"; }catch(e){ return false; }
+  },
+  unlock: async function(pw){
+    pw = this.norm(pw);
+    if(!this.meta) await this.loadMeta();
+    var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    var key = await crypto.subtle.deriveKey({name: "PBKDF2", salt: this.b64(this.meta.salt), iterations: this.meta.iter, hash: "SHA-256"},
+      base, {name: "AES-GCM", length: 256}, true, ["decrypt"]);
+    if(!(await this.checkKey(key))) return false;
+    try{
+      var raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+      localStorage.setItem("haichi_pw_key", btoa(String.fromCharCode.apply(null, raw)));
+      localStorage.setItem("haichi_pw_id", this.meta.id);
+    }catch(e){}
+    this.key = key; this.mode = "pw";
+    return true;
+  },
   ready: async function(){
     var c = this.cfg;
     this.msal = new msal.PublicClientApplication({
@@ -390,9 +420,30 @@ window.HAICHI_VIEWER = {
     try{ keep = sessionStorage.getItem("haichi_q"); sessionStorage.removeItem("haichi_q"); }catch(e){}
     if(keep && !location.search) history.replaceState(null, "", location.pathname + keep);
     var acc = this.msal.getActiveAccount() || this.msal.getAllAccounts()[0];
-    if(!acc) return false;
-    this.msal.setActiveAccount(acc);
-    return true;
+    if(acc){ this.msal.setActiveAccount(acc); this.mode = "ms"; return true; }
+    /* 覚えている合言葉（の鍵）で入る。合言葉が変わっていれば聞き直す */
+    var saved = null, sid = null;
+    try{ saved = localStorage.getItem("haichi_pw_key"); sid = localStorage.getItem("haichi_pw_id"); }catch(e){}
+    try{ await this.loadMeta(); }catch(e){ return false; }
+    if(saved){
+      if(sid === this.meta.id){
+        var key = await crypto.subtle.importKey("raw", this.b64(saved), {name: "AES-GCM"}, false, ["decrypt"]);
+        if(await this.checkKey(key)){ this.key = key; this.mode = "pw"; return true; }
+      }
+      this.changed = true;
+      try{ localStorage.removeItem("haichi_pw_key"); localStorage.removeItem("haichi_pw_id"); }catch(e){}
+    }
+    return false;
+  },
+  textPw: async function(name){
+    var bn = {"master.js": "master.bin", "index.js": "index.bin", "追加分.js": "add.bin"}[name] || name.replace(/\.js$/, ".bin");
+    var v = (this.meta.files || {})[bn];
+    if(!v) throw new Error(name + " がありません");
+    var r = await fetch(this.cfg.data + bn + "?v=" + v);
+    if(!r.ok) throw new Error(name + " を読めません（" + r.status + "）");
+    var u = new Uint8Array(await r.arrayBuffer());
+    var gz = await crypto.subtle.decrypt({name: "AES-GCM", iv: u.slice(0, 12)}, this.key, u.slice(12));
+    return await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
   },
   login: function(){
     try{ if(location.search) sessionStorage.setItem("haichi_q", location.search); }catch(e){}
@@ -403,6 +454,7 @@ window.HAICHI_VIEWER = {
     catch(e){ if(e instanceof msal.InteractionRequiredAuthError) await this.msal.acquireTokenRedirect({scopes: this.scopes}); throw e; }
   },
   text: async function(name){
+    if(this.mode === "pw") return this.textPw(name);
     var c = this.cfg, p = c.path.split("/").concat([name]).map(encodeURIComponent).join("/");
     var res = await fetch("https://graph.microsoft.com/v1.0/drives/" + c.driveId + "/root:/" + p,
       {headers: {Authorization: "Bearer " + await this.token()}});
@@ -2135,6 +2187,76 @@ function toast(m){ $("#state").textContent = m; }
    LINE の「送る」画面（social-plugins.line.me/lineit/share。url と text を入れられる）を開き、送り先と送信は本人が選ぶ。
    念のため 同じ文をクリップボードにも入れる（画面に文が入らなかったときは Ctrl+V で貼る） */
 var VIEW_URL = "https://kkodin.github.io/kotei/haichi/";
+/* ---- 合言葉を変える（008.0017・2026-10-14 ユーザー指定）----
+   スマホの見るだけ版は、LINE のグループで伝える合言葉（ひらがな6文字）で見る。合言葉は**でたらめな6文字をツールが出す**（人は打てない。
+   意味のある言葉は すぐ破られるため）。「別のを出す」で出し直せる。決めたら NAS の 配置表データ\合言葉.json に保存し、
+   OWNER の PC のタスク（tools/encrypt_viewer_data.py）が次の更新で全部を新しい合言葉の暗号にかけ直す（古い合言葉では見られなくなる）。
+   字は encrypt_viewer_data.py の CHARS と同じ */
+var AIKOTOBA_CHARS = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわん" +
+  "がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ";
+var AIKOTOBA_DIR = "\\\\192.168.0.15\\share\\33_配置表\\配置表データ";
+function randomAikotoba(){
+  var n = AIKOTOBA_CHARS.length, lim = 256 - (256 % n), out = "", b = new Uint8Array(1);
+  while(out.length < 6){ crypto.getRandomValues(b); if(b[0] < lim) out += AIKOTOBA_CHARS[b[0] % n]; }   /* 偏らないよう 余りの分は捨てる */
+  return out;
+}
+function openAikotobaDialog(){
+  var pw = randomAikotoba();
+  var dlg = document.createElement("div");
+  dlg.className = "mdlg";
+  var draw = function(){
+    dlg.innerHTML = '<div class="mbox" style="width:min(620px,96vw)"><h2>🔑 合言葉を変える</h2>' +
+      '<div class="mbody" style="font-size:15px;line-height:1.9;padding:12px 16px">' +
+      "新しい合言葉です（ツールがでたらめに作ります。自分で打つことはできません）。" +
+      '<div style="font-size:34px;letter-spacing:.3em;font-weight:700;text-align:center;background:#fff8d6;border:2px solid #d4a300;margin:8px 0;padding:4px">' + esc(pw) + "</div>" +
+      '<div style="text-align:center"><button class="btn" data-a="again">別のを出す</button></div>' +
+      '<ol style="margin:8px 0 6px 1.2em;padding:0"><li>「これにする（保存）」を押す</li>' +
+      "<li>保存する画面で、NAS の <b>33_配置表 ＞ 配置表データ</b> を開き、名前は <b>合言葉.json</b> のまま保存（同じ名前は置き換える）</li>" +
+      "<li>出てくる文を LINE のグループに送る</li></ol>" +
+      '<div style="background:#f5f5f5;padding:6px 8px;font-size:13px;word-break:break-all">' + esc(AIKOTOBA_DIR) +
+      ' <button class="btn" data-a="dir" style="font-size:12px;padding:2px 8px">場所をコピー</button></div>' +
+      '<div style="font-size:13px;color:#555;margin-top:6px">新しい合言葉に切り替わるのは、次の配置表データの更新（毎日 7:30・12:30・17:30）のあとです。それまでは前の合言葉で見られます。</div>' +
+      '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="save" style="font-size:15px;padding:6px 16px">これにする（保存）</button> ' +
+      '<button class="btn" data-a="close">やめる</button></div></div></div>';
+  };
+  draw();
+  document.body.appendChild(dlg);
+  var done = function(){
+    var text = "配置表（スマホで見る）の合言葉が変わりました。\n新しい合言葉：" + pw + "\n（次の更新から。毎日 7:30・12:30・17:30）";
+    dlg.querySelector(".mbody").innerHTML = "保存しました。次の文を LINE のグループに送ってください。" +
+      '<div style="background:#f1f8e9;border:1px solid #c5e1a5;padding:8px 10px;margin:6px 0;white-space:pre-wrap">' + esc(text) + "</div>" +
+      '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="line" style="background:#06C755;border-color:#06C755;font-size:15px;padding:6px 16px">LINE の送る画面を開く</button> ' +
+      '<button class="btn" data-a="close">閉じる</button></div>';
+    dlg.dataset.text = text;
+  };
+  dlg.addEventListener("click", function(e){
+    var t = e.target.closest ? e.target.closest("button") : null;
+    if(!t) return;
+    var a = t.dataset.a;
+    if(a === "close"){ dlg.remove(); return; }
+    if(a === "again"){ pw = randomAikotoba(); draw(); return; }
+    if(a === "dir"){ (navigator.clipboard ? navigator.clipboard.writeText(AIKOTOBA_DIR) : Promise.reject()).then(function(){ toast("場所をコピーしました"); })
+      .catch(function(){ prompt("この場所をコピーしてください", AIKOTOBA_DIR); }); return; }
+    if(a === "line"){
+      var text = dlg.dataset.text;
+      window.open("https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(VIEW_URL) + "&text=" + encodeURIComponent(text), "haichi_line", "width=560,height=720");
+      (navigator.clipboard ? navigator.clipboard.writeText(text + "\n" + VIEW_URL) : Promise.reject()).catch(function(){});
+      return;
+    }
+    if(a === "save"){
+      var body = JSON.stringify({合言葉: pw, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), 作成: new Date().toISOString().slice(0, 16).replace("T", " ")});
+      if(!window.showSaveFilePicker){ alert("このブラウザでは保存できません。Edge か Chrome で開いてください。"); return; }
+      /* 保存の画面はボタンを押した直後に開く（id で 2回目からは前の場所） */
+      window.showSaveFilePicker({id: "haichi_aikotoba", suggestedName: "合言葉.json",
+        types: [{description: "合言葉", accept: {"application/json": [".json"]}}]})
+        .then(function(h){
+          if(h.name !== "合言葉.json"){ alert("名前は「合言葉.json」にしてください（いまは「" + h.name + "」）。もう一度「これにする」を押してください。"); return; }
+          return h.createWritable().then(function(w){ return w.write(body).then(function(){ return w.close(); }); }).then(done);
+        })
+        .catch(function(err){ if(err && err.name !== "AbortError") alert("保存できませんでした: " + err.message); });
+    }
+  });
+}
 function lineText(iso){
   var p = String(iso).split("-");
   return (+p[1]) + "月" + (+p[2]) + "日（" + dowOf(iso) + "）の配置予定表を更新しました。";
@@ -2155,7 +2277,9 @@ function openLineDialog(){
     '<div style="font-size:13px;color:#555">文はコピーもしてあります。開いた画面に文が入っていなければ、Ctrl＋V で貼ってください。' +
     "<br>見るだけ版に出るのは、この日の Excel が NAS に置かれて、配置表データが作り直されたあとです。</div>" +
     '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="open" style="background:#06C755;border-color:#06C755;font-size:15px;padding:6px 16px">LINE の送る画面を開く</button> ' +
-    '<button class="btn" data-a="copy">文だけコピー</button> <button class="btn" data-a="close">閉じる</button></div></div></div>';
+    '<button class="btn" data-a="copy">文だけコピー</button> <button class="btn" data-a="close">閉じる</button></div>' +
+    '<div style="margin-top:12px;padding-top:8px;border-top:1px solid #ddd;font-size:13px;color:#555">スマホで見るときの合言葉を変えるとき（3〜6か月ごとが目安）：' +
+    '<button class="btn" data-a="pw">🔑 合言葉を変える</button></div></div></div>';
   document.body.appendChild(dlg);
   var copy = function(){
     return (navigator.clipboard ? navigator.clipboard.writeText(all) : Promise.reject()).then(function(){ toast("LINE に送る文をコピーしました"); })
@@ -2165,6 +2289,7 @@ function openLineDialog(){
     var t = e.target.closest ? e.target.closest("button") : null;
     if(e.target === dlg || (t && t.dataset.a === "close")){ dlg.remove(); return; }
     if(t && t.dataset.a === "copy") copy();
+    if(t && t.dataset.a === "pw"){ dlg.remove(); openAikotobaDialog(); return; }
     if(t && t.dataset.a === "open"){
       /* 開くのはボタンを押した直後（先に待つものを挟むと、ブラウザが新しい窓を止める） */
       window.open("https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text),
@@ -4931,7 +5056,8 @@ function downloadText(name, text){
 var APP_VER = "008.0017";
 var HISTORY = [
   {v: "008.0017", d: "2026-10-14", t: [
-    "予定の表のとき、上に緑の「LINE で知らせる」ボタンを出しました。押すと送る文（日付と、スマホで見られるリンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）"]},
+    "予定の表のとき、上に緑の「LINE で知らせる」ボタンを出しました。押すと送る文（日付と、スマホで見られるリンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）",
+    "スマホで見るときの合言葉は、「LINE で知らせる」の小窓の下の「🔑 合言葉を変える」で変えられます（3〜6か月ごとが目安）。合言葉はツールがでたらめに作ります"]},
   {v: "008.0016", d: "2026-10-14", t: [
     "スマホ・タブレットで配置表を見るための「見るだけ版」の準備をしました。この入力の画面の使い方は変わりません"]},
   {v: "008.0015", d: "2026-10-13", t: [
@@ -6331,22 +6457,39 @@ if(VIEWER){
   msg.style.cssText = "padding:24px;font-size:16px;color:#333";
   msg.textContent = "配置表を読み込んでいます…";
   document.body.insertBefore(msg, document.body.firstChild);
-  Promise.resolve(V.ready()).then(function(ok){
-    if(!ok){
-      /* まだサインインしていない */
-      msg.innerHTML = '<div style="max-width:520px;line-height:1.8">' +
-        '<div style="font-size:20px;font-weight:700;margin-bottom:8px">配置表（見るだけ）</div>' +
-        '見るにはサインインしてください。<br>会社のアカウント、または<b>招待のメールを受け取ったメールアドレス</b>で入ります' +
-        '（メールに届く確認コードを入れます）。<br>' +
-        '<button id="bootSignIn" style="margin-top:14px;font-size:18px;padding:10px 24px;background:#0072B2;color:#fff;border:0;border-radius:6px">サインイン</button></div>';
-      document.getElementById("bootSignIn").onclick = function(){ V.login(); };
-      return;
-    }
+  var go = function(){
+    msg.textContent = "配置表を読み込んでいます…";
     return V.text("master.js").then(function(t){
       V.run(t);
       main.forEach(function(s){ var x = document.createElement("script"); x.textContent = s.textContent; document.body.appendChild(x); });
       msg.remove();
     });
+  };
+  Promise.resolve(V.ready()).then(function(ok){
+    if(ok) return go();
+    /* 入口：合言葉（LINE のグループで伝えたもの）／会社のアカウント */
+    var bs = "font-size:18px;padding:10px 22px;border:0;border-radius:6px;color:#fff;";
+    msg.innerHTML = '<div style="max-width:520px;line-height:1.8">' +
+      '<div style="font-size:20px;font-weight:700;margin-bottom:8px">配置表（見るだけ）</div>' +
+      (V.changed ? '<div style="color:#b00020;font-weight:600">合言葉が変わりました。新しい合言葉を入れてください。</div>' : "") +
+      '<div>LINE のグループで伝えた<b>合言葉</b>（ひらがな6文字）を入れてください。<br>このスマホが覚えるので、次からは入れなくても見られます。</div>' +
+      '<input id="bootPw" autocomplete="off" lang="ja" style="font-size:24px;padding:6px 10px;width:9em;letter-spacing:.2em;margin:8px 0" placeholder="あいうえお">' +
+      '<div><button id="bootPwGo" style="' + bs + 'background:#06C755">見る</button></div>' +
+      '<div id="bootPwMsg" style="color:#b00020;min-height:1.8em"></div>' +
+      '<div style="margin-top:18px;padding-top:10px;border-top:1px solid #ddd;font-size:14px;color:#555">会社のアカウントをお持ちの方は' +
+      '<button id="bootSignIn" style="font-size:14px;padding:4px 12px;margin-left:8px;background:#0072B2;color:#fff;border:0;border-radius:4px">会社のアカウントでサインイン</button></div></div>';
+    var inp = document.getElementById("bootPw"), out = document.getElementById("bootPwMsg"), btn = document.getElementById("bootPwGo");
+    var tryPw = function(){
+      if(V.norm(inp.value).length !== 6){ out.textContent = "合言葉はひらがな6文字です"; return; }
+      btn.disabled = true; out.style.color = "#333"; out.textContent = "確かめています…";
+      V.unlock(inp.value).then(function(good){
+        if(good) return go();
+        btn.disabled = false; out.style.color = "#b00020"; out.textContent = "合言葉が違います";
+      }).catch(function(err){ btn.disabled = false; out.style.color = "#b00020"; out.textContent = "確かめられませんでした：" + err.message; });
+    };
+    btn.onclick = tryPw;
+    inp.addEventListener("keydown", function(e){ if(e.key === "Enter" && !e.isComposing) tryPw(); });
+    document.getElementById("bootSignIn").onclick = function(){ V.login(); };
   }).catch(function(err){
     msg.style.color = "#b00020";
     msg.textContent = "配置表を読み込めませんでした：" + err.message;
