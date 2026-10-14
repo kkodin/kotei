@@ -473,6 +473,8 @@ window.HAICHI_VIEWER = {
     var gz = await crypto.subtle.decrypt({name: "AES-GCM", iv: u.slice(0, 12)}, this.key, u.slice(12));
     return await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
   },
+  /* 会社のアカウントで入った人の名前（表示名）。名簿と合えば、その人のマスを自動で目立たせる（配置表入力.html の viewerMe） */
+  who: function(){ var a = this.mode === "ms" && this.msal && this.msal.getActiveAccount(); return a ? (a.name || "") : ""; },
   login: function(){
     try{ if(location.search) sessionStorage.setItem("haichi_q", location.search); }catch(e){}
     this.msal.loginRedirect({scopes: this.scopes});
@@ -6551,6 +6553,18 @@ function viewerMe(){
     var key = (D && D.日付) + MODE, td = document.querySelector("#sheet td.me");
     if(td && key !== seen){ seen = key; setTimeout(function(){ td.scrollIntoView({block: "center", inline: "center"}); }, 50); }
   };
+  /* 会社のアカウントで入った人は、表示名が名簿の名前と合えば その人にする（2026-10-14 ユーザー要望）。
+     名字と名前の順が逆の表示名（「和也 〇〇」）、沢／澤 の違いも合わせる */
+  if(!ME){
+    var who = window.HAICHI_VIEWER && window.HAICHI_VIEWER.who ? window.HAICHI_VIEWER.who() : "";
+    if(who){
+      var key = function(s){ return nk(s).replace(/沢/g, "澤"); };
+      var parts = String(who).trim().split(/[\s　]+/), cands = [key(who)];
+      if(parts.length === 2) cands.push(key(parts[1] + parts[0]));
+      var hit = (MASTER.作業員 || []).filter(function(w){ return cands.indexOf(key(w.氏名)) >= 0; })[0];
+      if(hit){ ME = hit.氏名; try{ localStorage.setItem("haichi_me", ME); }catch(e){} }
+    }
+  }
   if(!ME) setTimeout(mePicker, 600);       /* 初回だけ（表が出てから） */
 }
 /* ---- 見るだけ版：2本指で表だけを拡大縮小（上の帯は大きさを変えず上に止めておく。2026-10-14 ユーザー要望）----
