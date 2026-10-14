@@ -143,6 +143,9 @@ table.fl td.un { color: #c62828; cursor: pointer; }
 
 /* ---- 小窓 ---- */
 dialog { border: 1px solid #888; border-radius: 6px; padding: 0; min-width: 340px; max-width: 96vw; }
+/* 現場の設定は横に広がりすぎないように（2026-10-14 ユーザー指定） */
+#dSite { width: 760px; }
+#dSite .frm { grid-template-columns: 6.5em 1fr; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h3 { margin: 0; padding: 10px 16px; background: var(--head); color: #fff; font-size: 16px; cursor: move; user-select: none; touch-action: none; }
 dialog[style*="left"] { position: fixed; right: auto; bottom: auto; }

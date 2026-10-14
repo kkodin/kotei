@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全体工程表 使用方法</title>
+<!-- 使用方法（2026-10-14 ユーザー：説明は「使用方法」ボタンで別の窓に。パソコン用とスマホ用を分ける）。
+     #pc／#sp で開くほうを決める（app.js の bHelp は、指で操作する端末なら #sp） -->
+<style>
+  :root { --head: #1f4e79; --line: #d0d7de; --soft: #f6f8fa; --ink: #222; --sub: #555; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Yu Gothic UI", Meiryo, sans-serif; color: var(--ink); background: #fff; line-height: 1.7; font-size: 15px; }
+  .stick { position: sticky; top: 0; z-index: 2; }
+  header { background: var(--head); color: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs a { color: #fff; text-decoration: none; padding: 4px 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; font-size: 14px; }
+  .tabs a.on { background: #fff; color: var(--head); font-weight: bold; }
+  nav.toc { background: var(--soft); border-bottom: 1px solid var(--line); padding: 8px 16px; font-size: 14px; }
+  nav.toc a { color: var(--head); margin-right: 14px; white-space: nowrap; }
+  main { max-width: 820px; margin: 0 auto; padding: 8px 16px 40px; }
+  section.page { display: none; }
+  section.page.on { display: block; }
+  h2 { font-size: 17px; border-left: 5px solid var(--head); padding-left: 8px; margin: 26px 0 8px; }
+  h3 { font-size: 15px; margin: 16px 0 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); white-space: nowrap; width: 11em; }
+  ul { padding-left: 1.3em; margin: 4px 0; }
+  li { margin: 2px 0; }
+  kbd { border: 1px solid #aaa; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: 13px; background: #fff; font-family: inherit; }
+  .note { color: var(--sub); font-size: 13px; }
+  .box { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
+  .red { color: #c62828; font-weight: bold; }
+  @media (max-width: 560px) { th { width: 7.5em; white-space: normal; } body { font-size: 14px; } .stick { position: static; } }
+</style>
+</head>
+<body>
+<div class="stick">
+<header>
+  <h1>全体工程表 使用方法</h1>
+  <div class="tabs"><a href="#pc" id="tPc">パソコン</a><a href="#sp" id="tSp">スマホ・タブレット</a></div>
+</header>
+<nav class="toc">
+  <a href="#" data-go="see">画面の見方</a><a href="#" data-go="bar">工程（バー）</a><a href="#" data-go="site">現場の設定</a>
+  <a href="#" data-go="num">作業員の人数</a><a href="#" data-go="flow">人の流れ・一覧</a><a href="#" data-go="print">印刷・週間工程表</a><a href="#" data-go="faq">困ったとき</a>
+</nav>
+</div>
+<main>
+
+<!-- ============ パソコン ============ -->
+<section class="page" id="page-pc">
+  <h2 data-sec="see">画面の見方</h2>
+  <table>
+    <tr><th>工程表／人の流れ／一覧</th><td>上のボタンで切り替えます。</td></tr>
+    <tr><th>◀ 日付 ▶・○か月</th><td>表示する最初の日と期間。日付は好きな日にできます。◀▶ は1か月ずつ、「今日」で今日から。</td></tr>
+    <tr><th>並び</th><td>設定順・社内工事名・工事コード・開始日。自分の画面だけの並びです。</td></tr>
+    <tr><th>完了も出す</th><td>完了にした現場も表示します。</td></tr>
+    <tr><th>－ 100% ＋</th><td>表だけを拡大縮小。<kbd>Ctrl</kbd>＋ホイール、<kbd>Ctrl</kbd>＋<kbd>＋</kbd>／<kbd>－</kbd>／<kbd>0</kbd> でも。数字を押すと 100%。</td></tr>
+    <tr><th>↻ 最新にする</th><td>ほかの人の書き込みを読み直します（30秒ごとにも自動で読み直します）。</td></tr>
+    <tr><th>右上の版</th><td>いま開いている画面の版（例：Vr001 10/14 16:59）。</td></tr>
+  </table>
+  <h3>工程表の左</h3>
+  <ul>
+    <li>現場名の左の ▾／▸ で現場をたたむ・ひらく。左上の「全部たたむ／全部ひらく」も。</li>
+    <li>工種名の左の ▾ で工種を1つずつたたむ（細い1行に色の線だけ）。</li>
+    <li>現場名を押すと <b>現場の設定</b>。</li>
+    <li>日付の見出しを押すと、その日を<b>会社の休み</b>にする／戻す（全員共通。列全体に斜線）。</li>
+  </ul>
+
+  <h2 data-sec="bar">工程（バー）を書く・直す</h2>
+  <table>
+    <tr><th>新しいバー</th><td>工種の行の空いている所を横になぞる。</td></tr>
+    <tr><th>動かす</th><td>バーをつかんで横に動かす。</td></tr>
+    <tr><th>期間を延ばす・縮める</th><td>バーの左右の端をつかんで動かす。</td></tr>
+    <tr><th>中身を直す</th><td>バーを押す → 小窓（作業・期間・社員・作業員・色・メモ）。</td></tr>
+    <tr><th>右クリック</th><td>メニュー：直す／同じ期間で工種を足す／その日から工種を足す／休工日を設定／完了にしてたたむ／消す。</td></tr>
+  </table>
+  <h3>休工日</h3>
+  <ul>
+    <li>休みをはさむ工程も1本で書き、休みの日はバーの小窓の「<b>休工日を設定</b>」で抜きます（カレンダーで日を押すと休工、もう一度で戻る）。</li>
+    <li>バーの中で作業しない日は白く抜けて表示されます。</li>
+  </ul>
+  <h3>社員</h3>
+  <ul><li>1人1欄。候補から選ぶか、名字だけ打てばフルネームに直ります。「＋ 社員の欄を足す」で増やします。</li></ul>
+
+  <h2 data-sec="site">現場の設定</h2>
+  <table>
+    <tr><th>社内工事名 <span class="red">必須</span></th><td>社内での呼び名（略称）。工程表・人の流れに出ます。候補から選ぶとコード・担当・正式工事名・住所が入ります。</td></tr>
+    <tr><th>正式工事名</th><td>任意。週間工程表の「工事名」に出ます（空なら社内工事名）。</td></tr>
+    <tr><th>工期・住所</th><td>週間工程表に出ます。</td></tr>
+    <tr><th>地図</th><td>「画像ファイルを選ぶ」・小窓へ<b>ドラッグ＆ドロップ</b>・枠を押して <kbd>Ctrl</kbd>＋<kbd>V</kbd>。枠の中で画像をつかんで動かし、大きさはスライダーかホイール。「全体を入れる」「枠いっぱい」。枠の中が週間工程表（印刷・Excel）に出ます。</td></tr>
+    <tr><th>工種</th><td>区分（昼／夜）・作業名・<b>作業員（〇人＋〇人）</b>・作業する曜日（土日祝）・完了。▲▼で順番、✕で消す（その工種のバーも消えます）。</td></tr>
+    <tr><th>完了（現場）</th><td>終わった現場。工程表・一覧から隠れます（「完了も出す」で表示）。</td></tr>
+    <tr><th>並び ▲▼</th><td>「設定順」の並び（全員共通）を変えます。</td></tr>
+  </table>
+  <div class="box">完了でない工種が3つ以上あるときや、終わった工種があるときに「＋ 工種を足す」を押すと、古い工種を<b>たたむ／そのまま／消す</b>から選ぶ小窓が出ます。</div>
+
+  <h2 data-sec="num">作業員の人数</h2>
+  <ul>
+    <li>「<b>1+3</b>」のように＋で分けて入れられます（表示は「1名＋3名」）。全角で打っても直ります。</li>
+    <li><b>工種の人数</b>（現場の設定の工種の行）＝ふだんの人数。バーに人数を入れなければこの人数になります。</li>
+    <li><b>バーの人数</b>（バーの小窓の「作業員」）＝その工程だけの人数。空なら工種の人数が薄い字で見えます。</li>
+    <li><b>日ごとの人数</b>（バーの小窓の「日ごとの人数」）＝日によって違う日だけ入れます。空の日はふだんの人数。変えた日のあるバーは人数の後ろに「※」。</li>
+    <li>人の流れ・週間工程表の作業員は、その日の人数の合計です。</li>
+  </ul>
+
+  <h2 data-sec="flow">人の流れ・一覧</h2>
+  <ul>
+    <li><b>人の流れ</b>：工程表のバーから、社員がどの日にどの現場にいるか、作業員が日ごとに何人要るかを自動で出します。<span class="red">赤</span>＝同じ日に2つ以上の現場に入っている社員。マスを押すとその工程が開きます。</li>
+    <li><b>一覧</b>：バーを表で。「表示中の期間にかかるものだけ」と、現場・作業・社員で絞れます。行を押すとその工程が開きます。</li>
+  </ul>
+
+  <h2 data-sec="print">印刷・PDF・週間工程表</h2>
+  <ol>
+    <li>上の「印刷・PDF」→ 小窓で <b>形式</b>（工程表／週間工程表）・<b>期間</b>・<b>現場</b>・<b>用紙</b>（A3横／A4横）・<b>ページ分け</b>を選ぶ。</li>
+    <li>「印刷する」→ 印刷画面。PDF は送信先で「PDF に保存」。</li>
+  </ol>
+  <div class="box">プリンターで A3 に出すときは、印刷画面の「詳細設定 → 用紙サイズ」も <b>A3</b> にしてください（A4 のままだと縮んで出ます）。</div>
+  <ul>
+    <li><b>週間工程表</b>は現場ごとに1枚、開始日の週の<b>月曜</b>から。右に現場の地図が入ります。</li>
+    <li>「<b>Excel で出す</b>」：週間工程表を .xlsx で保存（現場ごとに1シート・31日分）。地図は AA〜AJ 列に入ります。色の文字（青・赤…）を選ぶと線の色、下の行の「休」を選ぶとその列が灰色になります。</li>
+    <li><kbd>Ctrl</kbd>＋<kbd>P</kbd> は画面のままの印刷です。</li>
+  </ul>
+
+  <h2 data-sec="faq">困ったとき</h2>
+  <table>
+    <tr><th>新しい機能が出ない</th><td>右上の版を確かめて、古ければ <kbd>Ctrl</kbd>＋<kbd>F5</kbd> で読み直してください。</td></tr>
+    <tr><th>保存されない・赤い表示</th><td>「↻ 最新にする」を押す。同じときにほかの人が直したときは、読み直して重ねて保存します。</td></tr>
+    <tr><th>見えない現場がある</th><td>「完了も出す」にチェック、または工程表の下の「完了した現場 n 件を隠しています」。</td></tr>
+    <tr><th>工種が見えない</th><td>完了にした工種は、現場の一番下の「▸ 完了 n工種」を押すと出ます。</td></tr>
+  </table>
+</section>
+
+<!-- ============ スマホ・タブレット ============ -->
+<section class="page" id="page-sp">
+  <div class="box">細かい直しはパソコンのほうが楽です。スマホは<b>見る・少し直す</b>向きです。横向きにすると見やすくなります。</div>
+
+  <h2 data-sec="see">画面の見方</h2>
+  <table>
+    <tr><th>画面を動かす</th><td><b>2本指</b>でスワイプ。現場名・日付の見出しの上なら1本指でも。</td></tr>
+    <tr><th>拡大縮小</th><td><b>2本指でピンチ</b>。上の「－ 100% ＋」でも（数字を押すと 100%）。</td></tr>
+    <tr><th>切り替え</th><td>上の「工程表／人の流れ／一覧」。期間は ◀ 日付 ▶ と「○か月」。</td></tr>
+    <tr><th>最新にする</th><td>「↻ 最新にする」でほかの人の書き込みを読み直します。</td></tr>
+  </table>
+
+  <h2 data-sec="bar">工程（バー）を書く・直す</h2>
+  <table>
+    <tr><th>選ぶ</th><td>バーを<b>タップ</b>（太枠と端に黒いつまみが出ます）。</td></tr>
+    <tr><th>動かす・延ばす</th><td>選んだバーを1本指で動かす。端のつまみで延ばす・縮める。<br><span class="note">選んでいないバーを動かそうとすると「先にタップして選ぶ」と出ます。</span></td></tr>
+    <tr><th>中身を直す</th><td>バーを<b>ダブルタップ</b> → 小窓。</td></tr>
+    <tr><th>新しいバー</th><td>空いている所を1本指でなぞる。空いている所をダブルタップでもその日のバー。</td></tr>
+    <tr><th>メニュー</th><td><b>長押し</b>（工種を足す・休工日・完了にしてたたむ・消す など）。</td></tr>
+    <tr><th>現場の設定</th><td>現場名をタップ。</td></tr>
+  </table>
+  <ul>
+    <li>休みをはさむ工程は1本で書き、バーの小窓の「休工日を設定」で日をタップして抜きます。</li>
+  </ul>
+
+  <h2 data-sec="site">現場の設定</h2>
+  <ul>
+    <li><b>社内工事名</b>（必須）＝社内での呼び名。<b>正式工事名</b>は任意（週間工程表に出ます）。</li>
+    <li>工種の行：区分（昼／夜）・作業名・<b>作業員（〇人＋〇人）</b>・作業する曜日・完了。</li>
+    <li>地図：「画像ファイルを選ぶ」で写真・画像を選び、枠の中を指で動かして位置を合わせ、スライダーで大きさ。</li>
+  </ul>
+
+  <h2 data-sec="num">作業員の人数</h2>
+  <ul>
+    <li>「1+3」のように＋で分けて入れられます（表示は「1名＋3名」）。</li>
+    <li>工種の人数＝ふだん。バーの人数＝その工程だけ。「日ごとの人数」＝違う日だけ。変えた日のあるバーは「※」。</li>
+  </ul>
+
+  <h2 data-sec="flow">人の流れ・一覧</h2>
+  <ul>
+    <li>人の流れ：社員の行き先と作業員の日ごとの人数。<span class="red">赤</span>＝同じ日に2現場。マスをタップでその工程。</li>
+    <li>一覧：バーを表で。上の欄で絞れます。</li>
+  </ul>
+
+  <h2 data-sec="print">印刷・週間工程表</h2>
+  <ul>
+    <li>「印刷・PDF」から出せますが、用紙の設定や Excel はパソコンで行うのがおすすめです。</li>
+  </ul>
+
+  <h2 data-sec="faq">困ったとき</h2>
+  <table>
+    <tr><th>新しい機能が出ない</th><td>右上の版を確かめ、古ければページを読み直す（ブラウザの再読み込み）。</td></tr>
+    <tr><th>タップで小窓が開いてしまう</th><td>画面を動かすときは<b>2本指</b>で。</td></tr>
+    <tr><th>見えない現場・工種</th><td>「完了も出す」、または現場の下の「▸ 完了 n工種」。</td></tr>
+  </table>
+</section>
+</main>
+<script>
+  const show = () => {
+    const sp = location.hash === "#sp";
+    document.getElementById("page-pc").classList.toggle("on", !sp);
+    document.getElementById("page-sp").classList.toggle("on", sp);
+    document.getElementById("tPc").classList.toggle("on", !sp);
+    document.getElementById("tSp").classList.toggle("on", sp);
+    scrollTo(0, 0);
+  };
+  addEventListener("hashchange", show);
+  show();
+  // 目次：いま開いているほうの見出しへ
+  document.querySelector("nav.toc").addEventListener("click", e => {
+    const a = e.target.closest("a[data-go]");
+    if (!a) return;
+    e.preventDefault();
+    const h = document.querySelector("section.page.on [data-sec='" + a.dataset.go + "']");
+    if (h) { const y = h.getBoundingClientRect().top + scrollY - document.querySelector(".stick").offsetHeight - 8; scrollTo({ top: y, behavior: "smooth" }); }
+  });
+</script>
+</body>
+</html>

@@ -1200,6 +1200,12 @@ function openSite(id) {
   openDlg($("dSite"));
   if (!s) $("sName").focus();
 }
+// 使用方法は別の窓（2026-10-14 ユーザー：説明の帯をやめて場所を空ける。パソコン用とスマホ用を分ける）
+$("bHelp").onclick = () => {
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const w = window.open("help.html?v=" + encodeURIComponent($("ver").textContent) + (touch ? "#sp" : "#pc"), "kotei_help", touch ? "" : "width=820,height=900");
+  if (w) w.focus();
+};
 $("sLanes").addEventListener("input", e => { if (e.target.classList.contains("hn")) { const t = toHalf(e.target.value).replace(/[^\d]/g, ""); if (t !== e.target.value) e.target.value = t; } });
 $("sLanes").addEventListener("click", e => {
   const row = e.target.closest(".ln");
