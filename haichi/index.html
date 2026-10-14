@@ -194,6 +194,12 @@ body.viewer .bar b{font-size:15px}
 /* スマホのブラウザが細いマスの字を勝手に大きくして はみ出すのを止める（2026-10-14 スマホで字が切れた） */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body.viewer .where{display:none!important}
+/* 見るだけ版：コードの列（幅 0）の中身と線を消す。コードは現場名の上に小さく（td.hascode .code） */
+body.viewer table.xl td.ccode,body.viewer table.xl td[data-k="現場コード"]{padding:0;border-left:0;border-right:0;font-size:0;color:transparent}
+body.viewer table.xl td.hascode .code{font-size:10px}
+/* 見るだけ版：収まらない字はマスの中で折り返し、行を高くする（字を小さくする xs・xxs はやめる） */
+body.viewer table.xl td{white-space:normal;overflow-wrap:anywhere;line-height:1.25;padding-top:2px;padding-bottom:2px}
+body.viewer table.xl td.sm,body.viewer table.xl td.xs,body.viewer table.xl td.xxs{font-size:13px;letter-spacing:0}
 body.viewer .bar{position:sticky;top:0;z-index:30}
 body.viewer #sheetbox{touch-action:pan-x pan-y}
 /* 自分の名前（初回に選ぶ）を表の中で目立たせる */
@@ -940,7 +946,7 @@ table.btns td:first-child{white-space:nowrap;width:1%}
 /* 見るだけ版（閲覧版。008.0016・2026-10-14 ユーザー要望：スマホ・タブレットでは確認だけ）。
    tools/build_viewer.py が window.HAICHI_VIEWER（データの読み方）を入れて作る。入力用の画面では false */
 var VIEWER = !!window.HAICHI_VIEWER;
-var VZ = 1;            /* 見るだけ版：2本指で拡大した倍率（画面の幅に合わせた大きさを 1 とする） */
+var VZ = 1, VZ_MIN = .2;   /* 見るだけ版：表の倍率（1＝パソコンと同じ大きさ）。VZ_MIN＝画面の幅に収まる倍率（fitSheet が出す） */
 /* =====================================================================
    配置表 入力 Vr002（6人目からの行は現場名を空白・本社内勤欄の枠・入力チェック・名簿をExcel風に）
    ── 以下は Vr001 の説明
@@ -1821,11 +1827,13 @@ function cell(o){
   var shown = o.show != null ? o.show : v;        /* 休みの「名前（理由）」は名前だけを名前として出す */
   var inner = o.html != null ? o.html : esc(shown);
   /* 現場名の上に小さく現場コード（工事部会資料。画面だけ・Excelには書かない） */
-  if(false && o.k === "現場名" && v && (o.kind === "site" || o.kind === "sub")){   /* Vr007 から現場コードは列に出す */
-    var mi = siteInfo(v);
-    if(mi && mi.現場コード){
+  /* Vr007 から現場コードは列に出す。見るだけ版だけは コードの列をなくして 現場名の上に小さく書く（2026-10-14 ユーザー要望：
+     スマホで現場名の列を広げたい） */
+  if(VIEWER && o.k === "現場名" && v && (o.kind === "site" || o.kind === "sub")){
+    var vcode = getVal(o.kind, o.i, "現場コード");
+    if(vcode){
       cls += " hascode";
-      inner = '<span class="code">' + esc(mi.現場コード) + "</span>" + esc(v);
+      inner = '<span class="code">' + esc(vcode) + "</span>" + esc(v);
     }
   }
   if(o.name && v && o.from)
@@ -1855,7 +1863,9 @@ function render(){
   /* 黄色のマス。まだ決めていないものは点滅（008.0009） */
   var yc = function(on, pend){ return on && Y ? (pend ? " yblink" : " yellow") : ""; };
   var h = ["<colgroup>"];
-  for(var c = 0; c < 16; c++) h.push('<col style="width:var(--colW)">');
+  for(var c = 0; c < 16; c++)
+    /* 見るだけ版はコードの列（C）を幅 0 にし、その分を現場名（B）へ（表の幅は同じ） */
+    h.push(VIEWER && c === 1 ? '<col style="width:calc(var(--colW) * 2)">' : VIEWER && c === 2 ? '<col style="width:0">' : '<col style="width:var(--colW)">');
   h.push("</colgroup>");
 
   /* ---- 1行目 表題と日付 ---- */
@@ -1864,7 +1874,7 @@ function render(){
     "</td></tr>");
   /* ---- 2行目 見出し ---- */
   /* Vr007（2026-10-06 ユーザー要望）: 現場名の右に「現場コード」の列。作業内容を1列狭くして16列のまま */
-  h.push("<tr>" + plain(2, "h", "現場名") + plain(1, "h", "コード") + plain(1, "h", "元請け") +
+  h.push("<tr>" + plain(2, "h", "現場名") + plain(1, "h ccode", "コード") + plain(1, "h", "元請け") +
     plain(1, "h", "担当") + plain(1, "h", ""));
   for(var n = 1; n <= 10; n++) h.push(plain(1, "h", String(n)));
   h.push("</tr>");
@@ -1938,7 +1948,7 @@ function render(){
   }
 
   /* ---- 25行目 【外注】見出し（様式として黄色） ---- */
-  h.push('<tr class="tt">' + plain(2, "h yellow", "【外注】　現　場　名") + plain(1, "h yellow", "コード") +
+  h.push('<tr class="tt">' + plain(2, "h yellow", "【外注】　現　場　名") + plain(1, "h yellow ccode", "コード") +
     plain(1, "h yellow", "担　当") + plain(1, "h yellow", "昼・夜") +
     plain(2, "h yellow", "外　注　業　者") + plain(1, "h yellow", "員　数") +
     plain(8, "h yellow", "作　業　内　容") + "</tr>");
@@ -2026,9 +2036,11 @@ function fitSheet(){
   if(!box || !t) return;
   var avail = VIEWER ? box.clientWidth - 10 : box.clientWidth - 22 - RC_W, full = t.offsetWidth;
   if(VIEWER){
-    /* 見るだけ版：まず画面の幅に合わせ、そこから 2本指で拡大した分（VZ）を掛ける。幅は倍率をはずして測る */
+    /* 見るだけ版：倍率 VZ（はじめは 1＝パソコンと同じ大きさ。字がマスに収まる）。画面からはみ出たら指で動かして見る。
+       2本指で縮めるのは画面の幅まで、広げるのは 2倍まで（2026-10-14 ユーザー：全体を縮めると字が収まらない）。幅は倍率をはずして測る */
     var z0 = t.style.zoom; t.style.zoom = ""; full = t.offsetWidth; t.style.zoom = z0;
-    var zv = Math.min(1, avail / full) * VZ;
+    VZ_MIN = Math.min(1, avail / full);
+    var zv = Math.min(2, Math.max(VZ_MIN, VZ));
     t.style.zoom = String(zv);
     t.style.setProperty("--bw", zv >= 1 ? "1px" : (1 / zv).toFixed(3) + "px");
     return;
@@ -6532,15 +6544,20 @@ function viewerMe(){
   $("#sheetbox").parentNode.insertBefore(bar, $("#sheetbox"));
   bar.addEventListener("click", function(e){ if(e.target.dataset && e.target.dataset.me === "pick") mePicker(); });
   /* 描くたびに目立たせ直す */
-  var r0 = render;
-  render = function(){ r0.apply(this, arguments); meMark(); };
+  var r0 = render, seen = "";
+  render = function(){
+    r0.apply(this, arguments); meMark();
+    /* 日を開いたとき（予定／確定を替えたときも）1回だけ、自分のマスが見えるところまで動かす */
+    var key = (D && D.日付) + MODE, td = document.querySelector("#sheet td.me");
+    if(td && key !== seen){ seen = key; setTimeout(function(){ td.scrollIntoView({block: "center", inline: "center"}); }, 50); }
+  };
   if(!ME) setTimeout(mePicker, 600);       /* 初回だけ（表が出てから） */
 }
 /* ---- 見るだけ版：2本指で表だけを拡大縮小（上の帯は大きさを変えず上に止めておく。2026-10-14 ユーザー要望）----
    ページそのものの拡大は止め（viewport の user-scalable=no・iOS は gesturestart を止める）、表の倍率 VZ を変える。
    1本指はふつうのスクロール（横は表の枠、縦はページ） */
 function viewerPinch(){
-  try{ VZ = Math.min(6, Math.max(1, +localStorage.getItem("haichi_vz") || 1)); }catch(e){}
+  try{ VZ = Math.min(2, Math.max(.1, +localStorage.getItem("haichi_zoom") || 1)); }catch(e){}
   var sb = $("#sheetbox"), g = null;
   var dist = function(t){ return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); };
   document.addEventListener("gesturestart", function(e){ e.preventDefault(); });
@@ -6548,12 +6565,12 @@ function viewerPinch(){
     if(e.touches.length !== 2) return;
     var t = $("#sheet"), r = t.getBoundingClientRect(), z = parseFloat(t.style.zoom) || 1;
     var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-    g = {d0: dist(e.touches), vz0: VZ, cx: (mx - r.left) / z, cy: (my - r.top) / z, mx: mx, my: my};
+    g = {d0: dist(e.touches), vz0: z, cx: (mx - r.left) / z, cy: (my - r.top) / z, mx: mx, my: my};
   }, {passive: true});
   sb.addEventListener("touchmove", function(e){
     if(!g || e.touches.length !== 2) return;
     e.preventDefault();
-    VZ = Math.min(6, Math.max(1, g.vz0 * dist(e.touches) / g.d0));
+    VZ = Math.min(2, Math.max(VZ_MIN, g.vz0 * dist(e.touches) / g.d0));
     fitSheet();
     /* 指の間の点が同じところに来るよう、横は表の枠、縦はページを動かす */
     var t = $("#sheet"), r = t.getBoundingClientRect(), z = parseFloat(t.style.zoom) || 1;
@@ -6563,7 +6580,7 @@ function viewerPinch(){
   sb.addEventListener("touchend", function(e){
     if(!g || e.touches.length >= 2) return;
     g = null;
-    try{ localStorage.setItem("haichi_vz", VZ); }catch(err){}
+    try{ localStorage.setItem("haichi_zoom", VZ); }catch(err){}
   });
 }
 if(VIEWER){
