@@ -1049,7 +1049,25 @@ function openDlg(d) {
   // 指の端末では、開いたときに入力欄へ移らない（候補の一覧が開き、キーボードも出てしまう。2026-10-14 ユーザー指定）
   if (IS_TOUCH() && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
 }
-const IS_TOUCH = () => matchMedia("(pointer: coarse)").matches;
+// 指の端末（タブレット・スマホ。ペンや指も使えるパソコンも含める）
+const IS_TOUCH = () => matchMedia("(any-pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+/* 小窓の見出しの帯（2026-10-14 ユーザー：タブレットで 保存・やめる がスクロールしないと出ない → 見出しを上に止めて、そこにボタン）
+   .btns の右側（.sp より後ろ）のボタンを見出しの帯へ移す。左側（削除・取り消しなど）は下に残す。
+   見出しに tabindex・autofocus を付け、開いたときに入力欄へ移らないようにする（キーボード・候補の一覧が出ないように） */
+document.querySelectorAll("dialog").forEach(d => {
+  const h3 = d.querySelector("h3"), btns = d.querySelector(".btns");
+  if (!h3) return;
+  const head = document.createElement("div");
+  head.className = "dhead";
+  h3.parentNode.insertBefore(head, h3); head.appendChild(h3);
+  h3.tabIndex = -1; h3.autofocus = true;
+  if (!btns) return;
+  const sp = btns.querySelector(".sp"), right = document.createElement("span");
+  right.className = "dbtns";
+  for (let n = sp ? sp.nextElementSibling : null; n;) { const nx = n.nextElementSibling; right.appendChild(n); n = nx; }
+  head.appendChild(right);
+  if (![...btns.children].some(c => c !== sp)) btns.remove();
+});
 document.querySelectorAll("dialog h3").forEach(h3 => {
   h3.addEventListener("pointerdown", e => {
     if (e.button !== 0) return;
