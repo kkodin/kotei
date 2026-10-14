@@ -515,6 +515,7 @@ function renderChart() {
   if (hidden) h.push(`<div class="addsite note">完了した現場 ${hidden} 件を隠しています（上の「完了も出す」で表示）</div>`);
   $("chart").innerHTML = h.join("");
   fitLaneWidth();
+  calibrateLeft();
   $("bAddSite").onclick = () => openSite(null);
 }
 
@@ -1676,8 +1677,36 @@ const scroller = () => S.tab === "chart" ? $("wrap") : S.tab === "flow" ? $("flo
 function applyZoom() {
   document.documentElement.style.setProperty("--z", ZOOM);
   // 拡大したときも現場名・工種名の列は広げない（2026-10-14 ユーザー指定）：左の列だけ 1/倍率 をかけて、見た目を 100% のままにする。縮小のときは一緒に縮む
-  document.documentElement.style.setProperty("--lz", ZOOM > 1 ? 1 / ZOOM : 1);
+  // 同日 ユーザー：字は小さくしない → 左の列は 倍率の平方根 だけ大きくする（200% で約 1.4 倍。幅も字も）
+  document.documentElement.style.setProperty("--lz", leftScale() / ZOOM);
+  document.documentElement.style.setProperty("--lfz", leftScale() / ZOOM);
   $("bZoom").textContent = Math.round(ZOOM * 100) + "%";
+  calibrateLeft();
+}
+/* 左の列の打ち消しを、実際に表示された大きさで合わせる（2026-10-14 ユーザー：タブレットでは拡大するほど字が小さくなった）。
+   CSS の zoom の効き方はブラウザ（版）で違い、字の大きさに 1/倍率 が二重に効くことがある。
+   #chart の中に 幅 100px・字 100px の見本を置いて実際の大きさを測り、見た目が 100px × leftScale() になるよう --lz（幅）・--lfz（字）を2回まで直す。
+   縮小のとき（倍率 1 以下）は打ち消さない */
+const leftScale = () => ZOOM > 1 ? Math.sqrt(ZOOM) : ZOOM;   // 左の列の見た目の倍率
+function calibrateLeft() {
+  const chart = $("chart"), root = document.documentElement.style, T = leftScale();
+  if (!chart || ZOOM <= 1) { root.setProperty("--lz", 1); root.setProperty("--lfz", 1); return; }
+  const p = document.createElement("div");
+  p.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;width:calc(100px * var(--lz, 1));height:10px";
+  const f = document.createElement("span");
+  f.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;font-size:calc(100px * var(--lfz, 1));line-height:1;white-space:nowrap;font-family:monospace";
+  f.textContent = "0";
+  chart.append(p, f);
+  const f0 = (() => { const t = document.createElement("span"); t.style.cssText = "position:absolute;visibility:hidden;font-size:100px;line-height:1;font-family:monospace"; t.textContent = "0"; document.body.append(t); const h = t.getBoundingClientRect().height; t.remove(); return h; })();
+  for (let i = 0; i < 2; i++) {
+    const w = p.getBoundingClientRect().width, h = f.getBoundingClientRect().height;
+    if (!w || !h || !f0) break;   // 工程表が隠れている（ほかのタブ）
+    const lz = +getComputedStyle(document.documentElement).getPropertyValue("--lz") || 1;
+    const lfz = +getComputedStyle(document.documentElement).getPropertyValue("--lfz") || 1;
+    if (Math.abs(w - 100 * T) > 0.5) root.setProperty("--lz", lz * 100 * T / w);
+    if (Math.abs(h - f0 * T) > 0.5) root.setProperty("--lfz", lfz * f0 * T / h);
+  }
+  p.remove(); f.remove();
 }
 // ax, ay：画面上でこの点が動かないように拡大する（指やマウスの位置）。省けば表示の左上
 function setZoom(z, ax, ay) {
@@ -1893,7 +1922,7 @@ function preparePrint() {
   setPageStyle();
   const size = $("inPaper").value || "A3";
   const [w, h] = PAPER[size];
-  root.setProperty("--z", 1); root.setProperty("--lz", 1);
+  root.setProperty("--z", 1); root.setProperty("--lz", 1); root.setProperty("--lfz", 1);
   const W = ((w - PAGE_MM * 2) * 96 / 25.4) * 0.985;          // 用紙の中の幅（px）。少し控える
   const H = ((h - PAGE_MM * 2) * 96 / 25.4 - 30) * 0.97;      // 上の題の行の分を引き、少し控える（はみ出して2ページになるのを防ぐ）
   const view = range();
