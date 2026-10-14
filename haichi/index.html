@@ -184,7 +184,7 @@ body.protect .editonly{display:none!important}
 /* 見るだけ版（閲覧版。008.0016）：日付・◀▶・予定／確定 だけ。直す・保存する・名簿・バックアップは出さない */
 body.viewer .pal,body.viewer .bar.noprint,body.viewer #keepBar,body.viewer #viewBar,body.viewer #yBar,
 body.viewer #warn,body.viewer #selInfo,body.viewer #rowCtl,body.viewer #btnVer,body.viewer #btnProt,
-body.viewer #btnView,body.viewer #btnXlsx,body.viewer #btnOut,body.viewer #btnPrint,body.viewer .nov,
+body.viewer #btnView,body.viewer #btnXlsx,body.viewer #btnOut,body.viewer #btnPrint,body.viewer #btnLine,body.viewer .nov,
 body.viewer .bar > span:not(.spacer){display:none!important}
 body.viewer .wrap{padding:6px}
 body.viewer .sheetbox{padding:4px;overflow:auto}
@@ -385,12 +385,19 @@ window.HAICHI_VIEWER = {
     await this.msal.initialize();
     var r = await this.msal.handleRedirectPromise();
     if(r) this.msal.setActiveAccount(r.account);
+    /* サインインから戻ると ?d=…（LINE のリンクの日付）が消えるので、出る前に覚えたものを戻す */
+    var keep = null;
+    try{ keep = sessionStorage.getItem("haichi_q"); sessionStorage.removeItem("haichi_q"); }catch(e){}
+    if(keep && !location.search) history.replaceState(null, "", location.pathname + keep);
     var acc = this.msal.getActiveAccount() || this.msal.getAllAccounts()[0];
     if(!acc) return false;
     this.msal.setActiveAccount(acc);
     return true;
   },
-  login: function(){ this.msal.loginRedirect({scopes: this.scopes}); },
+  login: function(){
+    try{ if(location.search) sessionStorage.setItem("haichi_q", location.search); }catch(e){}
+    this.msal.loginRedirect({scopes: this.scopes});
+  },
   token: async function(){
     try{ return (await this.msal.acquireTokenSilent({scopes: this.scopes})).accessToken; }
     catch(e){ if(e instanceof msal.InteractionRequiredAuthError) await this.msal.acquireTokenRedirect({scopes: this.scopes}); throw e; }
@@ -432,6 +439,8 @@ window.HAICHI_VIEWER = {
   <button class="btn" id="btnXlsx" title="いまある配置表（Excel）を開く。前日の続きから作るときはこれ。フォルダから一括で「保存した日」に入れることもできる">Excelを読み込む</button>
   <button class="btn main" id="btnOut" title="この日の配置表をExcel（9月26日.xlsx の形）で保存する。保存先を選べる（NASの配置予定表／配置確定へ直接置ける）">Excelに出力</button>
   <button class="btn" id="btnPrint" title="A4横1枚で印刷する。PDFにするときのファイル名は「人員配置予定表_9月26日」になる">印刷</button>
+  <button class="btn" id="btnLine" hidden title="この日の予定ができたことを、LINE のグループに知らせる（見るだけ版のリンク付き）"
+    style="background:#06C755;border-color:#06C755;color:#fff;font-weight:600">LINE で知らせる</button>
 </div>
 <div class="bar noprint" style="top:45px;padding-top:5px;padding-bottom:5px">
   <span class="undogrp editonly">
@@ -2119,6 +2128,51 @@ function fitProblems(data){
 }
 
 function toast(m){ $("#state").textContent = m; }
+
+/* ---- LINE で知らせる（008.0017・2026-10-14 ユーザー要望）----
+   いまは翌日の予定を PDF にして LINE のグループ「ハシックス」に上げている。それをやめ、
+   見るだけ版のリンク（その日を直接開く ?d=…&k=予定）を送る。LINE には本人に代わってグループへ送る仕組みが無いので、
+   LINE の「送る」画面（social-plugins.line.me/lineit/share。url と text を入れられる）を開き、送り先と送信は本人が選ぶ。
+   念のため 同じ文をクリップボードにも入れる（画面に文が入らなかったときは Ctrl+V で貼る） */
+var VIEW_URL = "https://kkodin.github.io/kotei/haichi/";
+function lineText(iso){
+  var p = String(iso).split("-");
+  return (+p[1]) + "月" + (+p[2]) + "日（" + dowOf(iso) + "）の配置予定表を更新しました。";
+}
+function lineLink(iso){ return VIEW_URL + "?d=" + iso + "&k=" + encodeURIComponent("予定"); }
+function openLineDialog(){
+  if(!D || !D.日付){ toast("日付のある表を開いてから押してください"); return; }
+  if(MODE !== "予定"){ toast("LINE で知らせるのは予定だけです"); return; }
+  var iso = D.日付, text = lineText(iso), link = lineLink(iso), all = text + "\n" + link;
+  var dlg = document.createElement("div");
+  dlg.className = "mdlg";
+  dlg.innerHTML = '<div class="mbox" style="width:min(600px,96vw)"><h2>LINE で知らせる</h2>' +
+    '<div class="mbody" style="font-size:15px;line-height:1.9;padding:12px 16px">' +
+    "次の文を LINE のグループに送ります。" +
+    '<div style="background:#f1f8e9;border:1px solid #c5e1a5;padding:8px 10px;margin:6px 0;white-space:pre-wrap;word-break:break-all">' + esc(all) + "</div>" +
+    '<ol style="margin:6px 0 6px 1.2em;padding:0"><li>下の「LINE の送る画面を開く」を押す</li>' +
+    "<li>送り先に <b>ハシックス</b> を選ぶ</li><li>「送信」を押す</li></ol>" +
+    '<div style="font-size:13px;color:#555">文はコピーもしてあります。開いた画面に文が入っていなければ、Ctrl＋V で貼ってください。' +
+    "<br>見るだけ版に出るのは、この日の Excel が NAS に置かれて、配置表データが作り直されたあとです。</div>" +
+    '<div style="text-align:right;margin-top:10px"><button class="btn main" data-a="open" style="background:#06C755;border-color:#06C755;font-size:15px;padding:6px 16px">LINE の送る画面を開く</button> ' +
+    '<button class="btn" data-a="copy">文だけコピー</button> <button class="btn" data-a="close">閉じる</button></div></div></div>';
+  document.body.appendChild(dlg);
+  var copy = function(){
+    return (navigator.clipboard ? navigator.clipboard.writeText(all) : Promise.reject()).then(function(){ toast("LINE に送る文をコピーしました"); })
+      .catch(function(){ prompt("この文をコピーしてください", all); });
+  };
+  dlg.addEventListener("click", function(e){
+    var t = e.target.closest ? e.target.closest("button") : null;
+    if(e.target === dlg || (t && t.dataset.a === "close")){ dlg.remove(); return; }
+    if(t && t.dataset.a === "copy") copy();
+    if(t && t.dataset.a === "open"){
+      /* 開くのはボタンを押した直後（先に待つものを挟むと、ブラウザが新しい窓を止める） */
+      window.open("https://social-plugins.line.me/lineit/share?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text),
+        "haichi_line", "width=560,height=720");
+      copy();
+    }
+  });
+}
 
 /* =====================================================================
    セルの選択（Excelと同じ感覚）
@@ -4874,8 +4928,10 @@ function downloadText(name, text){
    版は「VrNNN の番号.直した回数」。版（フォルダ）を切らない軽い直しは 008.0001, 008.0002 … と下を進める。
    直したら APP_VER と HISTORY の先頭を必ず書き足すこと（README の版の履歴とそろえる）
    ===================================================================== */
-var APP_VER = "008.0016";
+var APP_VER = "008.0017";
 var HISTORY = [
+  {v: "008.0017", d: "2026-10-14", t: [
+    "予定の表のとき、上に緑の「LINE で知らせる」ボタンを出しました。押すと送る文（日付と、スマホで見られるリンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）"]},
   {v: "008.0016", d: "2026-10-14", t: [
     "スマホ・タブレットで配置表を見るための「見るだけ版」の準備をしました。この入力の画面の使い方は変わりません"]},
   {v: "008.0015", d: "2026-10-13", t: [
@@ -5048,6 +5104,7 @@ $("#btnBackup").onclick = function(){ askBackup("button"); };
 $("#btnRestore").onclick = restoreDays;
 $("#btnXlsx").onclick = openXlsxMenu;
 $("#btnOut").onclick = exportXlsx;
+$("#btnLine").onclick = openLineDialog;
 $("#yAllOn").onclick = function(){ yDecideAll(true); };
 $("#yAllOff").onclick = function(){ yDecideAll(false); };
 $("#btnUndo").onclick = undo;
@@ -5560,6 +5617,8 @@ function updateProtUI(){
   b.innerHTML = PROT || view ? "🔒 保護中（見るだけ）" : "✏ 編集中";
   b.title = PROT || view ? "押すと、カレンダーで日を選んで 作る・直す・削除 ができます" : "押すと保護（見るだけ）に戻します";
   $("#dayBtn").textContent = "📅 " + fmtDayBtn(D && D.日付);
+  var bl = $("#btnLine");
+  if(bl) bl.hidden = VIEWER || MODE !== "予定";      /* LINE で知らせるのは予定だけ（2026-10-14 ユーザー指定） */
 }
 /* 「配置表を見る」の閲覧を、もとの画面に戻さずに抜ける（その日を写して新しい日を作るとき） */
 function leaveView(){
@@ -6244,7 +6303,17 @@ if(VIEWER){
   vh.textContent = "📱 横向きにする・指で広げると大きく見えます。日付を押すとカレンダーで日を選べます。";
   $("#sheetbox").parentNode.insertBefore(vh, $("#sheetbox"));
   setProtect(true);
-  openStartDay();
+  /* LINE で送ったリンク（?d=2026-10-15&k=予定）なら その日を開く。まだ届いていなければ知らせて いちばん新しい日 */
+  var q = new URLSearchParams(location.search), qd = q.get("d") || "", qk = q.get("k") === "確定" ? "確定" : "予定";
+  if(/^\d{4}-\d\d-\d\d$/.test(qd)){
+    vIndex().catch(function(){}).then(function(){ return nasLoad(qk, qd.slice(0, 4)); }).then(function(){
+      var nm = nasMap(qk, qd.slice(0, 4));
+      if(nm[qd]){ openNas(qd, qk, nm[qd], true); return; }
+      vh.textContent = "⚠ " + fmtDayBtn(qd) + " の" + qk + "は、まだここに届いていません。しばらくしてから開き直してください（いまは いちばん新しい日を出しています）。";
+      vh.style.cssText = "display:block;color:#b00020;font-weight:600";
+      return openStartDay();
+    }).catch(function(){ openStartDay(); });
+  }else openStartDay();
 }else{
   setProtect(true);
   openStartDay();
