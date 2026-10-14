@@ -921,9 +921,54 @@ document.addEventListener("keydown", e => {
   const list = [...d.querySelectorAll(TYPE_FIELDS)].filter(x => !x.disabled && !x.readOnly && x.offsetParent !== null && x.getClientRects().length);
   const next = list[list.indexOf(t) + 1];
   if (!next) { t.blur(); return; }
+  kpadPrep(next);
   next.focus();
   // 数字の欄は中身を選んでおく（すぐ打ち直せる）
-  if (/^(numeric|tel|decimal)$/.test(next.inputMode) && next.value) { try { next.select(); } catch (x) { } }
+  if ((/^(numeric|tel|decimal)$/.test(next.inputMode) || next.matches(KPAD_SEL)) && next.value) { try { next.select(); } catch (x) { } }
+});
+
+/* 人数のテンキー（2026-10-14 ユーザー：タブレットで作業員の欄に 数字と＋ の電卓式テンキーを）
+   端末のキーボードでは「数字と＋だけ」を出せない機種がある（Android の数字キーボードに＋が無い）ので、アプリの中にテンキーを出す。
+   指の端末だけ。欄は inputmode="none"（端末のキーボードを出さない）にして、触る前（pointerdown）・Enter で進む前に切り替える。
+   テンキーは開いている小窓の中へ移して出す（モーダルの外の要素は押せないため）。押しても欄からフォーカスが外れないよう pointerdown を止める */
+const KPAD_SEL = "#bNum, #headBody input[data-k], #sLanes input.hn";
+function kpadPrep(el) { if (el && el.matches && el.matches(KPAD_SEL) && IS_TOUCH()) el.inputMode = "none"; }
+document.addEventListener("pointerdown", e => kpadPrep(e.target), true);
+const kpad = document.createElement("div");
+kpad.id = "kpad"; kpad.hidden = true;
+kpad.innerHTML = ["7", "8", "9", "⌫", "4", "5", "6", "C", "1", "2", "3", "+", "0", "次へ", "閉じる"]
+  .map(k => `<button type="button" data-k="${k}" class="${k === "0" ? "k0" : ""} ${/^(⌫|C)$/.test(k) ? "kfn" : ""} ${k === "+" ? "kplus" : ""} ${k === "次へ" ? "knext" : ""} ${k === "閉じる" ? "kclose" : ""}">${k}</button>`).join("");
+let kpadEl = null;
+function kpadShow(el) {
+  kpadEl = el;
+  const d = el.closest("dialog");
+  if (kpad.parentNode !== d) d.appendChild(kpad);
+  kpad.querySelector(".kplus").disabled = el.classList.contains("hn");   // 工種の人数は欄が2つに分かれているので＋は使わない
+  kpad.hidden = false;
+  // 電卓のように後ろへ打ち足す（全部選んである＝Enter で来たときは、そのまま打ち直し）
+  setTimeout(() => { if (kpadEl === el && !(el.selectionStart === 0 && el.selectionEnd === el.value.length && el.value)) try { el.setSelectionRange(el.value.length, el.value.length); } catch (x) { } }, 0);
+  // 欄がテンキーに隠れないように
+  setTimeout(() => { const r = el.getBoundingClientRect(), k = kpad.getBoundingClientRect(); if (r.bottom > k.top - 8) el.scrollIntoView({ block: "center" }); }, 0);
+}
+function kpadHide() { kpad.hidden = true; kpadEl = null; }
+document.addEventListener("focusin", e => { if (e.target.matches && e.target.matches(KPAD_SEL) && IS_TOUCH()) kpadShow(e.target); else if (!kpad.contains(e.target)) kpadHide(); });
+document.addEventListener("focusout", () => setTimeout(() => { const a = document.activeElement; if (!a || !a.matches || !a.matches(KPAD_SEL)) kpadHide(); }, 0));
+document.addEventListener("close", e => { if (kpad.parentNode === e.target) kpadHide(); }, true);
+kpad.addEventListener("pointerdown", e => e.preventDefault());   // 欄のフォーカスを保つ
+kpad.addEventListener("click", e => {
+  const b = e.target.closest("button[data-k]"), el = kpadEl;
+  if (!b || !el) return;
+  const k = b.dataset.k;
+  if (k === "閉じる") { el.blur(); kpadHide(); return; }
+  if (k === "次へ") { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); return; }
+  const v = el.value, a = el.selectionStart ?? v.length, z = el.selectionEnd ?? v.length;
+  let nv, pos;
+  if (k === "C") { nv = ""; pos = 0; }
+  else if (k === "⌫") { const s = a === z ? Math.max(0, a - 1) : a; nv = v.slice(0, s) + v.slice(z); pos = s; }
+  else { nv = v.slice(0, a) + k + v.slice(z); pos = a + 1; }
+  el.value = nv;
+  try { el.setSelectionRange(pos, pos); } catch (x) { }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 });
 $("wrap").addEventListener("scroll", hideCtx);
 $("wrap").addEventListener("click", e => {

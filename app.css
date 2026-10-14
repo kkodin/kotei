@@ -384,3 +384,15 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .lane.lfold .llab:hover { color: var(--head); }
 .lane.lfold .track { cursor: pointer; }
 .lfbar { position: absolute; top: 6px; height: 4px; border-radius: 2px; }
+
+/* 人数のテンキー（2026-10-14 ユーザー：タブレットで 数字と＋ の電卓式。app.js が開いている小窓の中へ移して出す） */
+#kpad { position: fixed; right: 10px; bottom: 10px; z-index: 50; display: grid; grid-template-columns: repeat(4, 64px); gap: 6px; padding: 8px;
+  background: #e9edf2; border: 1px solid #9aa3ad; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.3); touch-action: manipulation; user-select: none; }
+#kpad[hidden] { display: none; }
+#kpad button { height: 52px; padding: 0; font-size: 22px; background: #fff; color: #222; border: 1px solid #b8c0ca; border-radius: 6px; }
+#kpad button:active { background: #d6e4f2; }
+#kpad .kfn { background: #f3f4f6; font-size: 20px; }
+#kpad .kplus { background: #fff4d6; font-weight: bold; font-size: 26px; }
+#kpad .knext { grid-column: span 2; background: var(--head); color: #fff; font-size: 18px; border-color: var(--head); }
+#kpad .kclose { font-size: 15px; background: #f3f4f6; }
+#kpad button:disabled { opacity: .35; }
