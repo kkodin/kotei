@@ -15,6 +15,8 @@
   header h1 { margin: 0; font-size: 18px; }
   .tabs { display: flex; gap: 4px; }
   .tabs a { color: #fff; text-decoration: none; padding: 4px 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; font-size: 14px; }
+  /* 閉じる（2026-10-14 ユーザー：タブレットで閉じられなかった） */
+  .close { margin-left: auto; background: #fff; color: var(--head); border: none; border-radius: 4px; padding: 6px 14px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: inherit; }
   .tabs a.on { background: #fff; color: var(--head); font-weight: bold; }
   nav.toc { background: var(--soft); border-bottom: 1px solid var(--line); padding: 8px 16px; font-size: 14px; }
   nav.toc a { color: var(--head); margin-right: 14px; white-space: nowrap; }
@@ -32,7 +34,7 @@
   .note { color: var(--sub); font-size: 13px; }
   .box { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
   .red { color: #c62828; font-weight: bold; }
-  @media (max-width: 560px) { th { width: 7.5em; white-space: normal; } body { font-size: 14px; } .stick { position: static; } }
+  @media (max-width: 560px) { th { width: 7.5em; white-space: normal; } body { font-size: 14px; } nav.toc { white-space: nowrap; overflow-x: auto; padding: 6px 12px; } header { padding: 8px 12px; } header h1 { font-size: 16px; } }
 </style>
 </head>
 <body>
@@ -40,6 +42,7 @@
 <header>
   <h1>全体工程表 使用方法</h1>
   <div class="tabs"><a href="#pc" id="tPc">パソコン</a><a href="#sp" id="tSp">スマホ・タブレット</a></div>
+  <button type="button" id="bClose" class="close">✕ 閉じる</button>
 </header>
 <nav class="toc">
   <a href="#" data-go="see">画面の見方</a><a href="#" data-go="bar">工程（バー）</a><a href="#" data-go="site">現場の設定</a>
@@ -201,6 +204,11 @@
     scrollTo(0, 0);
   };
   addEventListener("hashchange", show);
+  // 閉じる：ボタンから開いた窓・タブなら閉じる。閉じられないとき（直に開いたなど）は工程表へ戻る
+  document.getElementById("bClose").onclick = () => {
+    window.close();
+    setTimeout(() => { if (!window.closed) location.href = "./"; }, 300);
+  };
   show();
   // 目次：いま開いているほうの見出しへ
   document.querySelector("nav.toc").addEventListener("click", e => {
