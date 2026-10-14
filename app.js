@@ -956,7 +956,7 @@ function openBar(site, b, init) {
   $("bBarDel").hidden = !b;
   openDlg($("dBar"));
   showOffInfo(); showHeadInfo(); numPlaceholder();
-  if (!b) $("bWork").focus();
+  if (!b && !IS_TOUCH()) $("bWork").focus();
 }
 let lastColor = "青";
 function readBarForm() {
@@ -1046,7 +1046,10 @@ $("fCal").addEventListener("submit", e => {
 function openDlg(d) {
   d.style.margin = ""; d.style.left = ""; d.style.top = "";
   d.showModal();
+  // 指の端末では、開いたときに入力欄へ移らない（候補の一覧が開き、キーボードも出てしまう。2026-10-14 ユーザー指定）
+  if (IS_TOUCH() && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
 }
+const IS_TOUCH = () => matchMedia("(pointer: coarse)").matches;
 document.querySelectorAll("dialog h3").forEach(h3 => {
   h3.addEventListener("pointerdown", e => {
     if (e.button !== 0) return;
@@ -1176,7 +1179,7 @@ function staffRow(n) {
 }
 function setStaffRows(list) { $("bStaffRows").innerHTML = (list.length ? list : [""]).map(staffRow).join(""); }
 function getStaffRows() { return [...$("bStaffRows").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean); }
-$("bStaffAdd").onclick = () => { $("bStaffRows").insertAdjacentHTML("beforeend", staffRow("")); $("bStaffRows").lastElementChild.querySelector("input").focus(); };
+$("bStaffAdd").onclick = () => { $("bStaffRows").insertAdjacentHTML("beforeend", staffRow("")); if (!IS_TOUCH()) $("bStaffRows").lastElementChild.querySelector("input").focus(); };
 $("bStaffRows").addEventListener("click", e => {
   if (!("del" in e.target.dataset)) return;
   const rows = $("bStaffRows").children;
@@ -1258,7 +1261,7 @@ function openSite(id) {
   // ▲▼ は「設定順」の並びを変える。ほかの並びで見ているときは、その旨を出す
   $("sOrdNote").hidden = sortBy === "manual";
   openDlg($("dSite"));
-  if (!s) $("sName").focus();
+  if (!s && !IS_TOUCH()) $("sName").focus();
 }
 // 使用方法は別の窓（2026-10-14 ユーザー：説明の帯をやめて場所を空ける。パソコン用とスマホ用を分ける）
 $("bHelp").onclick = () => {
