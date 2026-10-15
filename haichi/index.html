@@ -212,8 +212,11 @@ body.viewer .bar > b,body.viewer .bar > .spacer{display:none}
 .vtitle{flex:1;text-align:center;font-size:20px;font-weight:700;letter-spacing:.05em;white-space:nowrap;
   font-family:"ＭＳ Ｐ明朝","MS PMincho","Yu Mincho","游明朝",serif}
 body.viewer .bar .mebar{margin:0;padding:3px 8px}
+.btn.vidle{font-size:13px;padding:5px 8px}
+.btn.vidle[hidden]{display:none}
 body.viewer table.xl tr.r1,body.viewer table.xl tr.vempty{display:none}
 body.viewer table.xl td.cenph::before{content:none}
+body.viewer table.xl td.vhcol{padding:0;border-left:0;border-right:0;font-size:0;color:transparent}
 /* 赤線より上は固定（008.0018 ユーザー指定）：上の帯はページの上に、表の見出し行は表の枠の上に止める。
    表の枠を画面の残りの高さにして、縦も表の枠の中で動かす（fitSheet が高さを決める） */
 body.viewer #sheetbox{overflow:auto}
@@ -5136,8 +5139,10 @@ function downloadText(name, text){
    版は「VrNNN の番号.直した回数」。版（フォルダ）を切らない軽い直しは 008.0001, 008.0002 … と下を進める。
    直したら APP_VER と HISTORY の先頭を必ず書き足すこと（README の版の履歴とそろえる）
    ===================================================================== */
-var APP_VER = "008.0018";
+var APP_VER = "008.0019";
 var HISTORY = [
+  {v: "008.0019", d: "2026-10-15", t: [
+    "スマホで見る「見るだけ版」では、その日に使っていない列（空いた作業員の列・空の作業内容）と、作業員が行っていない現場の行を出さないようにしました（担当が行くときは外注の欄に名前が出ます）。稼働していない現場は上のボタンで 出す⇔隠す を切り替えられます。この入力の画面の使い方は変わりません"]},
   {v: "008.0018", d: "2026-10-15", t: [
     "スマホで見る「見るだけ版」の見た目を、いつも配っている PDF に合わせました（見出しは青・担当はねずみ色・外注の見出しは赤い枠・休みはオレンジ）。空の行は出さず、上の帯と表の見出しは動かないようにしました。この入力の画面の使い方は変わりません"]},
   {v: "008.0017", d: "2026-10-14", t: [
@@ -6521,7 +6526,7 @@ function mePlaces(n){
   var key = nk(n), tan = meIsTan(n) ? nk(meSurname(n)) : null, out = [];
   var kb = function(s){ return String(s.区分 || "").replace(/[（）()]/g, ""); };
   (D.現場 || []).forEach(function(s){
-    if(!s) return;
+    if(!s || (VIEWER && !VIDLE && !siteHasWorker(s))) return;      /* 表で出さない現場（作業員なし）は行き先にも出さない */
     var nm = s.現場名 || "現場";
     if((s.作業員 || []).some(function(w){ return nk(w.氏名) === key; })) out.push(nm + (kb(s) ? "（" + kb(s) + "）" : ""));
     else if(tan && nk(s.担当) === tan) out.push(nm + (kb(s) ? "（" + kb(s) + "・担当）" : "（担当）"));
@@ -6580,7 +6585,7 @@ function viewerMe(){
   /* 描くたびに目立たせ直す */
   var r0 = render, seen = "";
   render = function(){
-    r0.apply(this, arguments); viewerTitle(); viewerFold(); meMark();
+    r0.apply(this, arguments); viewerTitle(); idleBtn(); viewerFold(); viewerCols(); meMark();
     /* 日を開いたとき（予定／確定を替えたときも）1回だけ、自分のマスが見えるところまで動かす */
     var key = (D && D.日付) + MODE, td = document.querySelector("#sheet td.me");
     if(td && key !== seen){ seen = key; setTimeout(function(){ td.scrollIntoView({block: "center", inline: "center"}); }, 50); }
@@ -6653,17 +6658,82 @@ function viewerFont(){
   tt.className = "vtitle";
   tt.id = "vTitle";
   sel.insertAdjacentElement("afterend", tt);
+  /* 稼働していない現場（作業員なし）を 隠す⇔出す（008.0019 ユーザー指定） */
+  var ib = document.createElement("button");
+  ib.className = "btn vidle";
+  ib.id = "vIdle";
+  ib.hidden = true;
+  ib.onclick = function(){
+    VIDLE = !VIDLE;
+    try{ localStorage.setItem("haichi_idle", VIDLE ? "1" : "0"); }catch(e){}
+    render();
+  };
+  sel.insertAdjacentElement("afterend", ib);
 }
 /* 見るだけ版：空の行は折りたたむ（008.0018 ユーザー指定）。
    見出しの行と、縦につながったマス（rowspan。機材センターの作業内容）の始まりの行は残す */
+var VIDLE = false;      /* true＝稼働していない現場も出す（このスマホに覚える haichi_idle） */
+try{ VIDLE = localStorage.getItem("haichi_idle") === "1"; }catch(e){}
+function idleCount(){ return ((D && D.現場) || []).filter(function(s){ return s && s.現場名 && !siteHasWorker(s); }).length; }
+function idleBtn(){
+  var b = $("#vIdle");
+  if(!b) return;
+  var n = idleCount();
+  b.hidden = !n && !VIDLE;
+  b.textContent = VIDLE ? "稼働していない現場を隠す" : "稼働していない現場を出す（" + n + "）";
+  b.classList.toggle("on", VIDLE);
+}
+function siteHasWorker(s){ return !!s && (s.作業員 || []).some(function(w){ return w && String(w.氏名 || "").trim(); }); }
 function viewerFold(){
   var rows = document.querySelectorAll("#sheet tr");
   for(var i = 0; i < rows.length; i++){
     var tr = rows[i];
     if(tr.classList.contains("r1") || tr.classList.contains("hdr") || tr.classList.contains("gaihd") || tr.classList.contains("cenhd")) continue;
     var empty = Array.prototype.every.call(tr.cells, function(td){ return td.rowSpan > 1 ? false : !td.textContent.trim(); });
+    /* 作業員が行っていない現場も出さない（008.0019 ユーザー指定。担当が行くなら外注の欄に名前がある） */
+    /* 上の帯のボタンで 隠す⇔出す を切り替えられる（VIDLE。はじめは隠す） */
+    if(tr.dataset.rk === "site" && !VIDLE && !siteHasWorker(D.現場[+tr.dataset.ri])) empty = true;
     tr.classList.toggle("vempty", empty);
   }
+}
+/* 見るだけ版：その日に使っていない列は出さない（008.0019 ユーザー指定：空いた作業員の列・空の作業内容）。
+   対象は作業員の1列目（G）から右。字の入ったマスがある列は残す。何列にもまたがるマス（作業内容・外注業者など）は
+   左から3列までを残す（字が細い1列に押し込まれないように）。見出しの行（隠した表題の行・1〜10・外注・機材センター／休み）は数えない */
+function viewerCols(){
+  var t = $("#sheet");
+  if(!t) return;
+  var cols = t.querySelectorAll("colgroup col"), N = cols.length, FIRST = 6;   /* 0 始まり。6 = G列 */
+  /* 行またぎ（rowspan）を考えて、マスごとに何列目から何列目かを出す */
+  var grid = [], cells = [];
+  Array.prototype.forEach.call(t.rows, function(tr, r){
+    grid[r] = grid[r] || [];
+    var c = 0;
+    Array.prototype.forEach.call(tr.cells, function(td){
+      while(grid[r][c]) c++;
+      var cs = td.colSpan || 1, rs = td.rowSpan || 1;
+      for(var y = 0; y < rs; y++){ grid[r + y] = grid[r + y] || []; for(var x = 0; x < cs; x++) grid[r + y][c + x] = 1; }
+      cells.push({td: td, c0: c, c1: c + cs - 1, label: /(^| )(r1|hdr|gaihd|cenhd)( |$)/.test(tr.className)});
+      c += cs;
+    });
+  });
+  var need = [];
+  for(var c = 0; c < N; c++) need[c] = c < FIRST;
+  cells.forEach(function(o){
+    if(o.label || !o.td.textContent.trim()) return;
+    for(var x = o.c0; x <= Math.min(o.c1, o.c0 + 2); x++) need[x] = true;
+  });
+  var units = 0;
+  Array.prototype.forEach.call(cols, function(col, c){
+    if(col.dataset.w == null) col.dataset.w = col.style.width;
+    col.style.width = need[c] ? col.dataset.w : "0";
+    if(need[c]) units += c === 1 ? 2 : c === 2 ? 0 : 1;      /* 見るだけ版は B が2列分・C（コード）は 0 */
+  });
+  t.style.width = "calc(var(--colW) * " + units + ")";
+  cells.forEach(function(o){
+    var off = true;
+    for(var x = o.c0; x <= o.c1; x++) if(need[x]) off = false;
+    o.td.classList.toggle("vhcol", off);
+  });
 }
 /* 見るだけ版の表題（上の帯）。予定は「人員配置予定表（閲覧用）」、確定は「人員配置表（確定・閲覧用）」 */
 function viewerTitle(){
