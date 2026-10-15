@@ -371,11 +371,12 @@ table.xl td.xxs{font-size:9px;letter-spacing:-.03em}
 table.xl tr.tt td{border-top:calc(var(--bw,1px) * 2) solid #000}        /* 太い区切り */
 table.xl td.over{background:#fde2e2}                /* 様式に収まらない行 */
 /* 本社内勤・休み欄の太枠（Excelと同じ。水色＝内勤、赤＝休み） */
-/* tr を入れて「太い区切り」（tr.tt td）より強くする。本社内勤欄の1行目で枠の上が黒い線に負けていた（008.0009） */
-table.xl tr td.bxB{border-top:3px solid #00B0F0;border-bottom:3px solid #00B0F0}
-table.xl tr td.bxR{border-top:3px solid #FF0000;border-bottom:3px solid #FF0000}
-table.xl tr td.bxB.bxL{border-left:3px solid #00B0F0} table.xl tr td.bxB.bxR2{border-right:3px solid #00B0F0}
-table.xl tr td.bxR.bxL{border-left:3px solid #FF0000} table.xl tr td.bxR.bxR2{border-right:3px solid #FF0000}
+/* 008.0020 ユーザー指定：色の枠は黒い罫線の「内側」に描く（線を置き換えると、枠が続く行で隣の枠と重なって線が消えた）。
+   黒い罫線はそのまま残し、マスの内側に影（inset）で色の線を引く。線の太さは縮めても消えないよう --bw に合わせる */
+table.xl tr td.bxB,table.xl tr td.bxR{--bxw:calc(var(--bw, 1px) * 2.5);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+table.xl tr td.bxB{--bxc:#00B0F0} table.xl tr td.bxR{--bxc:#FF0000}
+table.xl tr td.bxB.bxL,table.xl tr td.bxR.bxL{box-shadow:inset 0 var(--bxw) 0 var(--bxc),inset 0 calc(var(--bxw) * -1) 0 var(--bxc),inset var(--bxw) 0 0 var(--bxc)}
+table.xl tr td.bxB.bxR2,table.xl tr td.bxR.bxR2{box-shadow:inset 0 var(--bxw) 0 var(--bxc),inset 0 calc(var(--bxw) * -1) 0 var(--bxc),inset calc(var(--bxw) * -1) 0 0 var(--bxc)}
 table.xl td.sum{text-align:center;font-weight:bold}
 table.xl .rcm{font-size:.8em;color:#b03a2e}          /* 休みの理由（名前の後ろの（ ）） */
 /* 名前（ドラッグで動かせる）。枠や × は付けない */
@@ -5139,8 +5140,10 @@ function downloadText(name, text){
    版は「VrNNN の番号.直した回数」。版（フォルダ）を切らない軽い直しは 008.0001, 008.0002 … と下を進める。
    直したら APP_VER と HISTORY の先頭を必ず書き足すこと（README の版の履歴とそろえる）
    ===================================================================== */
-var APP_VER = "008.0019";
+var APP_VER = "008.0020";
 var HISTORY = [
+  {v: "008.0020", d: "2026-10-15", t: [
+    "本社内勤・休みの欄の水色・赤の枠を、黒い罫線の内側に描くようにしました。枠の付いた行が続いても、線が重なって消えません（Excel に出す枠は今までどおりです）"]},
   {v: "008.0019", d: "2026-10-15", t: [
     "スマホで見る「見るだけ版」では、その日に使っていない列（空いた作業員の列・空の作業内容）と、作業員が行っていない現場の行を出さないようにしました（担当が行くときは外注の欄に名前が出ます）。稼働していない現場は上のボタンで 出す⇔隠す を切り替えられます。この入力の画面の使い方は変わりません"]},
   {v: "008.0018", d: "2026-10-15", t: [
