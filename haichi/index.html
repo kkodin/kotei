@@ -206,6 +206,28 @@ body.viewer table.xl td.hascode .code{font-size:calc(11.5px * var(--vf, 1.2));co
 body.viewer table.xl td.title{font-size:24px} body.viewer table.xl td.date{font-size:18px}
 .vfsel{font-size:15px;padding:5px 4px;border:1px solid #999;border-radius:4px;background:#fff}
 body.viewer .bar{position:sticky;top:0;z-index:30}
+/* 見るだけ版の上の帯（008.0018 ユーザー指定）：「配置表（見るだけ）」は出さず ◀ 日付 ▶ 予定 確定 文字 を左に詰め、
+   その隣（なるべく中央）に表題、右に「自分の名前を選ぶ」。表の1行目（表題と日付）は日付と重なるので出さない */
+body.viewer .bar > b,body.viewer .bar > .spacer{display:none}
+.vtitle{flex:1;text-align:center;font-size:20px;font-weight:700;letter-spacing:.05em;white-space:nowrap;
+  font-family:"ＭＳ Ｐ明朝","MS PMincho","Yu Mincho","游明朝",serif}
+body.viewer .bar .mebar{margin:0;padding:3px 8px}
+body.viewer table.xl tr.r1,body.viewer table.xl tr.vempty{display:none}
+body.viewer table.xl td.cenph::before{content:none}
+/* 赤線より上は固定（008.0018 ユーザー指定）：上の帯はページの上に、表の見出し行は表の枠の上に止める。
+   表の枠を画面の残りの高さにして、縦も表の枠の中で動かす（fitSheet が高さを決める） */
+body.viewer #sheetbox{overflow:auto}
+body.viewer table.xl tr.hdr td{position:sticky;top:0;z-index:5;box-shadow:inset 0 calc(var(--bw,1px) * -1) 0 #000}
+/* 配色は配布している PDF（〇〇さんの Excel）に合わせる（008.0018 ユーザー指定） */
+body.viewer table.xl tr.hdr td{background:#4472c4;color:#fff;font-weight:700}
+body.viewer table.xl tr.hdr td.tanh{background:#a6a6a6}
+body.viewer table.xl td.tancol{background:#d9d9d9}
+body.viewer table.xl tr.gaihd td{background:#fff;border-top:calc(var(--bw,1px) * 2) solid #f00;border-bottom:calc(var(--bw,1px) * 2) solid #f00}
+body.viewer table.xl tr.gaihd td.gai0{background:var(--yellow);border-left:calc(var(--bw,1px) * 2) solid #f00}
+body.viewer table.xl tr.gaihd td:last-child{border-right:calc(var(--bw,1px) * 2) solid #f00}
+body.viewer table.xl tr.cenhd td.cenh{background:#4472c4;color:#fff;font-weight:700}
+body.viewer table.xl tr.cenhd td.gaicnt{background:#00b0f0;color:#fff;font-weight:700}
+body.viewer table.xl tr.cenhd td.resth{background:#ed7d31;color:#fff;font-weight:700}
 body.viewer #sheetbox{touch-action:pan-x pan-y}
 /* 自分の名前（初回に選ぶ）を表の中で目立たせる */
 table.xl td.me{background:#ffcdd2!important;outline:calc(var(--bw, 1px) * 2) solid #d32f2f;outline-offset:calc(var(--bw, 1px) * -2);font-weight:700}
@@ -1881,8 +1903,8 @@ function render(){
     "</td></tr>");
   /* ---- 2行目 見出し ---- */
   /* Vr007（2026-10-06 ユーザー要望）: 現場名の右に「現場コード」の列。作業内容を1列狭くして16列のまま */
-  h.push("<tr>" + plain(2, "h", "現場名") + plain(1, "h ccode", "コード") + plain(1, "h", "元請け") +
-    plain(1, "h", "担当") + plain(1, "h", ""));
+  h.push('<tr class="hdr">' + plain(2, "h", "現場名") + plain(1, "h ccode", "コード") + plain(1, "h", "元請け") +
+    plain(1, "h tanh", "担当") + plain(1, "h", ""));
   for(var n = 1; n <= 10; n++) h.push(plain(1, "h", String(n)));
   h.push("</tr>");
 
@@ -1900,7 +1922,7 @@ function render(){
       h.push(cell({r:r, c0:4, c1:4, kind:"site", i:i, k:"元請", list:"gen",
         cls:"l" + (s.現場名 ? " cyan" : "")}));
       h.push(cell({r:r, c0:5, c1:5, kind:"site", i:i, k:"担当", list:"tan",
-        cls:"c" + yc(s.担当が行った, s.担当黄未決)}));
+        cls:"c" + (s.現場名 ? " tancol" : "") + yc(s.担当が行った, s.担当黄未決)}));
       h.push(cell({r:r, c0:6, c1:6, kind:"site", i:i, k:"区分", opts:KBN,
         cls:"c" + (/夜/.test(s.区分) ? " night" : "")}));
     }else{
@@ -1955,7 +1977,7 @@ function render(){
   }
 
   /* ---- 25行目 【外注】見出し（様式として黄色） ---- */
-  h.push('<tr class="tt">' + plain(2, "h yellow", "【外注】　現　場　名") + plain(1, "h yellow ccode", "コード") +
+  h.push('<tr class="tt gaihd">' + plain(2, "h yellow gai0", "【外注】　現　場　名") + plain(1, "h yellow ccode", "コード") +
     plain(1, "h yellow", "担　当") + plain(1, "h yellow", "昼・夜") +
     plain(2, "h yellow", "外　注　業　者") + plain(1, "h yellow", "員　数") +
     plain(8, "h yellow", "作　業　内　容") + "</tr>");
@@ -1982,9 +2004,9 @@ function render(){
   /* Vr006: 機材センター A:E ｜ 外注員数 F:G ｜ 計○名 H ｜ I〜（機材センター） ｜ 休み（右から） */
   var RW = restWidth((D.機材センター.人 || []).filter(function(p){ return p && p.氏名; }).length, D.休み);
   var RB = 17 - RW, CEN_END = RB - 1;
-  h.push('<tr class="tt">' + plain(5, "l", "機材センター") + plain(2, "h", "外注員数") +
-    '<td class="sum">計 ' + D.外注員数 + "名</td>" + plain(RB - 9, "", "") +
-    plain(RW, "h", "休　　　　み") + "</tr>");
+  h.push('<tr class="tt cenhd">' + plain(5, "l cenh", "機材センター") + plain(2, "h gaicnt", "外注員数") +
+    '<td class="sum">計 ' + D.外注員数 + "名</td>" + plain(RB - 9, "cenh", "") +
+    plain(RW, "h resth", "休　　　　み") + "</tr>");
 
   /* ---- 35〜37行 機材センター／休み／外注員数 ---- */
   var L = cenLayout(D.機材センター);
@@ -2050,6 +2072,8 @@ function fitSheet(){
     var zv = Math.min(2, Math.max(VZ_MIN, VZ));
     t.style.zoom = String(zv);
     t.style.setProperty("--bw", zv >= 1 ? "1px" : (1 / zv).toFixed(3) + "px");
+    /* 表の枠を画面の残りの高さに（見出し行を止めるため。008.0018） */
+    box.style.maxHeight = Math.max(200, window.innerHeight - (box.getBoundingClientRect().top + window.scrollY) - 8) + "px";
     return;
   }
   var z = full > avail ? Math.max(.55, avail / full) : 1;
@@ -5112,8 +5136,10 @@ function downloadText(name, text){
    版は「VrNNN の番号.直した回数」。版（フォルダ）を切らない軽い直しは 008.0001, 008.0002 … と下を進める。
    直したら APP_VER と HISTORY の先頭を必ず書き足すこと（README の版の履歴とそろえる）
    ===================================================================== */
-var APP_VER = "008.0017";
+var APP_VER = "008.0018";
 var HISTORY = [
+  {v: "008.0018", d: "2026-10-15", t: [
+    "スマホで見る「見るだけ版」の見た目を、いつも配っている PDF に合わせました（見出しは青・担当はねずみ色・外注の見出しは赤い枠・休みはオレンジ）。空の行は出さず、上の帯と表の見出しは動かないようにしました。この入力の画面の使い方は変わりません"]},
   {v: "008.0017", d: "2026-10-14", t: [
     "予定の表のとき、上に緑の「📣 予定を皆に知らせる」ボタンを出しました。予定が決まったら押してください。送る文（日付・スマホで見る合言葉・リンク）が出て、「LINE の送る画面を開く」で LINE が開きます。送り先に「ハシックス」を選んで送信してください（PDF を作って上げる代わりになります）",
     "スマホで見る合言葉は毎月1日に自動で変わります（前の合言葉も7日は使えます）。送る文にはいつも今の合言葉が入るので、覚えておく必要はありません。すぐに変えたいときは、小窓の下の「🔑 合言葉を変える」で変えられます（合言葉はツールがでたらめに作ります）"]},
@@ -6510,7 +6536,7 @@ function mePlaces(n){
 function meMark(){
   var bar = $("#meBar");
   if(!bar) return;
-  if(!ME){ bar.innerHTML = '自分の名前を選ぶと、行き先が赤く目立ちます。<button class="btn" data-me="pick">名前を選ぶ</button>'; return; }
+  if(!ME){ bar.innerHTML = '自分の名前を選ぶと、行き先が赤く目立ちます。<button class="btn" data-me="pick">名前を選ぶ</button>'; if(VIEWER) fitSheet(); return; }
   var key = nk(ME), tan = meIsTan(ME) ? nk(meSurname(ME)) : null;
   Array.prototype.forEach.call(document.querySelectorAll("#sheet td"), function(td){
     var nmEl = td.querySelector(".nm"), txt = nk(nmEl ? nmEl.textContent : td.textContent);
@@ -6520,6 +6546,7 @@ function meMark(){
   var pl = D && D.日付 ? mePlaces(ME) : [];
   bar.innerHTML = "<b>" + esc(ME) + "</b> さん：" + (pl.length ? "<b>" + pl.map(esc).join("、") + "</b>" : "この表には名前がありません") +
     '<button class="btn" data-me="pick">名前を変える</button>';
+  if(VIEWER) fitSheet();
 }
 function mePicker(){
   var old = document.querySelector(".mdlg.mepk");
@@ -6548,12 +6575,12 @@ function viewerMe(){
   var bar = document.createElement("div");
   bar.id = "meBar";
   bar.className = "mebar noprint";
-  $("#sheetbox").parentNode.insertBefore(bar, $("#sheetbox"));
+  document.querySelector(".bar").appendChild(bar);      /* 上の帯の右（008.0018 ユーザー指定：一番上に） */
   bar.addEventListener("click", function(e){ if(e.target.dataset && e.target.dataset.me === "pick") mePicker(); });
   /* 描くたびに目立たせ直す */
   var r0 = render, seen = "";
   render = function(){
-    r0.apply(this, arguments); meMark();
+    r0.apply(this, arguments); viewerTitle(); viewerFold(); meMark();
     /* 日を開いたとき（予定／確定を替えたときも）1回だけ、自分のマスが見えるところまで動かす */
     var key = (D && D.日付) + MODE, td = document.querySelector("#sheet td.me");
     if(td && key !== seen){ seen = key; setTimeout(function(){ td.scrollIntoView({block: "center", inline: "center"}); }, 50); }
@@ -6574,7 +6601,7 @@ function viewerMe(){
 }
 /* ---- 見るだけ版：2本指で表だけを拡大縮小（上の帯は大きさを変えず上に止めておく。2026-10-14 ユーザー要望）----
    ページそのものの拡大は止め（viewport の user-scalable=no・iOS は gesturestart を止める）、表の倍率 VZ を変える。
-   1本指はふつうのスクロール（横は表の枠、縦はページ） */
+   1本指はふつうのスクロール（縦も横も表の枠。008.0018 で見出し行を止めるため縦も枠の中に） */
 function viewerPinch(){
   try{ VZ = Math.min(2, Math.max(.1, +localStorage.getItem("haichi_zoom") || 1)); }catch(e){}
   var sb = $("#sheetbox"), g = null;
@@ -6591,10 +6618,10 @@ function viewerPinch(){
     e.preventDefault();
     VZ = Math.min(2, Math.max(VZ_MIN, g.vz0 * dist(e.touches) / g.d0));
     fitSheet();
-    /* 指の間の点が同じところに来るよう、横は表の枠、縦はページを動かす */
+    /* 指の間の点が同じところに来るよう、表の枠を動かす */
     var t = $("#sheet"), r = t.getBoundingClientRect(), z = parseFloat(t.style.zoom) || 1;
     sb.scrollLeft += (r.left + g.cx * z) - g.mx;
-    window.scrollBy(0, (r.top + g.cy * z) - g.my);
+    sb.scrollTop += (r.top + g.cy * z) - g.my;
   }, {passive: false});
   sb.addEventListener("touchend", function(e){
     if(!g || e.touches.length >= 2) return;
@@ -6622,6 +6649,26 @@ function viewerFont(){
     if(td) td.scrollIntoView({block: "center", inline: "center"});
   };
   $("#mFix").insertAdjacentElement("afterend", sel);
+  var tt = document.createElement("div");
+  tt.className = "vtitle";
+  tt.id = "vTitle";
+  sel.insertAdjacentElement("afterend", tt);
+}
+/* 見るだけ版：空の行は折りたたむ（008.0018 ユーザー指定）。
+   見出しの行と、縦につながったマス（rowspan。機材センターの作業内容）の始まりの行は残す */
+function viewerFold(){
+  var rows = document.querySelectorAll("#sheet tr");
+  for(var i = 0; i < rows.length; i++){
+    var tr = rows[i];
+    if(tr.classList.contains("r1") || tr.classList.contains("hdr") || tr.classList.contains("gaihd") || tr.classList.contains("cenhd")) continue;
+    var empty = Array.prototype.every.call(tr.cells, function(td){ return td.rowSpan > 1 ? false : !td.textContent.trim(); });
+    tr.classList.toggle("vempty", empty);
+  }
+}
+/* 見るだけ版の表題（上の帯）。予定は「人員配置予定表（閲覧用）」、確定は「人員配置表（確定・閲覧用）」 */
+function viewerTitle(){
+  var el = $("#vTitle");
+  if(el) el.textContent = MODE === "確定" ? "人員配置表（確定・閲覧用）" : "人員配置予定表（閲覧用）";
 }
 if(VIEWER){
   /* 見るだけ版：いつも保護。このPCへの保存・バックアップの声かけはしない */
