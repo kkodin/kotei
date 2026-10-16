@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr001 10/16 15:12">
+<link rel="stylesheet" href="app.css?v=Vr001 10/16 16:14">
 </head>
 <body>
 <header id="top">
@@ -50,7 +50,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/16 15:12</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/16 16:14</span>
   </span>
 </header>
 
@@ -165,7 +165,7 @@
       <div><select id="pFmt"><option value="chart">工程表（いまの画面の形）</option><option value="week">週間工程表（現場ごとに1枚）</option></select></div>
       <label for="pFrom">期間</label>
       <div><input type="date" id="pFrom" required><span class="fmt-chart"> 〜 <input type="date" id="pTo" required></span>
-        <div class="note fmt-week">開始日の週の<b>月曜</b>から出します（印刷は3週間・Excel は31日分）。右の地図は、現場の設定で入れた地図が印刷にも Excel（AA〜AJ 列）にも入ります。</div>
+        <div class="note fmt-week">開始日の週の<b>月曜</b>から出します（印刷・Excel とも3週間）。右の地図は、現場の設定で入れた地図が印刷にも Excel（AA〜AJ 列）にも入ります。</div>
         <div class="pquick fmt-chart"><button type="button" id="pView" class="sub small">画面と同じ</button>
           <button type="button" class="sub small" data-pm="1">開始から1か月</button><button type="button" class="sub small" data-pm="2">2か月</button><button type="button" class="sub small" data-pm="3">3か月</button></div></div>
       <label>現場</label>
@@ -251,8 +251,8 @@
 <div id="updBar" class="updbar" hidden>新しい版（<span id="updVer"></span>）が出ています。<button type="button" id="bUpd">更新する</button></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/16 15:12"></script>
-<script src="app.js?v=Vr001 10/16 15:12"></script>
-<script src="weekxlsx.js?v=Vr001 10/16 15:12"></script>
+<script src="config.js?v=Vr001 10/16 16:14"></script>
+<script src="app.js?v=Vr001 10/16 16:14"></script>
+<script src="weekxlsx.js?v=Vr001 10/16 16:14"></script>
 </body>
 </html>
