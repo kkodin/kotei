@@ -350,6 +350,7 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .wkhd .wkttl { font-size: 30px; font-weight: bold; letter-spacing: 6px; border: none !important; padding: 0; }
 .wkhd .wkmade { border: 2px solid #000 !important; text-align: center; font-size: 15px; }
 .wkhd .wkco { border: none; text-align: right; font-size: 30px; font-weight: bold; vertical-align: bottom; }
+.wkhd .wkco img { height: 34px; width: auto; display: inline-block; }
 .wkhd .vt { writing-mode: vertical-rl; text-align: center; font-size: 13px; padding: 0; }
 .wkhd .wkname div, .wkhd .wkki div { line-height: 26px; }
 .wkhd .wkaddr { vertical-align: top; }

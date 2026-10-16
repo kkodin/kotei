@@ -348,7 +348,9 @@ function parseHead(t) {
   if (!s) return null;
   const parts = s.split("+").filter(x => x !== "");
   if (!parts.length || parts.some(x => !/^\d+$/.test(x))) return null;
-  const n = parts.map(Number);
+  // 0 の側は書かない（2026-10-16 ユーザー：「1」とだけ書いたものが「0名＋1名」と出た → 「1名」だけ）
+  let n = parts.map(Number);
+  if (n.length > 1 && n.some(x => x)) n = n.filter(x => x);
   return { txt: n.join("+"), parts: n, total: n.reduce((a, x) => a + x, 0) };
 }
 // 工種（段）にも人数を持つ（段.人数＝"1+3"。2026-10-14 ユーザー：現場の設定の工種の行で〇人＋〇人）。バーに人数が無ければ工種の人数
@@ -1332,8 +1334,8 @@ function laneHeadOf(r) {
   if (r.querySelector("select.sb").value === "外注") { const g = toHalf(r.querySelector('input.hn[data-h="g"]').value).trim(); return g ? String(parseInt(g, 10) || 0) : ""; }
   const [a, b] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
   if (!a && !b) return "";
-  const x = parseInt(a || "0", 10), y = parseInt(b || "0", 10);
-  return b ? (x || 0) + "+" + (y || 0) : String(x || 0);
+  const x = parseInt(a || "0", 10) || 0, y = parseInt(b || "0", 10) || 0;
+  return x && y ? x + "+" + y : String(x || y);   // 片方だけ（もう片方が空か 0）なら「1」
 }
 function openSite(id) {
   const s = id ? S.files[fileOfSite(id)].doc : null;
@@ -1505,7 +1507,7 @@ const loadImg = src => new Promise(ok => { const i = new Image(); const t = setT
    枠＝Excel の地図の場所（AA〜AJ 列 × 4行目〜記事の下。作業8行のとき 幅 247.5pt・高さ 528pt。出した Excel を実際の Excel で測った）と同じ縦横の比。
    画像は枠の中でつかんで動かす・大きさを変える。はじめは「全体を入れる」（余りは白）。保存は 754×1400px の JPEG。
    mapCrop＝{ img, s:倍率, x, y }（枠の左上からの位置・枠の px）。siteCtx.map に入れると「保存」で書く */
-const MAP_RATIO = 247.5 / 528, MAP_FH = 300, MAP_FW = Math.round(MAP_FH * MAP_RATIO), MAP_OUT_H = 1400, MAP_OUT_W = Math.round(MAP_OUT_H * MAP_RATIO);
+const MAP_RATIO = 247.5 / 462, MAP_FH = 300, MAP_FW = Math.round(MAP_FH * MAP_RATIO), MAP_OUT_H = 1400, MAP_OUT_W = Math.round(MAP_OUT_H * MAP_RATIO);
 let mapCrop = null;
 const mapFit = img => Math.min(MAP_FW / img.naturalWidth, MAP_FH / img.naturalHeight);
 const mapFill = img => Math.max(MAP_FW / img.naturalWidth, MAP_FH / img.naturalHeight);
@@ -1882,13 +1884,14 @@ function weekPage(s, mon) {
     const ln = laneOf(b);
     const name = (b.作業 || (ln ? laneWork(ln) : "") || "（作業）") + (ln && isNight(ln) ? "（夜間）" : hasNight ? "（昼間）" : "");
     let r = byKey[name];
-    if (!r) { r = byKey[name] = { name, on: new Set(), first: b.開始 }; rows.push(r); }
+    if (!r) { r = byKey[name] = { name, on: new Map(), first: b.開始 }; rows.push(r); }
     if (b.開始 < r.first) r.first = b.開始;
-    days.forEach(k => { if (k >= b.開始 && k <= b.終了 && barWorks(ln, b, k)) r.on.add(k); });
+    days.forEach(k => { if (k >= b.開始 && k <= b.終了 && barWorks(ln, b, k)) r.on.set(k, b.色 || "青"); });
   }
   rows.sort((a, b) => a.first.localeCompare(b.first));
   const nRows = Math.max(8, rows.length);
-  while (rows.length < nRows) rows.push({ name: "", on: new Set() });
+  while (rows.length < nRows) rows.push({ name: "", on: new Map() });
+  const mono = weekMono();   // 白黒なら線は黒、カラーなら全体工程の線の色（2026-10-16 ユーザー指定）
   const headH = 104, weekH = 26 + 22 + 30 + 26, workerH = 46, noteH = 92;
   const rowH = Math.max(22, Math.min(70, Math.floor((WK_H - headH - weekH - workerH - noteH) / nRows)));
   const offCls = k => (isRest(k) || dayDow(k) === 0 || dayDow(k) === 6 || holidayOf(k)) ? "wkoff" : "";
@@ -1911,7 +1914,7 @@ function weekPage(s, mon) {
   const mapW = Math.round((weekH + nRows * rowH + workerH + noteH) * MAP_RATIO);
   return `<div class="wkpage">
   <table class="wkhd"><colgroup><col style="width:34px"><col style="width:380px"><col style="width:34px"><col style="width:230px"><col style="width:34px"><col style="width:250px"><col></colgroup>
-    <tr><td colspan="5" class="wkttl">週　　間　　工　　程　　表</td><td class="wkmade">${reiwa(todayKey(), true)}作成</td><td class="wkco" rowspan="2">${esc(COMPANY)}</td></tr>
+    <tr><td colspan="5" class="wkttl">週　　間　　工　　程　　表</td><td class="wkmade">${reiwa(todayKey(), true)}作成</td><td class="wkco" rowspan="2"><img src="logo.png" alt="${esc(COMPANY)}"></td></tr>
     <tr><td class="vt">工事名</td><td class="wkname"><div>${esc(officialOf(s) || nm(s))}</div><div>工事略称　　${esc(nm(s))}</div></td>
       <td class="vt">工期</td><td class="wkki"><div>自　　${s.工期自 ? reiwa(s.工期自) : ""}</div><div>至　　${s.工期至 ? reiwa(s.工期至) : ""}</div></td>
       <td class="vt">住所</td><td class="wkaddr">${esc(s.住所 || "")}</td></tr>
@@ -1922,9 +1925,9 @@ function weekPage(s, mon) {
       <td colspan="7" class="wkw">今　　　　週</td><td colspan="7" class="wkw">来　　　　週</td><td colspan="7" class="wkw">再　来　週</td>
       <td rowspan="${totalRows}" class="wkmap">${map ? `<img src="${map}" alt="">` : `<div class="nomap">地図</div>`}</td></tr>
     <tr style="height:22px">${months.map(x => `<td colspan="${x.n}" class="wkm">${x.m}　月</td>`).join("")}</tr>
-    <tr style="height:30px"><td rowspan="2" class="wkdiag"></td>${days.map(k => `<td class="wkd ${numCls(k)}">${+k.slice(8)}</td>`).join("")}</tr>
-    <tr style="height:26px">${days.map(k => `<td class="wkd ${numCls(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</td>`).join("")}</tr>
-    ${rows.map(r => `<tr style="height:${rowH}px"><td class="wkl">${esc(r.name)}</td>${days.map(k => `<td class="${offCls(k)}">${r.on.has(k) ? '<div class="wkbar"></div>' : ""}</td>`).join("")}</tr>`).join("")}
+    <tr style="height:30px"><td rowspan="2" class="wkdiag"></td>${days.map(k => `<td class="wkd ${numCls(k)} ${offCls(k)}">${+k.slice(8)}</td>`).join("")}</tr>
+    <tr style="height:26px">${days.map(k => `<td class="wkd ${numCls(k)} ${offCls(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</td>`).join("")}</tr>
+    ${rows.map(r => `<tr style="height:${rowH}px"><td class="wkl">${esc(r.name)}</td>${days.map(k => `<td class="${offCls(k)}">${r.on.has(k) ? `<div class="wkbar"${mono ? "" : ` style="background:${colorOf(r.on.get(k))}"`}></div>` : ""}</td>`).join("")}</tr>`).join("")}
     <tr style="height:${workerH}px"><td class="wkl">作業員</td>${days.map((k, i) => `<td class="${offCls(k)} wkn">${workers[i] ? workers[i] + "名" : ""}</td>`).join("")}</tr>
     <tr style="height:${noteH}px"><td class="wkl wknote">記　　　　事</td>${notes.map(n => `<td colspan="7" class="wkmemo">${n}</td>`).join("")}</tr>
   </table></div>`;
@@ -2016,6 +2019,7 @@ $("bPrint").onclick = () => {
   openDlg($("dPrint"));
 };
 const isWeek = () => $("pFmt").value === "week";
+const weekMono = () => $("pColor").value === "mono";   // 週間工程表：カラー／白黒（2026-10-16 ユーザー指定）
 function fmtView() {
   document.querySelectorAll("#dPrint .fmt-chart").forEach(el => { el.hidden = isWeek(); });
   document.querySelectorAll("#dPrint .fmt-week").forEach(el => { el.hidden = !isWeek(); });
@@ -2074,7 +2078,9 @@ try {
   if (sp[0]) $("pNx").value = sp[0];
   if (sp[1]) $("pNy").value = sp[1];
   $("pFmt").value = localStorage.getItem("kotei_printFmt") || "chart";
+  $("pColor").value = localStorage.getItem("kotei_weekColor") || "color";
 } catch (e) { }
+$("pColor").onchange = e => { try { localStorage.setItem("kotei_weekColor", e.target.value); } catch (x) { } };
 $("inPaper").onchange = e => { try { localStorage.setItem("kotei_paper", e.target.value); } catch (x) { } setPageStyle(); };
 setPageStyle();
 

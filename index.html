@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>全体工程表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/14 19:45">
+<link rel="stylesheet" href="app.css?v=Vr001 10/16 14:49">
 </head>
 <body>
 <header id="top">
@@ -44,7 +44,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/14 19:45</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/16 14:49</span>
   </span>
 </header>
 
@@ -165,6 +165,8 @@
       <label>現場</label>
       <div><div class="pquick"><button type="button" id="pAll" class="sub small">全部</button> <button type="button" id="pNone" class="sub small">全部外す</button></div>
         <div id="pSites"></div></div>
+      <label for="pColor" class="fmt-week">色</label>
+      <div class="fmt-week"><select id="pColor"><option value="color">カラー（全体工程の線の色）</option><option value="mono">白黒（線はどれも黒）</option></select></div>
       <label for="inPaper">用紙</label>
       <div><select id="inPaper"><option value="A3">A3 横</option><option value="A4">A4 横</option></select>
         <span class="note">1ページずつ用紙いっぱいに合わせます。</span>
@@ -243,8 +245,8 @@
 <div id="updBar" class="updbar" hidden>新しい版（<span id="updVer"></span>）が出ています。<button type="button" id="bUpd">更新する</button></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/14 19:45"></script>
-<script src="app.js?v=Vr001 10/14 19:45"></script>
-<script src="weekxlsx.js?v=Vr001 10/14 19:45"></script>
+<script src="config.js?v=Vr001 10/16 14:49"></script>
+<script src="app.js?v=Vr001 10/16 14:49"></script>
+<script src="weekxlsx.js?v=Vr001 10/16 14:49"></script>
 </body>
 </html>
