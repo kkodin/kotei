@@ -28,7 +28,7 @@ const xlDate = k => Math.round((Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.
 const XS = {
   def: 0, title: 1, made: 2, box: 3, boxL: 4, boxDate: 5, ym: 6, week: 7, month: 8, dnum: 9, dwk: 10, diag: 11,
   label: 12, gTop: 13, gMid: 14, gBar: 15, gBot: 16, num: 17, note: 18, noteDay: 19, help: 20, helpBox: 21, helpDate: 22, co: 23, boxV: 24,
-  titleB: 25, vt: 26, plan: 27, noteEnd: 28, free: 29, monthMid: 30, monthEnd: 31
+  titleB: 25, vt: 26, plan: 27, noteEnd: 28, free: 29, monthMid: 30, monthEnd: 31, noteW: 32, noteEndW: 33
 };
 function xlStyles() {
   const fonts = [
@@ -54,7 +54,9 @@ function xlStyles() {
     bd("", "", "", T),       // 8 記事の最後の行（外周の下）
     bd("", "", T, ""),       // 9 月の行（上だけ。月が替わる所の左の線は条件付き書式）
     bd("", T, T, ""),        // 10 月の行の右端
-    bd(T, "", T, "")         // 11 月の行の左端
+    bd(T, "", T, ""),        // 11 月の行の左端
+    bd(T, "", "", "hair"),   // 12 記事の点線＋週の境（月曜の左）の縦線
+    bd(T, "", "", T)         // 13 記事の最後の行＋週の境
   ];
   const al = (h, v, wrap, rot) => `<alignment horizontal="${h}" vertical="${v}"${wrap ? ' wrapText="1"' : ""}${rot ? ` textRotation="${rot}"` : ""}/>`;
   const xf = (font, border, align, numFmt = 0) => `<xf numFmtId="${numFmt}" fontId="${font}" fillId="0" borderId="${border}" applyFont="1" applyBorder="1" applyAlignment="1"${numFmt ? ' applyNumberFormat="1"' : ""}>${align}</xf>`;
@@ -90,7 +92,9 @@ function xlStyles() {
     xf(2, 8, al("left", "center")),               // noteEnd 記事の最後の行
     xf(2, 1, al("left", "top", 1)),               // free 記事の右の自由欄
     xf(2, 9, al("left", "center")),               // monthMid 月の行
-    xf(2, 10, al("left", "center"))               // monthEnd 月の行の右端
+    xf(2, 10, al("left", "center")),              // monthEnd 月の行の右端
+    xf(2, 12, al("left", "center")),              // noteW 記事（週の境。2026-10-16 ユーザー：記事の欄に1週間ごとの縦線）
+    xf(2, 13, al("left", "center"))               // noteEndW 記事の最後の行（週の境）
   ];
   // 条件付き書式の書式（dxf）：0..8 色、9 グラデーション、10 日曜の赤字、11 土曜の青字、12 月が替わる所の左の線
   const names = Object.keys(XL_COLORS);
@@ -211,13 +215,13 @@ function xlSheet(s, mon, pics, mono) {
     const a = days[w * 7], z = days[w * 7 + 6], c0 = XL_FIRST + w * 7;
     const list = s.バー.filter(b => b.メモ && (w === 0 ? b.開始 <= z && b.終了 >= a : b.開始 >= a && b.開始 <= z)).sort((x, y) => x.開始.localeCompare(y.開始)).slice(0, 4);
     for (let j = 0; j < 4; j++) {
-      const st = j === 3 ? XS.noteEnd : XS.note;
-      for (let c = c0; c < c0 + 7; c++) put(rNote + 1 + j, c, { s: st });
+      const st = j === 3 ? XS.noteEnd : XS.note, stW = j === 3 ? XS.noteEndW : XS.noteW;
+      for (let c = c0; c < c0 + 7; c++) put(rNote + 1 + j, c, { s: w && c === c0 ? stW : st });   // 2・3週目の月曜の左に縦線
       const b = list[j];
       if (b) { put(rNote + 1 + j, c0, str(+(b.開始 < a ? a : b.開始).slice(8) + "日")); put(rNote + 1 + j, c0 + 1, str(`${b.作業 || ""}　${b.メモ}`)); }
     }
   }
-  for (let c = XL_FIRST; c <= lastCol; c++) put(rNote, c, { s: XS.note });
+  for (let c = XL_FIRST; c <= lastCol; c++) put(rNote, c, { s: (c - XL_FIRST) % 7 === 0 && c > XL_FIRST ? XS.noteW : XS.note });
   box(rNote, lastCol + 1, rLast, R, XS.free);
   // 下の補助（印刷の外）：日付・「休」・曜日（F〜Z）と始まりの日（A 列）。「休」を選ぶ／消すと、その列の灰色のぼかし（6行目〜人員予定）が付く／消える
   // （2026-10-16 ユーザー：3週間に直したときに無くなった休日の ON/OFF を戻す。前に消したのは4週目［AA〜AJ］の分だけでよかった）
