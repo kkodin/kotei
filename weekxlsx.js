@@ -8,7 +8,7 @@
    - 会社名はロゴの画像（logo.png、背景透過）を AA1:AJ1 に。担当は2行目
    - 工事名（縦書き）の右に 工事略称／現場コード（正式工事名は出さない）。工期も縦書き。表の外周に枠線
    - 作業員の行はやめて、人員予定（昼間／夜間）に自社の人数を「1+4」の形で（外注は入れない）。作業の行は9つ以上
-   - 記事の右（AA〜AJ）は自由に書く欄。下の補助（日付・「休」・曜日・始まりの日）はやめた（日付は F6 から式、休みの列はその場で決めて塗る）
+   - 記事の右（AA〜AJ）は自由に書く欄。下の補助（日付・「休」・曜日・始まりの日）は F〜Z の3週分（「休」を選ぶ／消すとその列の灰色が付く／消える）
    ライブラリは使わず、OOXML を文字で組んで無圧縮の zip にする（app.js の関数・値を使う） */
 
 const XL_COLORS = { 黒: "FF000000", 青: "FF0070C0", 赤: "FFFF0000", 緑: "FF00A040", 黄: "FFFFC000", 橙: "FFFF7F00", 紫: "FF7030A0", 茶: "FF8D6E63", 灰: "FF8A96A3" };
@@ -132,7 +132,7 @@ function xlSheet(s, mon, pics, mono) {
   }
   const nItems = Math.max(XL_ITEMS, items.length);
   // 行の位置
-  const R0 = 8, rPlan = R0 + nItems * 4, rNote = rPlan + 4, rLast = rNote + 4;   // 人員予定・記事
+  const R0 = 8, rPlan = R0 + nItems * 4, rNote = rPlan + 4, rLast = rNote + 4, rHelp = rLast + 1;   // 人員予定・記事・下の補助（印刷の外）
   const cells = {};       // "r,c" → {s, v, t, f}
   const put = (r, c, o) => { cells[r + "," + c] = Object.assign(cells[r + "," + c] || {}, o); };
   const merges = [];
@@ -170,8 +170,8 @@ function xlSheet(s, mon, pics, mono) {
     const c = XL_FIRST + i, L = xlCol(c), P = xlCol(c - 1);
     // 月：最初の日と、月が替わる日だけ「12月」（その左の線は条件付き書式。ユーザー：│1月 のように）
     put(5, c, { s: i === 0 ? XS.month : c === lastCol ? XS.monthEnd : XS.monthMid, f: i === 0 ? `MONTH(${L}6)&"月"` : `IF(DAY(${L}6)=1,MONTH(${L}6)&"月","")` });
-    // 日付：F6 だけ値（ここを変えれば全部ずれる）
-    put(6, c, { s: XS.dnum, ...(i === 0 ? num(xlDate(mon)) : { f: `${P}6+1` }) });
+    // 日付：F6 は下の補助の A 列の始まりの日（ここを変えれば全部ずれる）
+    put(6, c, { s: XS.dnum, f: i === 0 ? `$A$${rHelp + 3}` : `${P}6+1` });
     put(7, c, { s: XS.dwk, f: `TEXT(${L}6,"aaa")` });
   }
   // 作業の行（4行で1つ）
@@ -219,12 +219,27 @@ function xlSheet(s, mon, pics, mono) {
   }
   for (let c = XL_FIRST; c <= lastCol; c++) put(rNote, c, { s: XS.note });
   box(rNote, lastCol + 1, rLast, R, XS.free);
+  // 下の補助（印刷の外）：日付・「休」・曜日（F〜Z）と始まりの日（A 列）。「休」を選ぶ／消すと、その列の灰色のぼかし（6行目〜人員予定）が付く／消える
+  // （2026-10-16 ユーザー：3週間に直したときに無くなった休日の ON/OFF を戻す。前に消したのは4週目［AA〜AJ］の分だけでよかった）
+  const allLanes = s.段;
+  put(rHelp + 3, 1, { s: XS.helpDate, ...num(xlDate(mon)) });
+  put(rHelp + 1, 1, { s: XS.help, ...str("休日→") });
+  put(rHelp + 3, 2, { s: XS.help, ...str("←始まりの日（月曜）") });
+  days.forEach((k, i) => {
+    const c = XL_FIRST + i, L = xlCol(c);
+    put(rHelp, c, { s: XS.helpDate, f: `${L}6` });
+    // はじめから「休」：会社の休み・日曜・祝日、工種がどれもその日に作業しないとき（土曜休みの現場の土曜など）
+    const off = isRest(k) || (allLanes.length ? allLanes.every(ln => !laneWorks(ln, k)) : (dayDow(k) === 0 || holidayOf(k)));
+    put(rHelp + 1, c, { s: XS.helpBox, ...(off ? str("休") : {}) });
+    put(rHelp + 2, c, { s: XS.help, f: `TEXT(${L}${rHelp},"aaa")` });
+  });
   // シートの XML
   const rowsH = { 1: 30, 2: 24, 3: 24, 4: 18.75, 5: 18.75, 6: 22.5, 7: 22.5 };
   for (let n = 0; n < nItems; n++) { const r = R0 + n * 4; rowsH[r] = 12; rowsH[r + 1] = 6.75; rowsH[r + 2] = 6.75; rowsH[r + 3] = 12; }
   for (let j = 0; j < 4; j++) rowsH[rPlan + j] = 11;     // 人員予定は昼間・夜間の数字が読めるよう4行とも同じ高さ
   rowsH[rNote] = 6; for (let j = 1; j <= 4; j++) rowsH[rNote + j] = 15;
-  const maxRow = rLast;
+  rowsH[rHelp] = 12; rowsH[rHelp + 1] = 20.25; rowsH[rHelp + 2] = 12; rowsH[rHelp + 3] = 12;
+  const maxRow = rHelp + 3;
   const rowXml = [];
   for (let r = 1; r <= maxRow; r++) {
     const cs = Object.keys(cells).filter(k => +k.split(",")[0] === r).map(k => +k.split(",")[1]).sort((a, b) => a - b);
@@ -240,20 +255,18 @@ function xlSheet(s, mon, pics, mono) {
   const Z = xlCol(lastCol);
   const barRows = [];
   for (let n = 0; n < nItems; n++) barRows.push(`F${R0 + n * 4 + 1}:${Z}${R0 + n * 4 + 1}`);
-  // 休みの列（会社の休み・日曜・祝日、工種がどれもその日に作業しない日）：日付・曜日（6・7行。ユーザー指定）から人員予定まで灰色のぼかし。日付は赤字（土曜は青のまま）
-  const allLanes = s.段;
-  const offIdx = days.map((k, i) => (isRest(k) || (allLanes.length ? allLanes.every(ln => !laneWorks(ln, k)) : (dayDow(k) === 0 || holidayOf(k)))) ? i : -1).filter(i => i >= 0);
-  const offCols = offIdx.map(i => xlCol(XL_FIRST + i)), offRed = offIdx.filter(i => dayDow(days[i]) !== 6).map(i => xlCol(XL_FIRST + i));
+  // 「休」の列：日付・曜日（6・7行。ユーザー指定）から人員予定まで灰色のぼかし。日付は日曜か「休」なら赤字（土曜は青のまま）
+  const H = rHelp + 1;
   const names = Object.keys(XL_COLORS);
   let pr = 1;
   const cf = [
     `<conditionalFormatting sqref="${barRows.join(" ")}">` + names.map((nm, i) => `<cfRule type="expression" dxfId="${i}" priority="${pr++}"><formula>F${R0 + 1}="${nm}"</formula></cfRule>`).join("") + `</conditionalFormatting>`,
-    offCols.length ? `<conditionalFormatting sqref="${offCols.map(L => `${L}6:${L}${rPlan + 3}`).join(" ")}"><cfRule type="expression" dxfId="9" priority="${pr++}"><formula>TRUE</formula></cfRule></conditionalFormatting>` : "",
-    offRed.length ? `<conditionalFormatting sqref="${offRed.map(L => `${L}6:${L}7`).join(" ")}"><cfRule type="expression" dxfId="10" priority="${pr++}"><formula>TRUE</formula></cfRule></conditionalFormatting>` : "",
-    `<conditionalFormatting sqref="F6:${Z}7"><cfRule type="expression" dxfId="10" priority="${pr++}"><formula>WEEKDAY(F$6)=1</formula></cfRule><cfRule type="expression" dxfId="11" priority="${pr++}"><formula>WEEKDAY(F$6)=7</formula></cfRule></conditionalFormatting>`,
+    `<conditionalFormatting sqref="F6:${Z}${rPlan + 3}"><cfRule type="expression" dxfId="9" priority="${pr++}"><formula>F$${H}="休"</formula></cfRule></conditionalFormatting>`,
+    `<conditionalFormatting sqref="F6:${Z}7"><cfRule type="expression" dxfId="10" priority="${pr++}"><formula>OR(WEEKDAY(F$6)=1,F$${H}="休")*(WEEKDAY(F$6)&lt;&gt;7)</formula></cfRule><cfRule type="expression" dxfId="11" priority="${pr++}"><formula>WEEKDAY(F$6)=7</formula></cfRule></conditionalFormatting>`,
     `<conditionalFormatting sqref="G5:${Z}5"><cfRule type="expression" dxfId="12" priority="${pr++}"><formula>DAY(G$6)=1</formula></cfRule></conditionalFormatting>`
   ];
-  const dv = `<dataValidations count="1"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${barRows.join(" ")}"><formula1>"${names.join(",")}"</formula1></dataValidation></dataValidations>`;
+  const dv = `<dataValidations count="2"><dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${barRows.join(" ")}"><formula1>"${names.join(",")}"</formula1></dataValidation>` +
+    `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="F${H}:${Z}${H}"><formula1>"休"</formula1></dataValidation></dataValidations>`;
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
