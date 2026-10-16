@@ -1593,10 +1593,24 @@ $("sMapBox").addEventListener("pointerdown", e => {
   box.addEventListener("pointermove", mv); box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
 });
 // 小窓の中で画像を貼り付け（文字の欄に貼るときは文字のまま）
+// Excel・Word からコピーした画像は、先頭に文字の形の image/svg+xml（ファイルとして取れない）、後ろに image/png が入る
+// → ファイルとして取れる画像を使う。無ければ HTML の中の data: の画像
 $("dSite").addEventListener("paste", e => {
-  const it = [...(e.clipboardData || {}).items || []].find(i => i.type.startsWith("image/"));
-  if (!it) return;
-  e.preventDefault(); takeMap(it.getAsFile());
+  const cd = e.clipboardData; if (!cd) return;
+  // Excel のセルをコピーすると絵（image/png）も一緒に入る → 文字の欄へ貼るときは文字のまま
+  if (e.target.matches("input,textarea") && cd.getData("text/plain")) return;
+  const files = [...cd.items || []].filter(i => i.kind === "file" && i.type.startsWith("image/"))
+    .map(i => i.getAsFile()).filter(Boolean);
+  const f = files.find(x => x.type !== "image/svg+xml") || files[0];
+  if (f) { e.preventDefault(); takeMap(f); return; }
+  const m = /<img[^>]+src="(data:image\/[^"]+)"/i.exec(cd.getData("text/html") || "");
+  if (m) {
+    e.preventDefault();
+    setMapImage(m[1], true).then(() => toast("地図を入れました。枠に合わせて動かせます（「保存」で決まります）"))
+      .catch(err => { console.error(err); toast("画像を読めませんでした"); });
+    return;
+  }
+  if ([...cd.items || []].some(i => i.type.startsWith("image/"))) { e.preventDefault(); toast("この画像は貼り付けられません。画像として保存してから選ぶか、画面キャプチャで貼り付けてください"); }
 });
 // ドラッグ＆ドロップ（現場の小窓のどこへ落としてもよい）。ほかの所へ落としてもブラウザが画像を開いてしまわないように止める
 const hasFiles = e => [...((e.dataTransfer || {}).types || [])].includes("Files");
