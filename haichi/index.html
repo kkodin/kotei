@@ -1253,6 +1253,11 @@ function normalize(){
   while(D.本社.length && blankOffice(D.本社[D.本社.length - 1])) D.本社.pop();
   while(D.外注.length && blankSub(D.外注[D.外注.length - 1])) D.外注.pop();
   /* 現場コードが空の現場・外注は工事部会資料から入れる（Vr006 までの配置表を読んだときなど。Vr007） */
+  /* 同じ現場の名前を寄せる（SITE_UNIFY。〇〇さんの Excel の「浄明寺第1工区」なども。2026-10-19） */
+  D.現場.concat(D.外注).forEach(function(x){
+    if(x && x.現場名){ var u = unifySite(x.現場名); if(u !== x.現場名){ x.現場名 = u; x.現場コード = ""; } }
+  });
+  D.本社.forEach(function(o){ if(o && o.記載) o.記載 = unifyOffice(o.記載); });
   D.現場.concat(D.外注).forEach(function(x){
     if(x && x.現場名 && !x.現場コード){ var mi = siteInfo(x.現場名); if(mi && mi.現場コード) x.現場コード = mi.現場コード; }
   });
@@ -1751,7 +1756,7 @@ function setCell(td, v){
       else s.作業員.push(newPerson(nm));
       return;
     }
-    if(k === "現場名"){ v = hanDigits(v);          /* 現場名の数字は半角（2026-10-06） */
+    if(k === "現場名"){ v = unifySite(hanDigits(v));   /* 現場名の数字は半角（2026-10-06）・同じ現場の名前を寄せる（2026-10-17） */
       s.現場コード = v ? ((siteInfo(v) || {}).現場コード || "") : ""; }   /* 現場コードは工事部会資料から（Vr007） */
     if(k === "地域") v = areaNorm(v);              /* 横浜市の区は「横浜市」（2026-10-06） */
     s[k] = v;
@@ -1771,6 +1776,7 @@ function setCell(td, v){
   }
   if(kind === "office"){
     var o = ensure(D.本社, i, newOffice);
+    if(k === "記載") v = unifyOffice(v);            /* 本社内勤（阿久和南 → 本社内勤（阿久和南道路改良（2026-10-17） */
     o[k] = v;
     if(k === "氏名") yRename(o, v);
     return;
@@ -1780,7 +1786,7 @@ function setCell(td, v){
     if(k === "員数"){
       v = v.replace(/[０-９]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).trim();
       b.員数 = v === "" ? null : (parseInt(v, 10) || 0);
-    }else b[k] = (k === "現場名" ? hanDigits(v) : v);
+    }else b[k] = (k === "現場名" ? unifySite(hanDigits(v)) : v);
     if(k === "現場名") b.現場コード = b.現場名 ? ((siteInfo(b.現場名) || {}).現場コード || "") : "";
     if(k === "担当" && !v) b.担当が行った = false;
     return;
@@ -1821,15 +1827,28 @@ var areaNorm = function(s){
 var hanDigits = function(s){ return String(s == null ? "" : s).replace(/[０-９]/g, function(c){
   return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }); };
 var SITEM = {};
-(MASTER.現場マスタ || []).forEach(function(r){ SITEM[siteKey(r.正式現場名)] = r; });
-/* 配置表の書き方 → 工事部会資料の正式名（tools/make_master.py の SITE_ALIAS と同じ。2026-10-06 ユーザー確認） */
+(MASTER.現場マスタ || []).forEach(function(r){ SITEM[siteKey(r.正式現場名)] = r; });/* 配置表の書き方 → 工事部会資料の正式名（tools/make_master.py の SITE_ALIAS と同じ。2026-10-06 ユーザー確認） */
 var SITE_ALIAS = {"いずみ野造成工事":"阿久和南道路改良", "資材置き場造成工事":"阿久和南道路改良",   /* どちらも 510031 に統合 */
-                  "浄明寺配水管":"浄明寺",
+                  "阿久和南":"阿久和南道路改良",
+                  "浄明寺配水管":"浄明寺", "浄明寺第1工区":"浄明寺(第1工区)",
                   "吉際その2":"吉際枝線その2-1", "施設工事その3":"上瀬谷施設工事その3",
                   "耐震化工事":"佐倉市耐震化工事", "八潮2丁目下水":"八潮市二丁目下水",
                   "今泉配水":"今泉送水", "由比ガ浜その3":"由比ガ浜その2"};
 var SITE_ALIAS_K = {};
 Object.keys(SITE_ALIAS).forEach(function(a){ SITE_ALIAS_K[siteKey(a)] = SITE_ALIAS[a]; });
+/* 配置表に書く名前そのものを寄せる現場（2026-10-17 ユーザー指定「阿久和南と阿久和南道路改良は同じ現場。阿久和南道路改良に統一」）。
+   打ったとき・選んだとき・本社内勤欄の「本社内勤（阿久和南」の括弧の中で直す。出面集計の ALIAS.site も同じ */
+/* 浄明寺第1工区 → 浄明寺(第1工区)（2026-10-19 ユーザー指定「浄明寺(第1工区)が正式名称。統一」。510027）。
+   〇〇さんの Excel は直さず、読んだときにも寄せる（normalize） */
+var SITE_UNIFY = {"阿久和南": "阿久和南道路改良", "浄明寺第1工区": "浄明寺(第1工区)"};
+var SITE_UNIFY_K = {};
+Object.keys(SITE_UNIFY).forEach(function(a){ SITE_UNIFY_K[siteKey(a)] = SITE_UNIFY[a]; });
+function unifySite(v){ return SITE_UNIFY_K[siteKey(v)] || v; }
+function unifyOffice(v){
+  var m = String(v).match(/^(\s*(?:本社内勤)?\s*[（(]?\s*)([^（()）]+?)(\s*[)）]?\s*)$/);
+  if(!m || !SITE_UNIFY_K[siteKey(m[2])]) return v;
+  return m[1] + SITE_UNIFY_K[siteKey(m[2])] + m[3];
+}
 function siteInfo(name){
   var k = siteKey(name);
   return SITEM[siteKey(SITE_ALIAS_K[k] || k)] || SITEM[k] || null;
@@ -2521,7 +2540,7 @@ function ddItems(td){
     var ki = Math.max.apply(null, (MASTER.現場マスタ || []).map(function(r){ return parseInt(r.期, 10) || 0; }).concat([0]));
     (MASTER.現場マスタ || []).filter(function(r){ return (parseInt(r.期, 10) || 0) >= ki - 1; })
       .forEach(function(r){ it.push({v: hanDigits(r.正式現場名), h: "工事部会資料"}); });
-    it.forEach(function(x){ var mi = siteInfo(x.v); if(mi) x.cd = mi.現場コード; });
+    it.forEach(function(x){ x.v = unifySite(x.v); var mi = siteInfo(x.v); if(mi) x.cd = mi.現場コード; });
     /* 左の列（地域）が入っていれば、その地域の現場だけに絞る（2026-10-01 ユーザー要望）。
        地域は名簿の現場の「地域」か、工事部会資料の「場所」（横浜市金沢区 など）で照らす。
        1件も当たらなければ絞らない（新しい地域・書き方の違いで何も出なくなるのを防ぐ） */
@@ -5140,8 +5159,13 @@ function downloadText(name, text){
    版は「VrNNN の番号.直した回数」。版（フォルダ）を切らない軽い直しは 008.0001, 008.0002 … と下を進める。
    直したら APP_VER と HISTORY の先頭を必ず書き足すこと（README の版の履歴とそろえる）
    ===================================================================== */
-var APP_VER = "008.0020";
+var APP_VER = "008.0022";
 var HISTORY = [
+  {v: "008.0022", d: "2026-10-19", t: [
+    "「浄明寺第1工区」は正式名称の「浄明寺(第1工区)」にそろえます（現場コード 510027）。Excel で「浄明寺第1工区」と書かれた日も、開くと「浄明寺(第1工区)」になります",
+    "現場コードを10月の工事部会資料（柳沼さんの最新版）から取り直しました。「新宿南部」に 520001 が付きます（9月の資料では 520001 が いずみ野造成工事 でした）"]},
+  {v: "008.0021", d: "2026-10-17", t: [
+    "「阿久和南」と「阿久和南道路改良」は同じ現場なので、「阿久和南道路改良」にそろえます。現場名・外注の現場名に「阿久和南」と打つ（選ぶ）と「阿久和南道路改良」になり、本社内勤の欄の「本社内勤（阿久和南」も「本社内勤（阿久和南道路改良」になります"]},
   {v: "008.0020", d: "2026-10-15", t: [
     "本社内勤・休みの欄の水色・赤の枠を、黒い罫線の内側に描くようにしました。枠の付いた行が続いても、線が重なって消えません（Excel に出す枠は今までどおりです）"]},
   {v: "008.0019", d: "2026-10-15", t: [
