@@ -386,6 +386,8 @@ const DW = () => parseFloat(getComputedStyle(document.documentElement).getProper
    avail＝同じ行の次のバーまでの幅。長い順に試して、収まる最初の書き方にする */
 const measureCtx = document.createElement("canvas").getContext("2d");
 function textW(t) { measureCtx.font = '12px "Yu Gothic UI", Meiryo, sans-serif'; return measureCtx.measureText(t).width; }
+// barLabel の html の幅（2行なら長いほう）
+function lblW(html) { return Math.max(...html.split("<br>").map(t => textW(t.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'")))); }
 const noSpace = n => String(n).replace(/[\s　]+/g, "");
 // 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
 function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
@@ -492,12 +494,23 @@ function renderChart() {
       }
       const { pos, rows } = packLane(bars);
       // 文字に使える幅：同じ行で次に始まるバーの手前まで（無ければ表の右端まで）
-      const avail = {}, lbl = {};
-      for (const b of bars) {
-        const a = b.開始 < from ? from : b.開始;
+      // 右に入りきらず左が空いているときは、文字を右寄せにして左へ伸ばす（2026-10-19 ユーザー：1日の工程で文字が「鉄...」と切れた）
+      const avail = {}, lbl = {}, rAl = {}, used = {};
+      for (const b of [...bars].sort((p, q) => p.開始.localeCompare(q.開始))) {
+        const a = b.開始 < from ? from : b.開始, x = dayDiff(from, a) * dw;
         const next = bars.filter(o => o !== b && pos[o.id] === pos[b.id] && o.開始 > b.開始).map(o => o.開始).sort()[0];
         avail[b.id] = Math.max(dw, (next ? dayDiff(a, next) : dayDiff(a, end) + 1) * dw - 6);
         lbl[b.id] = barLabel(b, avail[b.id], ln);
+        used[b.id] = x + Math.max((dayDiff(a, b.終了 > end ? end : b.終了) + 1) * dw, lblW(lbl[b.id].html));
+        if (lblW(barLabel(b, 1e9, ln).html) <= avail[b.id]) continue;
+        // 同じ行の前のバー（帯と文字）の右端から、このバーの頭までが左の空き
+        const prev = bars.filter(o => o !== b && pos[o.id] === pos[b.id] && o.開始 < b.開始 && used[o.id] != null).map(o => used[o.id]);
+        const left = x - (prev.length ? Math.max(...prev) + 6 : 0);
+        if (left < 12) continue;
+        rAl[b.id] = avail[b.id] - 5;  // 文字の右端（バーの左から）。次の文字と少し離す
+        avail[b.id] += left;
+        lbl[b.id] = barLabel(b, avail[b.id], ln);
+        used[b.id] = x + rAl[b.id];
       }
       // 2行の文字があれば、この工種の行だけ高くする（--rh をこの行で上書き）
       const lrh = bars.some(b => lbl[b.id].two) ? rh + 14 : rh;
@@ -517,7 +530,7 @@ function renderChart() {
           `style="left:${x}px;top:${pos[b.id] * lrh + Math.max(3, (rh - 26) / 2)}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
-          `<span class="h l"></span><span class="lbl ${lbl[b.id].two ? "two" : ""}" style="max-width:${avail[b.id]}px">${lbl[b.id].html}</span><span class="h r"></span></div>`);
+          `<span class="h l"></span><span class="lbl ${lbl[b.id].two ? "two" : ""}" style="max-width:${avail[b.id]}px${rAl[b.id] ? `;left:auto;right:${w - rAl[b.id]}px;text-align:right` : ""}">${lbl[b.id].html}</span><span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
     }
