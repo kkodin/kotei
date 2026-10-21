@@ -425,7 +425,7 @@ body:not(.viewer) > *:not(#bootMsg){display:none!important}</style>
    データ（名簿 master.js・index.js・年ごとの 2026.js・追加分.js）を読む。
    中身は window.MASTER などへの代入なので、文字で取ってきて そのまま動かす */
 window.HAICHI_VIEWER = {
-  cfg: {"clientId": "9a4c8447-3e6a-437b-85d0-4662ded35f42", "tenantId": "acd238cd-b6aa-4b5a-8056-44ed0177515f", "driveId": "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW", "path": "社内共有フォルダ/02_配置表/配置表データ", "data": "https://kkodin.github.io/haichi-data/"},
+  cfg: {"clientId": "9a4c8447-3e6a-437b-85d0-4662ded35f42", "tenantId": "acd238cd-b6aa-4b5a-8056-44ed0177515f", "driveId": "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW", "path": "社内共有フォルダ/06_配置表/配置表データ", "oldPath": "社内共有フォルダ/02_配置表/配置表データ", "data": "https://kkodin.github.io/haichi-data/"},
   scopes: ["User.Read", "Files.ReadWrite.All"],   /* 全体工程表と同じ（管理者の同意済み。読むだけに使う） */
   msal: null,
   /* 入り方は2つ：ms＝会社のアカウント（OneDrive から読む）／pw＝合言葉（暗号にかけたデータを haichi-data から読む。
@@ -516,9 +516,14 @@ window.HAICHI_VIEWER = {
   },
   text: async function(name){
     if(this.mode === "pw") return this.textPw(name);
-    var c = this.cfg, p = c.path.split("/").concat([name]).map(encodeURIComponent).join("/");
-    var res = await fetch("https://graph.microsoft.com/v1.0/drives/" + c.driveId + "/root:/" + p,
-      {headers: {Authorization: "Bearer " + await this.token()}});
+    /* 新しいフォルダ名 → 読めなければ前の名前。読めた方を覚えて、次からはそちらだけ */
+    var c = this.cfg, tk = await this.token(), res = null;
+    var paths = this.okPath ? [this.okPath] : [c.path, c.oldPath].filter(Boolean);
+    for(var i = 0; i < paths.length; i++){
+      var p = paths[i].split("/").concat([name]).map(encodeURIComponent).join("/");
+      res = await fetch("https://graph.microsoft.com/v1.0/drives/" + c.driveId + "/root:/" + p, {headers: {Authorization: "Bearer " + tk}});
+      if(res.ok){ this.okPath = paths[i]; break; }   /* 共有された人は、無い名前に 404 でなく 403 が返ることもあるので、どちらでも次を試す */
+    }
     if(!res.ok) throw new Error(name + " を読めません（" + res.status + (res.status === 403 || res.status === 404 ? "：配置表データ フォルダが共有されていない" : "") + "）");
     var dl = (await res.json())["@microsoft.graph.downloadUrl"];
     var b = await fetch(dl, {cache: "no-store"});
