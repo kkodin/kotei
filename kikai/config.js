@@ -7,7 +7,7 @@ window.KIKAI_CONFIG = {
   tenantId: "acd238cd-b6aa-4b5a-8056-44ed0177515f",   // ディレクトリ (テナント) ID
   folder: {
     driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
-    itemId: "",
+    itemId: "01NJOWDESCMVESZPAWFJCK3KKPBSCGAJKG",   // 稼働データ フォルダ（2026-10-24 北澤さんのサインインで調べた）
     path: "社内共有フォルダ/03_自社機械稼働表/稼働データ"
   }
 };
