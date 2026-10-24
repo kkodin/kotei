@@ -327,8 +327,9 @@ function renderChart() {
   const el = $("chart");
   if (!D.機械.length) {
     el.innerHTML = `<div class="empty">まだ機械がありません。<br>
-      <button id="eImport">Excel から取り込んだデータを読む</button>　<button class="sub" id="eMaster">機械を1台ずつ足す</button></div>`;
-    $("eImport").onclick = importBundled; $("eMaster").onclick = () => setTab("master");
+      ${window.KIKAI_IMPORT ? `<button id="eImport">Excel から取り込んだデータを読む</button>` : `<button id="eImport">ファイルから読み込む（取り込み_自社機械予定表.json）</button>`}　<button class="sub" id="eMaster">機械を1台ずつ足す</button></div>`;
+    $("eImport").onclick = () => window.KIKAI_IMPORT ? importBundled() : $("ioFile").click();   // 公開した画面には取り込みデータが無い
+    $("eMaster").onclick = () => setTab("master");
     $("warn").textContent = ""; return;
   }
   const days = rangeDays(), N = days.length, from = S.from, to = days[N - 1], rh = RH(), today = todayKey();
@@ -899,14 +900,16 @@ function renderMaster() {
       「完了」にすると、現場を選ぶ欄（線を引く現場・小窓の行き先）に出なくなります。名前を変えると、その現場の予約も全部変わります（同じ名前にすると1つにまとまります）。<br>
       期＝工事コードの頭2けた（無ければ最初に使った日の期。9月はじまり）。</p>
     <div class="form"><label class="ck"><input type="checkbox" id="sDone" ${S.showDone ? "checked" : ""}> 完了した現場も表示（${nDone}件）</label>
-      ${window.KIKAI_IMPORT ? `<button class="sub" id="sFill" title="予約は変えません">取り込みデータから 工事コード・元請・地域・完了 を入れる</button>` : ""}</div>
-    <table class="t" id="st"><tr><th>期</th><th>現場名・行き先</th><th>工事コード</th><th>元請</th><th>地域</th><th>種類</th><th>色</th><th>完了</th><th>予約</th><th>最後に使う日</th><th></th></tr>` +
+      <button class="sub" id="sFill" title="受注台帳等・配置表の名簿と照合した結果（取り込み_自社機械予定表.json）から、現場の情報だけを入れる。予約は変えません">${window.KIKAI_IMPORT ? "取り込みデータ" : "ファイル（取り込み_自社機械予定表.json）"}から 工事コード・元請・地域・工期・完了 を入れる</button>
+      <input type="file" id="sFile" accept=".json,application/json" hidden></div>
+    <table class="t" id="st"><tr><th>期</th><th>現場名・行き先</th><th>工事コード</th><th>元請</th><th>地域</th><th>工期</th><th>種類</th><th>色</th><th>完了</th><th>予約</th><th>最後に使う日</th><th></th></tr>` +
       list.map(s => `<tr data-n="${esc(s.名前)}"${s.完了 ? ' style="color:#888"' : ""}>
         <td class="n">${siteKi(s, first[s.名前]) || ""}</td>
-        <td><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
+        <td title="${esc([s.正式名, s.担当 && "担当 " + s.担当, s.場所].filter(Boolean).join("\n"))}"><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
         <td><input data-f="コード" value="${esc(s.コード || "")}" size="7" inputmode="numeric"></td>
         <td><input data-f="元請" value="${esc(s.元請 || "")}" size="12"></td>
         <td><input data-f="地域" value="${esc(s.地域 || "")}" size="8"></td>
+        <td class="small" style="white-space:nowrap">${s.工期自 || s.工期至 ? `${(s.工期自 || "").replace(/-/g, "/")}〜${(s.工期至 || "").replace(/-/g, "/")}` : ""}</td>
         <td><select data-f="種類">${KINDS.map(k => `<option ${s.種類 === k ? "selected" : ""}>${k}</option>`).join("")}</select></td>
         <td><input type="color" data-f="色" value="${esc(s.色 || "#8a96a3")}"></td>
         <td style="text-align:center"><input type="checkbox" data-f="完了" ${s.完了 ? "checked" : ""}></td>
@@ -914,13 +917,19 @@ function renderMaster() {
         <td>${cnt[s.名前] ? "" : `<button class="danger" data-del="${esc(s.名前)}">消す</button>`}</td></tr>`).join("") + `</table>
     <p><button id="sAdd">＋ 現場を足す</button></p>`;
     $("sDone").onchange = () => { S.showDone = $("sDone").checked; saveView(); renderMaster(); };
-    if ($("sFill")) $("sFill").onclick = () => {
-      const src = {}; (window.KIKAI_IMPORT.現場 || []).forEach(x => { src[x.名前] = x; });
+    /* 現場の情報だけを入れる（空いている欄だけ。予約は変えない）。公開した画面には取り込みデータが無いので、ファイルを選ぶ */
+    const fillSites = data => {
+      const src = {}; (data.現場 || []).forEach(x => { src[x.名前] = x; });
       let n = 0;
       commit(d => d.現場.forEach(s => { const x = src[s.名前]; if (!x) return;
-        ["コード", "元請", "地域"].forEach(f => { if (!s[f] && x[f]) { s[f] = x[f]; n++; } });
+        ["コード", "元請", "地域", "正式名", "工期自", "工期至", "担当", "場所"].forEach(f => { if (!s[f] && x[f]) { s[f] = x[f]; n++; } });
         if (x.完了 && !s.完了) { s.完了 = true; n++; } }));   // しばらく使っていない現場は完了に
       alert(n ? `${n}か所に入れました（空いている欄だけ）。` : "入れる所はありませんでした。");
+    };
+    $("sFill").onclick = () => window.KIKAI_IMPORT ? fillSites(window.KIKAI_IMPORT) : $("sFile").click();
+    $("sFile").onchange = async () => {
+      const f = $("sFile").files[0]; $("sFile").value = ""; if (!f) return;
+      try { fillSites(normalize(JSON.parse(await f.text()))); } catch (err) { alert("読めませんでした：" + err.message); }
     };
     el.querySelectorAll("#st [data-f]").forEach(inp => inp.onchange = () => {
       const n = inp.closest("tr").dataset.n, f = inp.dataset.f;
@@ -1033,11 +1042,12 @@ async function importBundled() {
       S.from = dayAdd(todayKey(), -((dayDow(todayKey()) + 6) % 7) - 7); saveView(); renderAll();
     }
   } catch (err) {
-    $("dData").open || $("dData").showModal();
+    openDataDlg();
     $("ioMsg").textContent = "data\\取り込み_自社機械予定表.js がありません。tools\\Excelから取り込む.py で作るか、「ファイルから読み込む」で .json を選んでください。";
   }
 }
-$("bData").onclick = () => {
+$("bData").onclick = () => openDataDlg();
+function openDataDlg() {
   $("ioWhere").innerHTML = DEMO ? "いまは<b>このブラウザの中だけ</b>に覚えています（試し。ほかの人とは共有しません）。"
     : "データは会社の OneDrive（社内共有フォルダ\\03_自社機械稼働表\\稼働データ\\稼働データ.json）に保存し、全員で共有しています。" +
       (window.FOLDER_ITEM_ID ? `<br>稼働データ フォルダの itemId：<b>${esc(window.FOLDER_ITEM_ID)}</b>（config.js に入れて公開し直す）` : "");
