@@ -239,6 +239,9 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .bar .lbl .st { color: #555; }
 .bar.drag .stripe { outline: 2px solid #000; }
 .bar.drag { outline: none; }
+/* Ctrl＋ドラッグのコピー（元の線は残る） */
+.bar.copy { z-index: 6; cursor: copy; }
+.bar.copy .stripe { outline: 2px dashed #000; }
 .bar .h { z-index: 3; }
 
 .pickrow { display: flex; gap: 6px; }

@@ -714,7 +714,8 @@ function startBarDrag(e, barEl, track, mode, x0) {
   const site = S.files[fileOfSite(track.dataset.site)].doc;
   const b = site.バー.find(x => x.id === barEl.dataset.bar);
   if (!b) return;
-  drag = { kind: "bar", mode, el: barEl, track, site, b, x0, moved: false, a: b.開始, z: b.終了, from: range().from };
+  drag = { kind: "bar", mode, el: barEl, track, site, b, x0, moved: false, a: b.開始, z: b.終了, from: range().from,
+    left0: barEl.style.left, width0: barEl.style.width, title0: barEl.title, copyEl: null };
 }
 function startNewDrag(track, d0) {
   const ghost = document.createElement("div");
@@ -726,8 +727,31 @@ function startNewDrag(track, d0) {
 function cancelDrag() {
   if (!drag) return;
   const d = drag; drag = null;
+  if (d.copyEl) d.copyEl.remove();
   if (d.kind === "new") d.el.remove(); else if (d.moved) render();
 }
+// 写しを作る：中身はそのまま、日付（休工日・日ごとの人数も）を dd 日ずらす
+function shiftBarCopy(b, dd) {
+  const sh = arr => (arr || []).map(k => dayAdd(k, dd));
+  const c = JSON.parse(JSON.stringify(b));
+  delete c.更新;
+  c.id = newId("b"); c.開始 = dayAdd(b.開始, dd); c.終了 = dayAdd(b.終了, dd);
+  if (b.休み) c.休み = sh(b.休み);
+  if (b.出勤) c.出勤 = sh(b.出勤);
+  if (b.人数日) c.人数日 = Object.fromEntries(Object.entries(b.人数日).map(([k, v]) => [dayAdd(k, dd), v]));
+  stamp(c);
+  return c;
+}
+function saveDragCopy(d) {
+  const dd = dayDiff(d.b.開始, d.a);
+  if (!dd) { render(); return; }   // 同じ日に重ねたコピーは作らない
+  const c = shiftBarCopy(d.b, dd);
+  mutate(fileOfSite(d.site.id), doc => { doc.バー.push(c); });
+  toast(`「${c.作業 || "工程"}」を ${md(c.開始)}〜${md(c.終了)} にコピーしました`, 2200);
+}
+// 動かしている途中で Ctrl を押した・離した
+window.addEventListener("keydown", e => { if ((e.key === "Control" || e.key === "Meta") && drag && drag.moved) { setDragCopy(true); dragMove({ clientX: drag.lastX, ctrlKey: true, pointerType: "mouse" }); } });
+window.addEventListener("keyup", e => { if ((e.key === "Control" || e.key === "Meta") && drag && drag.moved) { setDragCopy(false); dragMove({ clientX: drag.lastX, ctrlKey: false, pointerType: "mouse" }); } });
 $("wrap").addEventListener("pointerdown", e => {
   if (e.pointerType !== "mouse") return touchDown(e);
   if (e.button !== 0) return;
@@ -748,11 +772,27 @@ function placeGhost() {
   drag.el.style.left = a * dw + "px"; drag.el.style.width = (z - a + 1) * dw + "px";
   drag.el.textContent = `${md(dayAdd(drag.from, a))}〜${md(dayAdd(drag.from, z))}（${z - a + 1}日）`;
 }
+/* Ctrl（Mac は ⌘）を押しながら動かす＝コピー（2026-10-24 ユーザー指定）。元の工程線はそのまま、写しを動かす。
+   押す・離すは動かしている途中でも切り替わる（キーの押し下げでも見直す） */
+function setDragCopy(on) {
+  if (!drag || drag.kind !== "bar" || drag.mode !== "move" || !!drag.copyEl === on) return;
+  if (on) {
+    const c = drag.el.cloneNode(true);
+    c.removeAttribute("data-bar"); c.classList.remove("sel", "lift");
+    c.classList.add("drag", "copy");
+    drag.el.parentNode.appendChild(c);
+    drag.copyEl = c;
+    // 元の工程線は元の場所へ戻す
+    drag.el.classList.remove("drag"); drag.el.style.left = drag.left0; drag.el.style.width = drag.width0; drag.el.title = drag.title0;
+  } else { drag.copyEl.remove(); drag.copyEl = null; }
+}
 function dragMove(e) {
   if (drag.kind === "new") { drag.d1 = dayAt(drag.track, e.clientX); if (drag.d1 !== drag.d0) drag.moved = true; placeGhost(); return; }
+  drag.lastX = e.clientX;
   const dd = Math.round((e.clientX - drag.x0) / pxDay());
   if (Math.abs(e.clientX - drag.x0) > 4) drag.moved = true;
   if (!drag.moved) return;
+  if (e.pointerType === "mouse" || e.pointerType === undefined) setDragCopy(!!(e.ctrlKey || e.metaKey));
   const b = drag.b;
   let a = b.開始, z = b.終了;
   if (drag.mode === "move") { a = dayAdd(b.開始, dd); z = dayAdd(b.終了, dd); }
@@ -760,13 +800,13 @@ function dragMove(e) {
   else { z = dayAdd(b.終了, dd); if (z < a) z = a; }
   drag.a = a; drag.z = z;
   // 見た目だけ先に動かす（離したときに保存）
-  const { from, end } = range(), dw = DW();
+  const { from, end } = range(), dw = DW(), el = drag.copyEl || drag.el;
   const va = a < from ? from : a, vz = z > end ? end : z;
-  drag.el.style.left = dayDiff(from, va) * dw + "px";
-  drag.el.style.width = Math.max(dw, (dayDiff(va, vz) + 1) * dw) + "px";
-  drag.el.classList.add("drag");
-  drag.el.title = `${md(a)}〜${md(z)}（${dayDiff(a, z) + 1}日）`;
-  toast(`${md(a)}（${WD[dayDow(a)]}）〜 ${md(z)}（${WD[dayDow(z)]}）　${dayDiff(a, z) + 1}日`, 900);
+  el.style.left = dayDiff(from, va) * dw + "px";
+  el.style.width = Math.max(dw, (dayDiff(va, vz) + 1) * dw) + "px";
+  el.classList.add("drag");
+  el.title = `${md(a)}〜${md(z)}（${dayDiff(a, z) + 1}日）`;
+  toast(`${drag.copyEl ? "コピー　" : ""}${md(a)}（${WD[dayDow(a)]}）〜 ${md(z)}（${WD[dayDow(z)]}）　${dayDiff(a, z) + 1}日`, 900);
 }
 function dragEnd() {
   const d = drag; drag = null;
@@ -777,6 +817,7 @@ function dragEnd() {
     return;
   }
   if (!d.moved) { openBar(d.site, d.b); return; }
+  if (d.copyEl) { d.copyEl.remove(); saveDragCopy(d); return; }
   if (d.a === d.b.開始 && d.z === d.b.終了) { render(); return; }
   const id = d.b.id, a = d.a, z = d.z;
   mutate(fileOfSite(d.site.id), doc => { const b = doc.バー.find(x => x.id === id); if (b) { b.開始 = a; b.終了 = z; stamp(b); } });
@@ -899,6 +940,7 @@ function openCtx(track, barEl, cx, cy) {
     : [`「${ln ? laneName(ln) : "工種"}」を完了にしてたたむ`, () => setLaneDone(site.id, lane, true)];
   const items = b ? [
     [`「${b.作業 || "工程"}」を直す`, () => openBar(site, b)],
+    [`「${b.作業 || "工程"}」をコピーする`, () => { openBar(site, b); copyBarForm(); }],
     ["同じ期間で工種を足す", () => openBar(site, null, { 段: b.段, 開始: b.開始, 終了: b.終了 })],
     [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
     ["休工日を設定", () => { openBar(site, b); $("bOffBtn").click(); }],
@@ -1048,7 +1090,7 @@ function openBar(site, b, init) {
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
-  $("bBarDel").hidden = !b;
+  $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
   openDlg($("dBar"));
   showOffInfo(); showHeadInfo(); numPlaceholder();
   if (!b && !IS_TOUCH()) $("bWork").focus();
@@ -1196,6 +1238,25 @@ $("fBar").addEventListener("submit", e => {
   $("dBar").close();
 });
 $("bBarCancel").onclick = () => $("dBar").close();
+/* 小窓の「コピー」（2026-10-24 ユーザー指定）：いま小窓に出ている中身で「工程を足す」に切り替える。
+   元の工程は変えない（直した所は元には入らない）。日付は元の終わりの次の日から同じ日数（休工日・日ごとの人数も同じだけずらす）。
+   工種・日付を直して「保存」で新しい工程になる */
+function copyBarForm() {
+  if (!barCtx || !barCtx.barId) return;
+  let a = $("bFrom").value, z = $("bTo").value;
+  if (!a || !z) return;
+  if (z < a) [a, z] = [z, a];
+  const dd = dayDiff(a, z) + 1, sh = k => dayAdd(k, dd);
+  barCtx = { siteId: barCtx.siteId, barId: null, 休み: barCtx.休み.map(sh), 出勤: barCtx.出勤.map(sh),
+    人数日: Object.fromEntries(Object.entries(barCtx.人数日 || {}).map(([k, v]) => [sh(k), v])) };
+  $("bFrom").value = sh(a); $("bTo").value = sh(z);
+  $("dBarTtl").textContent = "工程を足す（コピー）";
+  $("dBarWho").textContent = "コピーです。工種・日付を直して「保存」すると新しい工程になります（元の工程はそのまま）。";
+  $("bBarDel").hidden = true; $("bBarCopy").hidden = true;
+  showOffInfo(); showHeadInfo();
+  toast(`コピーしました：${md(sh(a))}〜${md(sh(z))}（日付を直して保存してください）`, 2600);
+}
+$("bBarCopy").onclick = copyBarForm;
 $("bBarDel").onclick = () => {
   const { siteId, barId } = barCtx;
   if (!confirm("この工程を消します。よろしいですか？")) return;
