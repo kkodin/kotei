@@ -859,18 +859,19 @@ const siteKi = (s, firstDay) => /^\d{6}$/.test(s.コード || "") ? +s.コード
 let MTAB = "machine";
 function renderMaster() {
   const el = $("pMaster");
+  const keep = cellWant || cellAt(document.activeElement);   // 描き直しても、いた欄（または移る先の欄）へ戻る
   const head = `<div class="tabs2"><button data-mt="machine" class="${MTAB === "machine" ? "on" : ""}">機械</button><button data-mt="site" class="${MTAB === "site" ? "on" : ""}">現場・行き先</button></div>`;
   if (MTAB === "machine") {
     el.innerHTML = head + `<p class="note">変えたら欄を離れたときに保存します。「使わない」にすると稼働表に出ません（予約は残ります）。単価は1日あたり（金額の目安に使う）。</p>
-    <table class="t" id="mt"><tr><th></th><th>分類</th><th>機械名</th><th>規格</th><th>単価 昼</th><th>単価 夜</th><th>メモ</th><th>使わない</th><th>予約</th><th></th></tr>` +
-      D.機械.map((m, i) => `<tr data-id="${m.id}"><td><button class="sub" data-up="${i}" ${i ? "" : "disabled"}>▲</button><button class="sub" data-dn="${i}" ${i < D.機械.length - 1 ? "" : "disabled"}>▼</button></td>
+    <table class="t grid" id="mt"><tr><th></th><th>分類</th><th>機械名</th><th>規格</th><th>単価 昼</th><th>単価 夜</th><th>メモ</th><th>使わない</th><th>予約</th><th></th></tr>` +
+      D.機械.map((m, i) => `<tr data-id="${m.id}"><td><button class="sub" tabindex="-1" data-up="${i}" ${i ? "" : "disabled"}>▲</button><button class="sub" tabindex="-1" data-dn="${i}" ${i < D.機械.length - 1 ? "" : "disabled"}>▼</button></td>
         <td><select data-f="分類">${CATS.map(c => `<option ${(m.分類 || "その他") === c ? "selected" : ""}>${c}</option>`).join("")}</select></td>
         <td><input data-f="名前" value="${esc(m.名前)}" size="16"></td><td><input data-f="規格" value="${esc(m.規格 || "")}" size="10"></td>
         <td><input data-f="単価昼" class="num" inputmode="numeric" value="${m.単価昼 ?? ""}"></td><td><input data-f="単価夜" class="num" inputmode="numeric" value="${m.単価夜 ?? ""}"></td>
         <td><input data-f="メモ" value="${esc(m.メモ || "")}" size="16"></td>
         <td style="text-align:center"><input type="checkbox" data-f="使わない" ${m.使わない ? "checked" : ""}></td>
         <td class="n small">${D.予約.filter(r => r.機械 === m.id).length}</td>
-        <td><button class="danger" data-del="${m.id}">消す</button></td></tr>`).join("") + `</table>
+        <td><button class="danger" tabindex="-1" data-del="${m.id}">消す</button></td></tr>`).join("") + `</table>
     <p><button id="mAdd">＋ 機械を足す</button></p>`;
     el.querySelectorAll("#mt [data-f]").forEach(inp => inp.onchange = () => {
       const id = inp.closest("tr").dataset.id, f = inp.dataset.f;
@@ -902,7 +903,7 @@ function renderMaster() {
     <div class="form"><label class="ck"><input type="checkbox" id="sDone" ${S.showDone ? "checked" : ""}> 完了した現場も表示（${nDone}件）</label>
       <button class="sub" id="sFill" title="受注台帳等・配置表の名簿と照合した結果（取り込み_自社機械予定表.json）から、現場の情報だけを入れる。予約は変えません">${window.KIKAI_IMPORT ? "取り込みデータ" : "ファイル（取り込み_自社機械予定表.json）"}から 工事コード・元請・地域・工期・完了 を入れる</button>
       <input type="file" id="sFile" accept=".json,application/json" hidden></div>
-    <table class="t" id="st"><tr><th>期</th><th>現場名・行き先</th><th>工事コード</th><th>元請</th><th>地域</th><th>工期</th><th>種類</th><th>色</th><th>完了</th><th>予約</th><th>最後に使う日</th><th></th></tr>` +
+    <table class="t grid" id="st"><tr><th>期</th><th>現場名・行き先</th><th>工事コード</th><th>元請</th><th>地域</th><th>工期</th><th>種類</th><th>色</th><th>完了</th><th>予約</th><th>最後に使う日</th><th></th></tr>` +
       list.map(s => `<tr data-n="${esc(s.名前)}"${s.完了 ? ' style="color:#888"' : ""}>
         <td class="n">${siteKi(s, first[s.名前]) || ""}</td>
         <td title="${esc([s.正式名, s.担当 && "担当 " + s.担当, s.場所].filter(Boolean).join("\n"))}"><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
@@ -914,7 +915,7 @@ function renderMaster() {
         <td><input type="color" data-f="色" value="${esc(s.色 || "#8a96a3")}"></td>
         <td style="text-align:center"><input type="checkbox" data-f="完了" ${s.完了 ? "checked" : ""}></td>
         <td class="n small">${cnt[s.名前] || 0}</td><td class="small">${last[s.名前] ? last[s.名前].replace(/-/g, "/") : ""}</td>
-        <td>${cnt[s.名前] ? "" : `<button class="danger" data-del="${esc(s.名前)}">消す</button>`}</td></tr>`).join("") + `</table>
+        <td>${cnt[s.名前] ? "" : `<button class="danger" tabindex="-1" data-del="${esc(s.名前)}">消す</button>`}</td></tr>`).join("") + `</table>
     <p><button id="sAdd">＋ 現場を足す</button></p>`;
     $("sDone").onchange = () => { S.showDone = $("sDone").checked; saveView(); renderMaster(); };
     /* 現場の情報だけを入れる（空いている欄だけ。予約は変えない）。公開した画面には取り込みデータが無いので、ファイルを選ぶ */
@@ -949,7 +950,63 @@ function renderMaster() {
     $("sAdd").onclick = () => { const n = prompt("現場名（社内工事名）"); if (n && n.trim()) commit(d => ensureSite(d, n.trim())); };
   }
   el.querySelectorAll("[data-mt]").forEach(b => b.onclick = () => { MTAB = b.dataset.mt; renderMaster(); });
+  if (keep) focusCell(keep);
 }
+
+/* ---------- 表の中の移動（Excel と同じ） ----------
+   Tab＝右（行の終わりは次の行の頭）・Shift＋Tab＝左・Enter＝下・Shift＋Enter＝上・↑↓＝上下・←→＝字の端にいるときは左右の欄へ。
+   値を変えると保存して表を描き直すので（前は Tab で移る先の欄が消えて、フォーカスが変な所へ飛んだ）、
+   移る先は「行のキー（機械の id・現場名）＋欄」で覚え、描き直した表でその欄へ移る。ボタン（▲▼・消す）は Tab で止まらない */
+let cellWant = null;
+const rowKeyOf = tr => tr.dataset.id || tr.dataset.n;
+function cellAt(x) {
+  const tbl = x?.closest?.("table.grid"), tr = x?.closest?.("tr");
+  return tbl && tr && x.dataset.f ? { tbl: tbl.id, key: rowKeyOf(tr), f: x.dataset.f } : null;
+}
+function focusCell(w) {
+  const tbl = w && document.getElementById(w.tbl); if (!tbl) return false;
+  const tr = [...tbl.querySelectorAll("tr[data-id],tr[data-n]")].find(t => rowKeyOf(t) === w.key);
+  const x = tr && tr.querySelector(`[data-f="${w.f}"]`); if (!x) return false;
+  x.focus();
+  if (x.select && x.tagName === "INPUT" && !["checkbox", "color"].includes(x.type)) x.select();
+  return true;
+}
+document.addEventListener("keydown", e => {
+  const x = e.target, tbl = x.closest?.("table.grid");
+  if (!tbl || !x.dataset.f || e.isComposing || e.altKey || e.ctrlKey) return;
+  const text = x.tagName === "INPUT" && !["checkbox", "color"].includes(x.type);
+  const all = text && x.selectionStart === 0 && x.selectionEnd === x.value.length;   // 入ったばかり（全部選んである）
+  let dr = 0, dc = 0;
+  if (e.key === "Tab") dc = e.shiftKey ? -1 : 1;
+  else if (e.key === "Enter") dr = e.shiftKey ? -1 : 1;
+  else if (e.key === "ArrowDown" && x.tagName !== "SELECT") dr = 1;
+  else if (e.key === "ArrowUp" && x.tagName !== "SELECT") dr = -1;
+  else if (e.key === "ArrowRight" && x.tagName !== "SELECT" && (!text || all || (x.selectionStart === x.value.length && x.selectionEnd === x.value.length))) dc = 1;
+  else if (e.key === "ArrowLeft" && x.tagName !== "SELECT" && (!text || all || (x.selectionStart === 0 && x.selectionEnd === 0))) dc = -1;
+  else return;
+  e.preventDefault();
+  const rows = [...tbl.querySelectorAll("tr[data-id],tr[data-n]")], tr = x.closest("tr");
+  let ri = rows.indexOf(tr), ci = [...tr.querySelectorAll("[data-f]")].indexOf(x);
+  const cols = r => [...rows[r].querySelectorAll("[data-f]")];
+  ri += dr; ci += dc;
+  if (e.key === "Tab") {   // 行の端で次（前）の行へ
+    if (ci >= cols(ri).length && ri + 1 < rows.length) { ri++; ci = 0; }
+    if (ci < 0 && ri > 0) { ri--; ci = cols(ri).length - 1; }
+  }
+  if (ri < 0 || ri >= rows.length) return;
+  const t = cols(ri)[Math.max(0, Math.min(ci, cols(ri).length - 1))];
+  let key = rowKeyOf(rows[ri]);
+  if (rows[ri] === tr && tbl.id === "st" && x.dataset.f === "名前" && x.value.trim()) key = x.value.trim();   // 現場名を直した行は新しい名前がキー
+  cellWant = { tbl: tbl.id, key, f: t.dataset.f };
+  x.blur();   // 値が変わっていれば、ここで保存・描き直し（renderMaster が cellWant の欄へ戻す）
+  focusCell(cellWant);
+  cellWant = null;
+});
+/* マウスで別の欄を押したときも、描き直しで押した欄が消えないように */
+document.addEventListener("pointerdown", e => {
+  const w = cellAt(e.target); if (!w) return;
+  cellWant = w; setTimeout(() => { cellWant = null; }, 400);
+});
 
 /* ---------- 上の帯・凡例 ---------- */
 function syncBar() {
