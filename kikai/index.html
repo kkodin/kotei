@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自社機械稼働表</title>
+<link rel="stylesheet" href="app.css?v=Vr001 10/24 17:55">
+</head>
+<body>
+<header>
+  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/24 17:55</small></h1>
+  <nav id="tabs">
+    <button data-tab="chart" class="on">稼働表</button>
+    <button data-tab="free">空き探し</button>
+    <button data-tab="sum">集計</button>
+    <button data-tab="master">機械・現場</button>
+  </nav>
+  <div class="sp"></div>
+  <button class="sub" id="bUndo" title="元に戻す（Ctrl＋Z）">↶ 戻す</button>
+  <button class="sub" id="bRedo" title="やり直す（Ctrl＋Y）">↷</button>
+  <button class="sub" id="bData">データ ▾</button>
+  <span id="sync" class="sync"></span>
+  <span id="who" class="who"></span>
+</header>
+<div id="updBar" hidden>新しい版が出ています（<span id="updVer"></span>）<button id="bUpd">更新する</button></div>
+
+<div id="bar">
+  <label>開始 <input type="date" id="vFrom"></label>
+  <select id="vMonths">
+    <option value="1">1か月</option><option value="2">2か月</option><option value="3">3か月</option><option value="6">6か月</option>
+  </select>
+  <button class="sub" id="vPrev">◀</button><button class="sub" id="vToday">今日</button><button class="sub" id="vNext">▶</button>
+  <span class="sep"></span>
+  <select id="vCat"><option value="">分類：全部</option></select>
+  <input id="vQ" placeholder="機械名で絞る" size="10">
+  <label class="ck"><input type="checkbox" id="vUnused"> 使わない機械も</label>
+  <span class="sep chartOnly"></span>
+  <label class="chartOnly paint" title="先に現場を選んでおくと、空いている所をなぞるだけで、その現場の予約の線が引ける。空のときは、なぞった後に小窓で現場を選ぶ">線を引く現場
+    <input id="vPaint" list="siteList" placeholder="選ぶと、なぞるだけで予約" size="16"></label>
+  <label class="ck chartOnly"><input type="checkbox" id="vIdle"> 遊びを色で</label>
+  <span class="chartOnly zoom" title="表の大きさ（Ctrl＋ホイールでも）"><button class="sub" id="zOut">－</button><button class="sub" id="zReset">100%</button><button class="sub" id="zIn">＋</button></span>
+  <label class="chartOnly">現場を目立たせる <select id="vFocus"><option value="">―</option></select></label>
+  <span class="sp"></span>
+  <span id="warn"></span>
+</div>
+
+<div id="signin" class="center" hidden>
+  <p>会社の Microsoft アカウントでサインインしてください。</p>
+  <button id="bSignIn">サインイン</button>
+  <p id="signinMsg" class="ng"></p>
+</div>
+<div id="loading" class="center" hidden>読み込み中…</div>
+
+<main>
+  <section id="pChart" class="page on"><div id="wrap"><div id="chart"></div></div></section>
+  <section id="pFree" class="page"></section>
+  <section id="pSum" class="page"></section>
+  <section id="pMaster" class="page"></section>
+</main>
+
+<div id="legend"></div>
+<datalist id="siteList"></datalist>
+
+<!-- 予約の小窓 -->
+<dialog id="dRes">
+  <form method="dialog" autocomplete="off">
+    <h3 id="rTitle">予約</h3>
+    <div class="grid">
+      <label>機械</label><select id="rM"></select>
+      <label>区分</label><span><label class="ck"><input type="radio" name="rK" value="昼" checked> 昼</label> <label class="ck"><input type="radio" name="rK" value="夜"> 夜</label></span>
+      <label>行き先</label><input id="rSite" list="siteList" placeholder="現場名（機材センター・修理 なども）">
+      <label>期間</label><span><input type="date" id="rFrom"> 〜 <input type="date" id="rTo"></span>
+      <label>使う曜日</label><span>平日 <label class="ck"><input type="checkbox" id="rSat"> 土</label> <label class="ck"><input type="checkbox" id="rSun"> 日・祝</label></span>
+      <label>使う日</label><span>
+        <label class="ck"><input type="radio" name="rCalM" value="plan" checked> 使う日・使わない日を選ぶ</label>
+        <label class="ck"><input type="radio" name="rCalM" value="done"> 使わなかった日を申告する（あとから）</label>
+        <div id="rCal"></div>
+        <span class="note">日を押すと切り替わります。<i class="lg cyes"></i>使う　<i class="lg cno"></i>使わない　<i class="lg cun"></i>使わなかった（申告）</span></span>
+      <label>状態</label><span><label class="ck"><input type="radio" name="rSt" value="確定" checked> 確定</label> <label class="ck"><input type="radio" name="rSt" value="仮"> 仮（相談中）</label></span>
+      <label>メモ</label><input id="rMemo" placeholder="回送の手配・オペ付き など">
+    </div>
+    <div id="rInfo" class="note"></div>
+    <div id="rWarn"></div>
+    <div class="btns">
+      <button type="button" class="danger" id="rDel">消す</button>
+      <span class="sp"></span>
+      <button type="button" class="sub" id="rCancel">やめる</button>
+      <button type="button" id="rSave">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- データの小窓 -->
+<dialog id="dData">
+  <form method="dialog">
+    <h3>データ</h3>
+    <p class="note" id="ioWhere"></p>
+    <div class="col">
+      <button type="button" id="ioImport">Excel から取り込んだデータを読む</button>
+      <button type="button" class="sub" id="ioOpen">ファイルから読み込む（.json）</button>
+      <button type="button" class="sub" id="ioSave">ファイルに書き出す（.json）</button>
+      <button type="button" class="sub" id="ioPrint">印刷（稼働表・A3横）</button>
+      <button type="button" class="danger" id="ioClear">全部消す</button>
+    </div>
+    <input type="file" id="ioFile" accept=".json,application/json" hidden>
+    <div id="ioMsg" class="note"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" id="ioClose">閉じる</button></div>
+  </form>
+</dialog>
+
+<div id="ctx" hidden></div>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+
+<script src="lib/msal-browser.min.js"></script>
+<script src="config.js?v=Vr001 10/24 17:55"></script>
+<script src="app.js?v=Vr001 10/24 17:55"></script>
+</body>
+</html>
