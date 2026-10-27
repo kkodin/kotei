@@ -1239,7 +1239,7 @@ $("vFrom").onchange = () => { if ($("vFrom").value) { S.from = $("vFrom").value;
 $("vMonths").onchange = () => { S.months = +$("vMonths").value; saveView(); renderAll(); };
 $("vPrev").onclick = () => { S.from = addMonths(S.from, -1); saveView(); renderAll(); };
 $("vNext").onclick = () => { S.from = addMonths(S.from, 1); saveView(); renderAll(); };
-$("vToday").onclick = () => { S.from = dayAdd(todayKey(), -((dayDow(todayKey()) + 6) % 7) - 7); saveView(); renderAll();   // 先週の月曜から
+$("vToday").onclick = () => { S.from = dayAdd(todayKey(), -((dayDow(todayKey()) + 6) % 7)); saveView(); renderAll();   // 今週の月曜から
   requestAnimationFrame(() => { $("wrap").scrollLeft = 0; }); };
 $("vCat").onchange = () => { S.cat = $("vCat").value; saveView(); renderAll(); };
 $("vQ").oninput = () => { S.q = $("vQ").value; saveView(); renderAll(); };
