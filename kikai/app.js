@@ -59,7 +59,7 @@ const yen = v => v == null ? "" : Math.round(v).toLocaleString("ja-JP");
      分類・単価は単価表の品に対応していればそちらを使う（下の「単価表」）
    現場：{ 名前, 種類(現場／置場／修理／検査), 色, コード, 完了 }  … 名前＝全体工程表の「社内工事名」（略称）でそろえる
    予約：{ id, 機械, 区分(昼／夜), 現場(名前), 開始, 終了, 土, 日祝, 休み:[日], 出勤:[日], 状態(確定／仮), メモ, 更新, 交渉, 台数, 料金 }
-     台数：その予約で使う台数（無ければ1）。料金：{ 方式(日／月／現場／基／m／枚／式), 数量, 金額(一式) }。無ければ単価表どおり
+     単価品：備考で単価が分かれるとき選んだ単価表の行の key（無ければ機械の品）。台数：その予約で使う台数（無ければ1）。料金：{ 方式(日／月／現場／基／m／枚／式), 数量, 金額(一式) }。無ければ単価表どおり
      交渉：予算の無い現場で、機材センター長と決めた特別単価（2026-10-27）。無ければ null
        { 結果(決まった／交渉中), 単価(円／日), 日, 相手, 方法(対面／電話／メール／その他), メモ, 記録(入れた時刻と人) } */
 const KINDS = ["現場", "置場", "修理", "検査"];
@@ -283,13 +283,27 @@ function workDays(r, from = r.開始, to = r.終了) {
    対応：{ "名前|規格": 品の key }（道具が名前で決める）。機械の 単価品 があればそちらが先（""＝単価表を使わない）。
    金額は予約の日（月極・施工・一式は開始日）に有効な単価で出す。単価表に無い機械は機械の 単価昼・単価夜。 */
 let PR = null, PRI = {};
-function setPrices(p) { PR = p || null; PRI = {}; (PR?.品 || []).forEach(i => { PRI[i.key] = i; }); }
+function setPrices(p) {
+  PR = p || null; PRI = {};
+  /* 能力が空の行は、すぐ上の同じ名称の行の能力（Excel でセルを結合してある：セルフダンプ 4t の下の「セルフ使わない」） */
+  let prev = null;
+  (PR?.品 || []).forEach(i => { PRI[i.key] = i; i.能力2 = !i.能力 && prev && prev.行 === i.行 - 1 && prev.種別 === i.種別 && prev.名称 === i.名称 ? prev.能力2 : i.能力; prev = i; });
+}
 setPrices(window.KIKAI_PRICES);
 const mKey = m => m.名前 + "|" + (m.規格 || "");
 const itemKey = m => m.単価品 !== undefined ? m.単価品 : PR?.対応?.[mKey(m)] || "";
 const itemOf = m => m && PRI[itemKey(m)] || null;
 const itemLabel = i => i ? i.名称 + (i.能力 ? " " + i.能力 : "") : "";
 function priceAt(i, f, k) { let v = null; for (const h of i.履歴) { if (!h.から || h.から <= k) v = h[f]; else break; } return v; }
+/* 備考で単価が分かれる行（2026-10-28）：機械の品と同じ種別・名称で、能力が同じか空の行（セルフダンプ 8t ⇔ 8t「セルフ使わない」）。
+   2行以上あれば予約ごとに選べる（予約の 単価品。無ければ機械の品） */
+function variantsOf(m) {
+  const b = itemOf(m); if (!b) return [];
+  const L = (PR?.品 || []).filter(i => !i.無し && i.種別 === b.種別 && i.名称 === b.名称 && i.能力2 === b.能力2);
+  return L.length > 1 ? L : [];
+}
+const resItem = (r, m = machine(r.機械)) => r.単価品 && PRI[r.単価品] && variantsOf(m).includes(PRI[r.単価品]) ? PRI[r.単価品] : itemOf(m);
+const noteLabel = i => (i.能力2 ? i.能力2 + " " : "") + (i.備考 || "備考なし");
 /* 分類：単価表の品に対応していればその種別、無ければ機械の 分類 */
 const OLD_CATS = ["車両", "重機", "小型機械", "測量", "その他"];
 const catOf = m => itemOf(m)?.種別 || m.分類 || "その他";
@@ -299,7 +313,7 @@ const catIndex = () => { const L = catList(), o = {}; L.forEach((c, i) => { o[c]
 /* 料金の決め方（予約の 料金＝{ 方式, 数量, 金額 }。無ければ単価表の品から：日の単価があれば日極、無ければ施工の単位） */
 const METHODS = { 日: "日極", 月: "月極", 現場: "1現場", 基: "立坑1基", m: "1m", 枚: "1枚", 式: "一式（金額）" };
 const UNIT = { 日: "日", 月: "月", 現場: "現場", 基: "基", m: "m", 枚: "枚", 式: "式" };
-function methodOf(r, i = itemOf(machine(r.機械))) {
+function methodOf(r, i = resItem(r)) {
   if (r.料金?.方式) return r.料金.方式;
   const h = i?.履歴[i.履歴.length - 1];
   return h && h.日 == null && h.施工 != null && i.単位 ? i.単位 : "日";
@@ -310,14 +324,14 @@ const special = r => r.交渉 && r.交渉.結果 === "決まった" && r.交渉.
 function unitPrice(r, m, k, meth = methodOf(r), noSp = false) {
   if (meth === "式") return null;
   if (!noSp && special(r)) return r.交渉.単価;
-  const i = itemOf(m), v = i ? priceAt(i, meth === "日" ? "日" : meth === "月" ? "月" : "施工", k) : null;
+  const i = resItem(r, m), v = i ? priceAt(i, meth === "日" ? "日" : meth === "月" ? "月" : "施工", k) : null;
   return v == null && meth === "日" ? basePrice(m, r.区分) : v;
 }
 const monthsOf = r => Math.max(1, Math.ceil((dayDiff(r.開始, r.終了) + 1) / 30));
 const qtyOf = (r, meth) => r.料金?.数量 ?? (meth === "月" ? monthsOf(r) : 1);
 /* 期間 from〜to の金額。日極は使った日ごと、月極・施工・一式は開始日がその期間にあるときに全部 */
 function costOf(r, from = r.開始, to = r.終了, noSp = false, m = machine(r.機械)) {
-  const meth = methodOf(r, itemOf(m)), n = r.台数 || 1, days = workDays(r, from, to);
+  const meth = methodOf(r, resItem(r, m)), n = r.台数 || 1, days = workDays(r, from, to);
   if (meth === "日") {
     let amt = null;
     for (let k = from < r.開始 ? r.開始 : from; k <= to && k <= r.終了; k = dayAdd(k, 1))
@@ -517,7 +531,7 @@ const barTip = r => {
   const m = machine(r.機械), n = workDays(r);
   const c = isReal(r.現場) ? costOf(r) : null;
   return `${r.現場}（${siteOf(r.現場).種類}）${r.状態 === "仮" ? "　仮" : ""}\n${mLabel(m)}　${r.区分}${(r.台数 || 1) > 1 ? "　" + r.台数 + "台" : ""}\n${md(r.開始)}〜${md(r.終了)}　使う日 ${n}日` +
-    (c ? `\n${METHODS[c.meth]}　${costText(c)}${c.amt != null ? "＝" + yen(c.amt) + "円" : ""}` : "") +
+    (c ? `\n${METHODS[c.meth]}　${costText(c)}${c.amt != null ? "＝" + yen(c.amt) + "円" : ""}${variantsOf(m).length ? "　単価表：" + noteLabel(resItem(r, m)) : ""}` : "") +
     `（平日${r.土 ? "・土" : ""}${r.日祝 ? "・日祝" : ""}）${r.休み.length ? `\n使わない日：${spanText(r.休み.slice())}` : ""}${r.未使用.length ? `\n使わなかった（申告）：${spanText(r.未使用.slice())}` : ""}${r.メモ ? "\n" + r.メモ : ""}` +
     (r.交渉 ? "\n" + ngText(r.交渉) : "");
 };
@@ -764,6 +778,16 @@ $("rCal").addEventListener("click", e => {
 });
 document.querySelectorAll("input[name=rCalM]").forEach(x => x.addEventListener("change", () => { CAL.mode = x.value; renderCal(); }));
 
+/* ---------- 小窓を開いている間は後ろを動かさない（2026-10-28 iPad：小窓をなぞると後ろの表が動いていた） ----------
+   body.modal で後ろのスクロールを止め、指の動きは小窓の中身（.dbody）の中だけ通す */
+const syncModal = () => document.body.classList.toggle("modal", !!document.querySelector("dialog[open]"));
+document.querySelectorAll("dialog").forEach(d => new MutationObserver(syncModal).observe(d, { attributes: true, attributeFilter: ["open"] }));
+document.addEventListener("touchmove", e => {
+  if (!document.body.classList.contains("modal")) return;
+  const b = e.target.closest?.("dialog[open] .dbody");
+  if (!b || b.scrollHeight <= b.clientHeight) e.preventDefault();
+}, { passive: false });
+
 /* ---------- 予約の小窓 ---------- */
 let editing = null;   // { id | null }
 function openRes(r, init = {}, ng = false) {
@@ -778,6 +802,7 @@ function openRes(r, init = {}, ng = false) {
   $("rNgLog").textContent = v.交渉?.記録 ? "入れた：" + v.交渉.記録 : "";
   $("dRes")._ng = v.交渉 || null;
   $("rN").value = v.台数 || 1;
+  $("dRes")._pi = v.単価品 || ""; $("rPi")._keys = null;
   $("rPm").value = v.料金?.方式 || ""; $("rPq").value = v.料金?.数量 ?? ""; $("rPa").value = v.料金?.金額 ?? "";
   if (!r && v.開始 === v.終了) { if (isSat(v.開始)) v.土 = true; if (isSunHol(v.開始)) v.日祝 = true; }
   $("rTitle").textContent = r ? "予約を直す" : "予約を入れる";
@@ -810,6 +835,7 @@ function payValue() {
 $("rPm").innerHTML = `<option value="">単価表どおり</option>` + Object.entries(METHODS).map(([k, t]) => `<option value="${k}">${t}</option>`).join("");
 ["rN", "rPq", "rPa"].forEach(id => $(id).addEventListener("input", resInfo));
 $("rPm").addEventListener("change", resInfo);
+$("rPi").addEventListener("change", () => { $("dRes")._pi = $("rPi").value; resInfo(); });
 $("rNg").addEventListener("change", () => { $("rNgBox").hidden = !$("rNg").checked; if ($("rNg").checked) $("rNgP").focus(); resInfo(); });
 ["rNgP", "rNgD", "rNgW", "rNgH", "rNgM"].forEach(id => $(id).addEventListener("input", resInfo));
 document.querySelectorAll("input[name=rNgR]").forEach(x => x.addEventListener("change", resInfo));
@@ -819,6 +845,9 @@ function resValue() {
     現場: $("rSite").value.trim(), 開始: $("rFrom").value, 終了: $("rTo").value, 土: $("rSat").checked, 日祝: $("rSun").checked,
     休み: rest.休み.slice(), 出勤: rest.出勤.slice(), 未使用: rest.未使用.slice(), 状態: document.querySelector("input[name=rSt]:checked").value, メモ: $("rMemo").value.trim(),
     交渉: ngValue(), 台数: Math.max(1, Math.round(num($("rN").value) || 1)), 料金: payValue() };
+  /* 単価表の行（備考）：機械の品と違う行を選んだときだけ持つ */
+  const vs = variantsOf(machine(v.機械)), pi = $("dRes")._pi;
+  if (pi && vs.some(i => i.key === pi) && pi !== itemKey(machine(v.機械))) v.単価品 = pi;
   if (v.開始 && v.終了 && v.開始 > v.終了) [v.開始, v.終了] = [v.終了, v.開始];
   trimDays(v);
   return v;
@@ -827,10 +856,18 @@ function resInfo() {
   const v = resValue();
   renderCal();
   if (!v.開始 || !v.終了) { $("rInfo").textContent = ""; $("rWarn").innerHTML = ""; return; }
-  const n = workDays(v), m = machine(v.機械), i = itemOf(m), meth = methodOf(v, i);
+  const n = workDays(v), m = machine(v.機械), i = resItem(v, m), meth = methodOf(v, i);
   const c = costOf(v), b = costOf(v, v.開始, v.終了, true), cap = m?.台数 || 1;
   /* 料金の欄：単価表の品と、いまの決め方 */
   $("rNcap").textContent = cap > 1 ? `（在庫 ${cap}台）` : "";
+  const vs = variantsOf(m), pk = vs.map(x => x.key).join("\n");
+  $("rPiW").hidden = !vs.length;
+  if ($("rPi")._keys !== pk) {   // 機械が変わったときだけ作り直す
+    $("rPi")._keys = pk;
+    const pTxt = x => [["日", "日"], ["月", "月"], ["施工", x.単位 || "施工"]].map(([f, u]) => { const p = priceAt(x, f, v.開始); return p != null ? `${yen(p)}円／${u}` : ""; }).filter(Boolean).join("・") || "単価なし";
+    $("rPi").innerHTML = vs.map(x => `<option value="${esc(x.key)}">${esc(noteLabel(x))}　${pTxt(x)}${x.key === itemKey(m) ? "（機械の品）" : ""}</option>`).join("");
+  }
+  if (vs.length) $("rPi").value = i.key;
   $("rPm").options[0].textContent = "単価表どおり（" + METHODS[methodOf({ ...v, 料金: null }, i)] + "）";
   $("rPqW").hidden = meth === "日" || meth === "式"; $("rPaW").hidden = meth !== "式";
   $("rPu").textContent = UNIT[meth] + (meth === "月" && v.料金?.数量 == null ? `（空なら ${monthsOf(v)}か月）` : meth !== "月" && v.料金?.数量 == null ? "（空なら1）" : "");
@@ -874,7 +911,7 @@ $("rSave").onclick = () => {
   const nid = newId("r");
   commit(d => {
     ensureSite(d, v.現場);
-    if (editing) { const x = d.予約.find(y => y.id === editing); Object.assign(x, v, { id: editing }); stamp(x); S.sel = x.id; }
+    if (editing) { const x = d.予約.find(y => y.id === editing); Object.assign(x, v, { id: editing }); if (!v.単価品) delete x.単価品; stamp(x); S.sel = x.id; }
     else { v.id = nid; stamp(v); d.予約.push(v); S.sel = v.id; }
   });
 };
