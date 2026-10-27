@@ -55,10 +55,13 @@ const num = s => { const v = parseFloat(half(s)); return isFinite(v) ? v : null;
 const yen = v => v == null ? "" : Math.round(v).toLocaleString("ja-JP");
 
 /* ---------- データ ----------
-   機械：{ id, 名前, 規格, 分類, 単価昼, 単価夜, メモ, 使わない }
+   機械：{ id, 名前, 規格, 分類, 単価昼, 単価夜, メモ, 使わない, 台数(在庫。無ければ1), 単価品(単価表の品の key。無ければ自動) }
+     分類・単価は単価表の品に対応していればそちらを使う（下の「単価表」）
    現場：{ 名前, 種類(現場／置場／修理／検査), 色, コード, 完了 }  … 名前＝全体工程表の「社内工事名」（略称）でそろえる
-   予約：{ id, 機械, 区分(昼／夜), 現場(名前), 開始, 終了, 土, 日祝, 休み:[日], 出勤:[日], 状態(確定／仮), メモ, 更新 } */
-const CATS = ["車両", "重機", "小型機械", "測量", "その他"];
+   予約：{ id, 機械, 区分(昼／夜), 現場(名前), 開始, 終了, 土, 日祝, 休み:[日], 出勤:[日], 状態(確定／仮), メモ, 更新, 交渉, 台数, 料金 }
+     台数：その予約で使う台数（無ければ1）。料金：{ 方式(日／月／現場／基／m／枚／式), 数量, 金額(一式) }。無ければ単価表どおり
+     交渉：予算の無い現場で、機材センター長と決めた特別単価（2026-10-27）。無ければ null
+       { 結果(決まった／交渉中), 単価(円／日), 日, 相手, 方法(対面／電話／メール／その他), メモ, 記録(入れた時刻と人) } */
 const KINDS = ["現場", "置場", "修理", "検査"];
 const KIND_COLOR = { 置場: "#9aa3ad", 修理: "#b23b3b", 検査: "#7b5ea7" };
 const PALETTE = ["#3d7cc9", "#3f9a45", "#ef7d1a", "#d6457a", "#16a3a3", "#8d6e63", "#c9a400", "#5c6bc0",
@@ -229,6 +232,21 @@ async function pull() {
     else toast("最新の読み込みに失敗：" + e.message);
   } finally { pulling = false; }
 }
+/* 単価表.json（稼働データ と同じフォルダ。tools\単価表を読む.py が NAS から作る）を読む。変わったときだけ描き直す */
+let prTag = null;
+async function loadPrices() {
+  if (DEMO) return;
+  try {
+    const res = await g(folderBase + ":/" + encodeURIComponent("単価表.json"));
+    if (!res.ok) return;
+    const meta = await res.json();
+    if (meta.eTag === prTag) return;
+    const body = await fetch(meta["@microsoft.graph.downloadUrl"], { cache: "no-store" });
+    if (!body.ok) return;
+    setPrices(await body.json()); prTag = meta.eTag;
+    if (ready) renderAll();
+  } catch (e) { console.warn("単価表を読めませんでした", e); }
+}
 let toastT = 0;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 5000); }
 
@@ -259,6 +277,62 @@ function workDays(r, from = r.開始, to = r.終了) {
   let n = 0; for (let k = from < r.開始 ? r.開始 : from; k <= to && k <= r.終了; k = dayAdd(k, 1)) if (works(r, k)) n++;
   return n;
 }
+/* ---------- 単価表（2026-10-27） ----------
+   NAS の実行予算単価「機材センター」シートを tools\単価表を読む.py が OneDrive の 稼働データ\単価表.json にする（画面は NAS を読めない）。
+   品：{ key, 種別, 名称, 能力, 備考, 単位(施工の単位：現場／基／枚／m), 履歴:[{ から(その日から。""＝はじめから), 日, 施工, 月 }], 無し? }
+   対応：{ "名前|規格": 品の key }（道具が名前で決める）。機械の 単価品 があればそちらが先（""＝単価表を使わない）。
+   金額は予約の日（月極・施工・一式は開始日）に有効な単価で出す。単価表に無い機械は機械の 単価昼・単価夜。 */
+let PR = null, PRI = {};
+function setPrices(p) { PR = p || null; PRI = {}; (PR?.品 || []).forEach(i => { PRI[i.key] = i; }); }
+setPrices(window.KIKAI_PRICES);
+const mKey = m => m.名前 + "|" + (m.規格 || "");
+const itemKey = m => m.単価品 !== undefined ? m.単価品 : PR?.対応?.[mKey(m)] || "";
+const itemOf = m => m && PRI[itemKey(m)] || null;
+const itemLabel = i => i ? i.名称 + (i.能力 ? " " + i.能力 : "") : "";
+function priceAt(i, f, k) { let v = null; for (const h of i.履歴) { if (!h.から || h.から <= k) v = h[f]; else break; } return v; }
+/* 分類：単価表の品に対応していればその種別、無ければ機械の 分類 */
+const OLD_CATS = ["車両", "重機", "小型機械", "測量", "その他"];
+const catOf = m => itemOf(m)?.種別 || m.分類 || "その他";
+const catList = () => [...new Set([...(PR?.種別 || []), ...D.機械.map(catOf), ...OLD_CATS])];
+const catIndex = () => { const L = catList(), o = {}; L.forEach((c, i) => { o[c] = i; }); return c => o[c] ?? 999; };
+
+/* 料金の決め方（予約の 料金＝{ 方式, 数量, 金額 }。無ければ単価表の品から：日の単価があれば日極、無ければ施工の単位） */
+const METHODS = { 日: "日極", 月: "月極", 現場: "1現場", 基: "立坑1基", m: "1m", 枚: "1枚", 式: "一式（金額）" };
+const UNIT = { 日: "日", 月: "月", 現場: "現場", 基: "基", m: "m", 枚: "枚", 式: "式" };
+function methodOf(r, i = itemOf(machine(r.機械))) {
+  if (r.料金?.方式) return r.料金.方式;
+  const h = i?.履歴[i.履歴.length - 1];
+  return h && h.日 == null && h.施工 != null && i.単位 ? i.単位 : "日";
+}
+const basePrice = (m, kb) => m ? (kb === "夜" ? m.単価夜 : m.単価昼) : null;
+const special = r => r.交渉 && r.交渉.結果 === "決まった" && r.交渉.単価 != null;
+/* その日の単価（交渉で決まった特別単価が先。noSp＝通常の単価） */
+function unitPrice(r, m, k, meth = methodOf(r), noSp = false) {
+  if (meth === "式") return null;
+  if (!noSp && special(r)) return r.交渉.単価;
+  const i = itemOf(m), v = i ? priceAt(i, meth === "日" ? "日" : meth === "月" ? "月" : "施工", k) : null;
+  return v == null && meth === "日" ? basePrice(m, r.区分) : v;
+}
+const monthsOf = r => Math.max(1, Math.ceil((dayDiff(r.開始, r.終了) + 1) / 30));
+const qtyOf = (r, meth) => r.料金?.数量 ?? (meth === "月" ? monthsOf(r) : 1);
+/* 期間 from〜to の金額。日極は使った日ごと、月極・施工・一式は開始日がその期間にあるときに全部 */
+function costOf(r, from = r.開始, to = r.終了, noSp = false, m = machine(r.機械)) {
+  const meth = methodOf(r, itemOf(m)), n = r.台数 || 1, days = workDays(r, from, to);
+  if (meth === "日") {
+    let amt = null;
+    for (let k = from < r.開始 ? r.開始 : from; k <= to && k <= r.終了; k = dayAdd(k, 1))
+      if (works(r, k)) { const p = unitPrice(r, m, k, meth, noSp); if (p != null) amt = (amt || 0) + p * n; }
+    return { meth, n, days, qty: days, unit: unitPrice(r, m, from < r.開始 ? r.開始 : from, meth, noSp), amt };
+  }
+  const here = r.開始 >= from && r.開始 <= to;
+  if (meth === "式") return { meth, n, days, qty: 1, unit: null, amt: here ? r.料金?.金額 ?? null : 0 };
+  const unit = unitPrice(r, m, r.開始, meth, noSp), qty = qtyOf(r, meth);
+  return { meth, n, days, qty, unit, amt: !here ? 0 : unit == null ? null : unit * qty * n };
+}
+/* 「8,000円×3日×2台」 */
+const costText = c => c.meth === "式" ? "一式" : c.unit == null ? "単価なし" :
+  `${yen(c.unit)}円×${c.qty}${UNIT[c.meth]}${c.n > 1 ? "×" + c.n + "台" : ""}`;
+const priceOf = (r, m = machine(r.機械)) => unitPrice(r, m, r.開始);
 const overlap = (a, b) => a.開始 <= b.終了 && b.開始 <= a.終了;
 /* 同じ機械・同じ区分で、同じ日に使う予約（二重の予約） */
 function conflictDays(a, b) {
@@ -267,13 +341,17 @@ function conflictDays(a, b) {
   for (let k = s; k <= e; k = dayAdd(k, 1)) if (works(a, k) && works(b, k)) out.push(k);
   return out;
 }
+/* 在庫の台数を超える日がある予約（1台の機械なら二重の予約） */
+const capOf = id => machine(id)?.台数 || 1;
 function conflictSet(list) {
   const bad = new Set(), by = {};
   list.forEach(r => (by[r.機械 + "|" + r.区分] ||= []).push(r));
   Object.values(by).forEach(a => {
-    a.sort((x, y) => x.開始 < y.開始 ? -1 : 1);
-    for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length && a[j].開始 <= a[i].終了; j++)
-      if (conflictDays(a[i], a[j]).length) { bad.add(a[i].id); bad.add(a[j].id); }
+    const cap = capOf(a[0].機械);
+    if (a.length < 2 && (a[0].台数 || 1) <= cap) return;
+    const use = {};
+    a.forEach(r => { for (let k = r.開始; k <= r.終了; k = dayAdd(k, 1)) if (works(r, k)) (use[k] ||= []).push(r); });
+    Object.values(use).forEach(rs => { if (rs.reduce((s, r) => s + (r.台数 || 1), 0) > cap) rs.forEach(r => bad.add(r.id)); });
   });
   return bad;
 }
@@ -295,8 +373,10 @@ const rangeEnd = () => dayAdd(addMonths(S.from, S.months), -1);
 function rangeDays() { const out = [], e = rangeEnd(); for (let k = S.from; k <= e; k = dayAdd(k, 1)) out.push(k); return out; }
 function shownMachines() {
   const q = S.q.trim().toLowerCase();
-  return D.機械.filter(m => (S.unused || !m.使わない) && (!S.cat || (m.分類 || "その他") === S.cat) &&
-    (!q || (m.名前 + " " + (m.規格 || "")).toLowerCase().includes(q)));
+  const ci = catIndex();   // 分類（単価表の種別）の順にまとめる。分類の中は機械の並び
+  return D.機械.filter(m => (S.unused || !m.使わない) && (!S.cat || catOf(m) === S.cat) &&
+    (!q || (m.名前 + " " + (m.規格 || "")).toLowerCase().includes(q)))
+    .map((m, i) => [m, ci(catOf(m)), i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
 }
 /* 1日の幅：ふだん 24px。表が画面の幅より狭いとき（1か月表示など）は、画面いっぱいになるまで広げる（renderChart で決める） */
 let curDW = 24;
@@ -358,7 +438,7 @@ function renderChart() {
 
   let lastCat = null;
   ms.forEach(m => {
-    const cat = m.分類 || "その他";
+    const cat = catOf(m);
     if (!S.cat && cat !== lastCat) { h.push(`<div class="grp"><div class="gh">${esc(cat)}</div></div>`); lastCat = cat; }
     const lanes = ["昼", "夜"].map(k => { const list = byLane[m.id + "|" + k] || []; return { k, list, ...laneRows(list) }; });
     /* 稼働率（表示の期間の平日のうち、どちらかの区分で現場にいる日） */
@@ -374,7 +454,7 @@ function renderChart() {
     const rate = wd ? Math.round(used / wd * 100) : 0;
     h.push(`<div class="mach${m.使わない ? " unused" : ""}" data-m="${m.id}"><div class="mh">
       <div class="mname" title="${esc(mLabel(m) + (m.メモ ? "\n" + m.メモ : "") + "\n稼働 " + used + "日／平日 " + wd + "日")}">
-        <b>${esc(m.名前)}</b><span class="sp2">${esc(m.規格 || "")}${m.メモ ? "　" + esc(m.メモ) : ""}</span>
+        <b>${esc(m.名前)}</b>${(m.台数 || 1) > 1 ? `<span class="cnt">在庫 ${m.台数}台</span>` : ""}<span class="sp2">${esc(m.規格 || "")}${m.メモ ? "　" + esc(m.メモ) : ""}</span>
         <span class="rate${rate < 50 ? " low" : ""}"><i><s style="width:${rate}%"></s></i>${rate}%</span></div>
       <div class="lks">${lanes.map(l => `<div class="lk${l.k === "夜" ? " n" : ""}" style="height:${l.n * rh}px">${l.k}</div>`).join("")}</div>
     </div><div class="lanes">`);
@@ -398,7 +478,7 @@ function renderChart() {
   el.innerHTML = h.join("");
   el.style.width = `calc(var(--nw) + var(--kw) + ${N * dw}px)`;
   const nBad = bad.size;
-  $("warn").textContent = nBad ? `⚠ 二重の予約 ${nBad}本` : "";
+  $("warn").textContent = nBad ? `⚠ 二重の予約（台数を超える予約） ${nBad}本` : "";
   $("warn").title = nBad ? "押すと最初の場所へ" : "";
 }
 
@@ -426,12 +506,17 @@ function barHtml(r, from, N, dw, rh, row, conf) {
   if (S.sel === r.id) cls.push("sel");
   if (S.focus && r.現場 !== S.focus) cls.push("dim");
   return `<div class="${cls.join(" ")}" data-id="${r.id}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color}">` +
-    g.join("") + `<span class="lbl">${esc(r.現場)}</span><i class="eg l"></i><i class="eg r"></i></div>`;
+    g.join("") + `<span class="lbl">${(r.台数 || 1) > 1 ? `<b class="tk n">${r.台数}台</b>` : ""}${r.交渉 ? `<b class="tk${special(r) ? "" : " ing"}">${special(r) ? "特" : "交渉中"}</b>` : ""}${esc(r.現場)}</span><i class="eg l"></i><i class="eg r"></i></div>`;
 }
+const ngText = x => x ? (x.結果 === "決まった" && x.単価 != null ? `特別単価 ${yen(x.単価)}円／日` : "特別単価 交渉中") +
+  `（${[x.日 ? md(x.日) : "", x.相手, x.方法].filter(Boolean).join("・")}）${x.メモ ? "　" + x.メモ : ""}` : "";
 const barTip = r => {
   const m = machine(r.機械), n = workDays(r);
-  return `${r.現場}（${siteOf(r.現場).種類}）${r.状態 === "仮" ? "　仮" : ""}\n${mLabel(m)}　${r.区分}\n${md(r.開始)}〜${md(r.終了)}　使う日 ${n}日` +
-    `（平日${r.土 ? "・土" : ""}${r.日祝 ? "・日祝" : ""}）${r.休み.length ? `\n使わない日：${spanText(r.休み.slice())}` : ""}${r.未使用.length ? `\n使わなかった（申告）：${spanText(r.未使用.slice())}` : ""}${r.メモ ? "\n" + r.メモ : ""}`;
+  const c = isReal(r.現場) ? costOf(r) : null;
+  return `${r.現場}（${siteOf(r.現場).種類}）${r.状態 === "仮" ? "　仮" : ""}\n${mLabel(m)}　${r.区分}${(r.台数 || 1) > 1 ? "　" + r.台数 + "台" : ""}\n${md(r.開始)}〜${md(r.終了)}　使う日 ${n}日` +
+    (c ? `\n${METHODS[c.meth]}　${costText(c)}${c.amt != null ? "＝" + yen(c.amt) + "円" : ""}` : "") +
+    `（平日${r.土 ? "・土" : ""}${r.日祝 ? "・日祝" : ""}）${r.休み.length ? `\n使わない日：${spanText(r.休み.slice())}` : ""}${r.未使用.length ? `\n使わなかった（申告）：${spanText(r.未使用.slice())}` : ""}${r.メモ ? "\n" + r.メモ : ""}` +
+    (r.交渉 ? "\n" + ngText(r.交渉) : "");
 };
 
 /* ---------- 稼働表の操作（マウス・ペン。指はスクロールと、押して小窓） ---------- */
@@ -600,6 +685,7 @@ $("chart").addEventListener("contextmenu", e => {
         : [md(k) + " は使わなかった（あとから申告）", ch(x => { x.未使用.push(k); })]);
     } else items.push([md(k) + " も使う予定にする", ch(x => togglePlan(x, k))]);
     items.push(["使う日をカレンダーで選ぶ…", () => openRes(r)]);
+    items.push([r.交渉 ? "特別単価（交渉の結果）を直す…" : "特別単価（交渉の結果）を入れる…", () => openRes(r, {}, true)]);
     const nid = newId("r");
     if (k > r.開始) items.push([md(k) + " から後を別の予約に分ける", () => commit(d => {
       const x = d.予約.find(y => y.id === r.id), y = JSON.parse(JSON.stringify(x));
@@ -677,10 +763,19 @@ document.querySelectorAll("input[name=rCalM]").forEach(x => x.addEventListener("
 
 /* ---------- 予約の小窓 ---------- */
 let editing = null;   // { id | null }
-function openRes(r, init = {}) {
+function openRes(r, init = {}, ng = false) {
   hideTip(); hideCtx();
   editing = r ? r.id : null;
-  const v = r ? JSON.parse(JSON.stringify(r)) : Object.assign({ 機械: D.機械[0]?.id, 区分: "昼", 現場: S.paint, 開始: todayKey(), 終了: todayKey(), 土: false, 日祝: false, 休み: [], 出勤: [], 未使用: [], 状態: "確定", メモ: "" }, init);
+  const v = r ? JSON.parse(JSON.stringify(r)) : Object.assign({ 機械: D.機械[0]?.id, 区分: "昼", 現場: S.paint, 開始: todayKey(), 終了: todayKey(), 土: false, 日祝: false, 休み: [], 出勤: [], 未使用: [], 状態: "確定", メモ: "", 交渉: null }, init);
+  /* 特別単価（交渉の結果）。相手ははじめから機材センター長 */
+  const x = v.交渉 || { 結果: "決まった", 単価: null, 日: todayKey(), 相手: NG_WHO, 方法: "対面", メモ: "" };
+  $("rNg").checked = !!v.交渉 || ng; $("rNgBox").hidden = !$("rNg").checked;
+  document.querySelector(`input[name=rNgR][value="${x.結果}"]`).checked = true;
+  $("rNgP").value = x.単価 ?? ""; $("rNgD").value = x.日 || ""; $("rNgW").value = x.相手 || ""; $("rNgH").value = x.方法 || "対面"; $("rNgM").value = x.メモ || "";
+  $("rNgLog").textContent = v.交渉?.記録 ? "入れた：" + v.交渉.記録 : "";
+  $("dRes")._ng = v.交渉 || null;
+  $("rN").value = v.台数 || 1;
+  $("rPm").value = v.料金?.方式 || ""; $("rPq").value = v.料金?.数量 ?? ""; $("rPa").value = v.料金?.金額 ?? "";
   if (!r && v.開始 === v.終了) { if (isSat(v.開始)) v.土 = true; if (isSunHol(v.開始)) v.日祝 = true; }
   $("rTitle").textContent = r ? "予約を直す" : "予約を入れる";
   $("rM").innerHTML = D.機械.filter(m => !m.使わない || m.id === v.機械).map(m => `<option value="${m.id}">${esc(mLabel(m))}</option>`).join("");
@@ -694,13 +789,33 @@ function openRes(r, init = {}) {
   CAL.mode = r && r.開始 <= todayKey() ? CAL.mode : "plan";
   resInfo();
   $("dRes").showModal();
-  if (!matchMedia("(any-pointer: coarse)").matches) setTimeout(() => (r ? $("rSite") : $("rSite").value ? $("rTo") : $("rSite")).focus(), 30);
+  if (ng) setTimeout(() => { $("rNgBox").scrollIntoView({ block: "nearest" }); $("rNgP").focus(); }, 30);
+  else if (!matchMedia("(any-pointer: coarse)").matches) setTimeout(() => (r ? $("rSite") : $("rSite").value ? $("rTo") : $("rSite")).focus(), 30);
 }
+const NG_WHO = "田村";   // 機材センター長
+function ngValue() {
+  if (!$("rNg").checked) return null;
+  return { 結果: document.querySelector("input[name=rNgR]:checked").value, 単価: num($("rNgP").value), 日: $("rNgD").value,
+    相手: $("rNgW").value.trim(), 方法: $("rNgH").value, メモ: $("rNgM").value.trim() };
+}
+/* 料金の決め方：空＝単価表どおり。数量を空にすると、月極は期間の月数・ほかは1 */
+function payValue() {
+  const meth = $("rPm").value, q = num($("rPq").value), a = num($("rPa").value);
+  if (!meth) return null;
+  return { 方式: meth, ...(q != null && meth !== "日" && meth !== "式" ? { 数量: q } : {}), ...(meth === "式" ? { 金額: a } : {}) };
+}
+$("rPm").innerHTML = `<option value="">単価表どおり</option>` + Object.entries(METHODS).map(([k, t]) => `<option value="${k}">${t}</option>`).join("");
+["rN", "rPq", "rPa"].forEach(id => $(id).addEventListener("input", resInfo));
+$("rPm").addEventListener("change", resInfo);
+$("rNg").addEventListener("change", () => { $("rNgBox").hidden = !$("rNg").checked; if ($("rNg").checked) $("rNgP").focus(); resInfo(); });
+["rNgP", "rNgD", "rNgW", "rNgH", "rNgM"].forEach(id => $(id).addEventListener("input", resInfo));
+document.querySelectorAll("input[name=rNgR]").forEach(x => x.addEventListener("change", resInfo));
 function resValue() {
   const rest = $("dRes")._rest;
   const v = { id: editing || "(new)", 機械: $("rM").value, 区分: document.querySelector("input[name=rK]:checked").value,
     現場: $("rSite").value.trim(), 開始: $("rFrom").value, 終了: $("rTo").value, 土: $("rSat").checked, 日祝: $("rSun").checked,
-    休み: rest.休み.slice(), 出勤: rest.出勤.slice(), 未使用: rest.未使用.slice(), 状態: document.querySelector("input[name=rSt]:checked").value, メモ: $("rMemo").value.trim() };
+    休み: rest.休み.slice(), 出勤: rest.出勤.slice(), 未使用: rest.未使用.slice(), 状態: document.querySelector("input[name=rSt]:checked").value, メモ: $("rMemo").value.trim(),
+    交渉: ngValue(), 台数: Math.max(1, Math.round(num($("rN").value) || 1)), 料金: payValue() };
   if (v.開始 && v.終了 && v.開始 > v.終了) [v.開始, v.終了] = [v.終了, v.開始];
   trimDays(v);
   return v;
@@ -709,16 +824,33 @@ function resInfo() {
   const v = resValue();
   renderCal();
   if (!v.開始 || !v.終了) { $("rInfo").textContent = ""; $("rWarn").innerHTML = ""; return; }
-  const n = workDays(v), m = machine(v.機械);
-  const price = m && (v.区分 === "夜" ? m.単価夜 : m.単価昼);
-  $("rInfo").textContent = `${md(v.開始)}〜${md(v.終了)}　使う日 ${n}日` + (v.未使用.length ? `（使わなかった ${v.未使用.length}日を除く）` : "") + (price && isReal(v.現場) ? `　金額の目安 ${yen(price * n)}円（${yen(price)}円／日）` : "");
-  const cf = [];
-  D.予約.forEach(o => { const ds = conflictDays(v, o); if (ds.length) cf.push(`${o.現場}（${spanText(ds)}）`); });
+  const n = workDays(v), m = machine(v.機械), i = itemOf(m), meth = methodOf(v, i);
+  const c = costOf(v), b = costOf(v, v.開始, v.終了, true), cap = m?.台数 || 1;
+  /* 料金の欄：単価表の品と、いまの決め方 */
+  $("rNcap").textContent = cap > 1 ? `（在庫 ${cap}台）` : "";
+  $("rPm").options[0].textContent = "単価表どおり（" + METHODS[methodOf({ ...v, 料金: null }, i)] + "）";
+  $("rPqW").hidden = meth === "日" || meth === "式"; $("rPaW").hidden = meth !== "式";
+  $("rPu").textContent = UNIT[meth] + (meth === "月" && v.料金?.数量 == null ? `（空なら ${monthsOf(v)}か月）` : meth !== "月" && v.料金?.数量 == null ? "（空なら1）" : "");
+  $("rPinfo").textContent = (i ? `単価表：${i.種別}　${itemLabel(i)}　` + [["日", "日"], ["施工", i.単位 || "施工"], ["月", "月"]]
+      .map(([f, u]) => { const p = priceAt(i, f, v.開始); return p != null ? `${yen(p)}円／${u}` : ""; }).filter(Boolean).join("・") + (i.備考 ? `（${i.備考}）` : "")
+    : m ? "単価表に無い機械（機械・現場 の単価" + (basePrice(m, v.区分) != null ? ` ${yen(basePrice(m, v.区分))}円／日` : "：未設定") + "）" : "");
+  $("rNgBase").textContent = `円／${UNIT[meth]}` + (b.unit != null ? `（通常 ${yen(b.unit)}円）` : "（通常の単価なし）");
+  $("rInfo").textContent = `${md(v.開始)}〜${md(v.終了)}　使う日 ${n}日` + (v.未使用.length ? `（使わなかった ${v.未使用.length}日を除く）` : "") +
+    (isReal(v.現場) ? `　金額の目安 ` + (c.amt != null ? `${yen(c.amt)}円（${special(v) ? "特別単価 " : ""}${costText(c)}` +
+      (special(v) && b.amt != null ? `。通常なら ${yen(b.amt)}円、差 ${yen(b.amt - c.amt)}円` : "") + "）" : "—（単価なし）") : "");
+  /* 在庫の台数を超える日（1台の機械なら、ほかの予約がある日） */
+  const cf = [], over = {}, mine = D.予約.filter(o => o.id !== v.id && o.機械 === v.機械 && o.区分 === v.区分 && overlap(o, v));
+  for (let k = v.開始; k <= v.終了; k = dayAdd(k, 1)) {
+    if (!works(v, k)) continue;
+    const on = mine.filter(o => works(o, k));
+    if (on.reduce((s, o) => s + (o.台数 || 1), 0) + (v.台数 || 1) > cap) on.length ? on.forEach(o => (over[o.現場] ||= []).push(k)) : (over["（台数が在庫より多い）"] ||= []).push(k);
+  }
+  Object.entries(over).forEach(([s, ds]) => cf.push(`${s}（${spanText(ds)}）`));
   /* もう一方の区分も見る（昼夜で別の現場へ行くのは運べるかどうか） */
   const other = D.予約.filter(o => o.id !== v.id && o.機械 === v.機械 && o.区分 !== v.区分 && overlap(o, v) && o.現場 !== v.現場)
     .map(o => { const ds = []; for (let k = v.開始; k <= v.終了; k = dayAdd(k, 1)) if (works(v, k) && works(o, k)) ds.push(k); return ds.length ? `${o.区分}は ${o.現場}（${spanText(ds)}）` : ""; }).filter(Boolean);
-  $("rWarn").innerHTML = (cf.length ? `<div class="w">⚠ 同じ日に、この機械の${esc(v.区分)}はもう予約があります：${esc(cf.join("、"))}</div>`
-    : `<div class="ok">✓ この期間、この機械の${esc(v.区分)}は空いています</div>`) +
+  $("rWarn").innerHTML = (cf.length ? `<div class="w">⚠ ${cap > 1 ? `在庫 ${cap}台を超えます。同じ日のこの機械の${esc(v.区分)}` : `同じ日に、この機械の${esc(v.区分)}はもう予約があります`}：${esc(cf.join("、"))}</div>`
+    : `<div class="ok">✓ この期間、この機械の${esc(v.区分)}は${cap > 1 ? "在庫の台数の中に収まります" : "空いています"}</div>`) +
     (other.length ? `<div class="w" style="background:#fff7e0;color:#7a5200">参考：${esc(other.join("、"))}</div>` : "");
 }
 ["rM", "rSite", "rFrom", "rTo", "rSat", "rSun"].forEach(id => $(id).addEventListener("input", resInfo));
@@ -730,6 +862,11 @@ $("rSave").onclick = () => {
   if (!v.機械) { alert("機械を選んでください"); return; }
   if (!v.現場) { alert("行き先（現場名）を入れてください"); $("rSite").focus(); return; }
   if (!v.開始 || !v.終了) { alert("期間を入れてください"); return; }
+  if (v.交渉 && v.交渉.結果 === "決まった" && v.交渉.単価 == null && methodOf(v) !== "式") { alert("決まった特別単価を入れてください。まだなら「交渉中」に"); $("rNgP").focus(); return; }
+  if (v.料金?.方式 === "式" && v.料金.金額 == null) { alert("一式の金額を入れてください"); $("rPa").focus(); return; }
+  /* 交渉の中身が変わったときだけ、入れた時刻と人を残す */
+  const old = $("dRes")._ng, strip = x => x && JSON.stringify({ ...x, 記録: undefined });
+  if (v.交渉) v.交渉.記録 = old && strip(old) === strip(v.交渉) ? old.記録 : new Date().toLocaleString("ja-JP") + " " + me.name;
   $("dRes").close();
   const nid = newId("r");
   commit(d => {
@@ -751,7 +888,7 @@ const FREE = { from: "", to: "", k: "昼", cat: "", m: "" };
 function renderFree() {
   if (!FREE.from) { FREE.from = todayKey(); FREE.to = dayAdd(todayKey(), 6); }
   const el = $("pFree");
-  const cats = [...new Set(D.機械.map(m => m.分類 || "その他"))];
+  const cats = catList().filter(c => D.機械.some(m => catOf(m) === c));
   const head = `<h2>空いている機械を探す</h2>
   <div class="form">
     <label>期間 <input type="date" id="fFrom" value="${FREE.from}"> 〜 <input type="date" id="fTo" value="${FREE.to}"></label>
@@ -764,10 +901,13 @@ function renderFree() {
   const days = []; if (FREE.from && FREE.to && FREE.from <= FREE.to && dayDiff(FREE.from, FREE.to) <= 366)
     for (let k = FREE.from; k <= FREE.to; k = dayAdd(k, 1)) if (isWeekday(k) || (FREE.sat && isSat(k))) days.push(k);
   const ks = FREE.k === "昼夜とも" ? ["昼", "夜"] : [FREE.k];
-  const rows = D.機械.filter(m => !m.使わない && (!FREE.cat || (m.分類 || "その他") === FREE.cat) && (!FREE.m || m.id === FREE.m)).map(m => {
-    const mine = D.予約.filter(r => r.機械 === m.id && ks.includes(r.区分));
+  const rows = D.機械.filter(m => !m.使わない && (!FREE.cat || catOf(m) === FREE.cat) && (!FREE.m || m.id === FREE.m)).map(m => {
+    const mine = D.予約.filter(r => r.機械 === m.id && ks.includes(r.区分)), cap = m.台数 || 1;
     const busy = {}; let nb = 0;
-    days.forEach(k => { const on = mine.filter(r => works(r, k)); if (on.length) { nb++; on.forEach(r => (busy[r.現場] ||= []).push(k)); } });
+    /* ふさがり＝在庫の台数を全部使っている日（昼夜ともなら、どちらかで） */
+    days.forEach(k => { const on = mine.filter(r => works(r, k));
+      if (ks.some(kb => on.filter(r => r.区分 === kb).reduce((s, r) => s + (r.台数 || 1), 0) >= cap)) nb++;
+      on.forEach(r => (busy[r.現場] ||= []).push(k)); });
     const all = D.予約.filter(r => r.機械 === m.id);
     const before = all.filter(r => r.終了 < FREE.from).sort((a, b) => a.終了 < b.終了 ? 1 : -1)[0];
     const after = all.filter(r => r.開始 > FREE.to).sort((a, b) => a.開始 < b.開始 ? -1 : 1)[0];
@@ -776,7 +916,7 @@ function renderFree() {
   const tag = n => { const s = siteOf(n); return `<span class="tag${isLightColor(s.色) ? " lt" : ""}" style="background:${s.色}">${esc(n)}</span>`; };
   el.innerHTML = head + (days.length ? `<table class="t"><tr><th>機械</th><th>規格</th><th>空き</th><th>ふさがっている日</th><th>前の予定</th><th>次の予定</th><th></th></tr>` +
     rows.map(x => `<tr class="${x.nb === 0 ? "free" : x.free ? "part" : "busy"}">
-      <td>${esc(x.m.名前)}</td><td>${esc(x.m.規格 || "")}</td>
+      <td>${esc(x.m.名前)}${(x.m.台数 || 1) > 1 ? `<span class="small">（在庫 ${x.m.台数}台）</span>` : ""}</td><td>${esc(x.m.規格 || "")}</td>
       <td class="n">${x.nb === 0 ? "<b>全部空き</b>" : x.free + "／" + days.length + "日"}</td>
       <td>${Object.entries(x.busy).map(([s, ks2]) => tag(s) + `<span class="small">${spanText(ks2)}</span>`).join(" ")}</td>
       <td class="small">${x.before ? esc(x.before.現場) + "（〜" + md(x.before.終了) + "）" : ""}</td>
@@ -796,19 +936,20 @@ function renderSum() {
   const wd = days.filter(isWeekday).length;
   const list = D.予約.filter(r => r.開始 <= to && r.終了 >= from);
   const ms = shownMachines();
-  const head = `<div class="tabs2"><button data-by="machine" class="${S.sumBy === "machine" ? "on" : ""}">機械ごと</button><button data-by="site" class="${S.sumBy === "site" ? "on" : ""}">現場ごと</button>
-    <span class="note" style="align-self:center">期間：${from.replace(/-/g, "/")} 〜 ${to.replace(/-/g, "/")}（上の「開始」と「か月」）　平日 ${wd}日　金額は 使った日×単価 の目安</span>
+  const head = `<div class="tabs2"><button data-by="machine" class="${S.sumBy === "machine" ? "on" : ""}">機械ごと</button><button data-by="site" class="${S.sumBy === "site" ? "on" : ""}">現場ごと</button><button data-by="nego" class="${S.sumBy === "nego" ? "on" : ""}">特別単価</button>
+    <span class="note" style="align-self:center">期間：${from.replace(/-/g, "/")} 〜 ${to.replace(/-/g, "/")}（上の「開始」と「か月」）　平日 ${wd}日　金額は単価表（その日の単価）×使った日・台数の目安。月極・施工・一式は開始日の期間に数える。特別単価が決まった予約はその単価</span>
     <span class="sp"></span><button class="sub" id="sCsv">CSV に書き出す</button></div>`;
   let body = "", csv = [];
   if (S.sumBy === "machine") {
     const rows = ms.map(m => {
       const mine = list.filter(r => r.機械 === m.id);
-      let dn = 0, nn = 0, used = 0, idle = 0, rep = 0, amt = 0;
+      let dn = 0, nn = 0, used = 0, idle = 0, rep = 0;
+      const amt = mine.filter(r => isReal(r.現場)).reduce((s, r) => s + (costOf(r, from, to, false, m).amt || 0), 0);
       days.forEach(k => {
         const on = mine.filter(r => works(r, k));
         const real = on.filter(r => isReal(r.現場));
-        if (real.some(r => r.区分 === "昼")) { dn++; amt += m.単価昼 || 0; }
-        if (real.some(r => r.区分 === "夜")) { nn++; amt += m.単価夜 || 0; }
+        if (real.some(r => r.区分 === "昼")) dn++;
+        if (real.some(r => r.区分 === "夜")) nn++;
         if (!isWeekday(k)) return;
         if (real.length) used++;
         else if (on.some(r => ["修理", "検査"].includes(siteOf(r.現場).種類))) rep++;
@@ -818,44 +959,69 @@ function renderSum() {
     });
     if (S.sumSort === "rate") rows.sort((a, b) => a.rate - b.rate);
     const tot = rows.reduce((a, x) => ({ dn: a.dn + x.dn, nn: a.nn + x.nn, amt: a.amt + x.amt, idle: a.idle + x.idle }), { dn: 0, nn: 0, amt: 0, idle: 0 });
+    /* 単価の欄：単価表の品ならその日極・月極（期間の終わりの日の単価）、無ければ機械の単価 */
+    const pText = m => { const i = itemOf(m);
+      if (!i) return yen(m.単価昼) + (m.単価夜 !== m.単価昼 ? "／" + yen(m.単価夜) : "");
+      const d = priceAt(i, "日", to), mo = priceAt(i, "月", to), s = priceAt(i, "施工", to);
+      return [d != null ? yen(d) + "／日" : "", mo != null ? yen(mo) + "／月" : "", s != null ? yen(s) + "／" + (i.単位 || "施工") : ""].filter(Boolean).join(" ") || "—"; };
     body = `<div class="form"><label>並び <select id="sSort"><option value="order" ${S.sumSort === "order" ? "selected" : ""}>機械の並び</option><option value="rate" ${S.sumSort === "rate" ? "selected" : ""}>稼働率の低い順（遊んでいる順）</option></select></label></div>
-    <table class="t"><tr><th>分類</th><th>機械</th><th>規格</th><th>昼 使った日</th><th>夜 使った日</th><th>稼働率（平日）</th><th>遊び（平日）</th><th>修理・検査</th><th>単価 昼／夜</th><th>金額の目安</th></tr>` +
-      rows.map(x => `<tr><td class="small" style="white-space:nowrap">${esc(x.m.分類 || "")}</td><td>${esc(x.m.名前)}</td><td>${esc(x.m.規格 || "")}</td><td class="n">${x.dn || ""}</td><td class="n">${x.nn || ""}</td>
+    <table class="t"><tr><th>分類</th><th>機械</th><th>規格</th><th>在庫</th><th>昼 使った日</th><th>夜 使った日</th><th>稼働率（平日）</th><th>遊び（平日）</th><th>修理・検査</th><th>単価（単価表）</th><th>金額の目安</th></tr>` +
+      rows.map(x => `<tr><td class="small" style="white-space:nowrap">${esc(catOf(x.m))}</td><td>${esc(x.m.名前)}</td><td>${esc(x.m.規格 || "")}</td><td class="n">${x.m.台数 || 1}</td><td class="n">${x.dn || ""}</td><td class="n">${x.nn || ""}</td>
         <td class="n"><span class="meter${x.rate < .5 ? " low" : ""}"><s style="width:${Math.round(x.rate * 100)}%"></s></span>${Math.round(x.rate * 100)}%</td>
         <td class="n">${x.idle ? x.idle + "日" : ""}</td><td class="n">${x.rep ? x.rep + "日" : ""}</td>
-        <td class="n small">${yen(x.m.単価昼)}${x.m.単価夜 !== x.m.単価昼 ? "／" + yen(x.m.単価夜) : ""}</td><td class="n">${yen(x.amt || null)}</td></tr>`).join("") +
-      `<tr class="tot"><td colspan="3">計</td><td class="n">${tot.dn}</td><td class="n">${tot.nn}</td><td></td><td class="n">${tot.idle}日</td><td></td><td></td><td class="n">${yen(tot.amt)}</td></tr></table>`;
-    csv = [["分類", "機械", "規格", "昼 使った日", "夜 使った日", "稼働率", "遊び", "修理・検査", "単価昼", "単価夜", "金額の目安"],
-      ...rows.map(x => [x.m.分類, x.m.名前, x.m.規格, x.dn, x.nn, Math.round(x.rate * 100) + "%", x.idle, x.rep, x.m.単価昼 ?? "", x.m.単価夜 ?? "", Math.round(x.amt)])];
+        <td class="n small">${pText(x.m)}</td><td class="n">${yen(x.amt || null)}</td></tr>`).join("") +
+      `<tr class="tot"><td colspan="4">計</td><td class="n">${tot.dn}</td><td class="n">${tot.nn}</td><td></td><td class="n">${tot.idle}日</td><td></td><td></td><td class="n">${yen(tot.amt)}</td></tr></table>`;
+    csv = [["分類", "機械", "規格", "在庫", "昼 使った日", "夜 使った日", "稼働率", "遊び", "修理・検査", "単価", "金額の目安"],
+      ...rows.map(x => [catOf(x.m), x.m.名前, x.m.規格, x.m.台数 || 1, x.dn, x.nn, Math.round(x.rate * 100) + "%", x.idle, x.rep, pText(x.m).replace(/,/g, ""), Math.round(x.amt)])];
+  } else if (S.sumBy === "nego") {
+    /* 特別単価：機材センター長と交渉した予約の一覧（期間にかかるもの） */
+    const ng = list.filter(r => r.交渉).map(r => {
+      const m = machine(r.機械), n = workDays(r, from, to), c = costOf(r, from, to), b = costOf(r, from, to, true);
+      return { r, m, n, c, base: b.unit, unit: UNIT[c.meth], diff: special(r) && b.amt != null && c.amt != null ? b.amt - c.amt : null };
+    }).sort((a, b) => (a.r.交渉.日 || "") < (b.r.交渉.日 || "") ? 1 : -1);
+    const tot = ng.reduce((a, x) => a + (x.diff || 0), 0);
+    body = ng.length ? `<table class="t"><tr><th>結果</th><th>現場</th><th>機械</th><th>区分</th><th>予約の期間</th><th>使った日</th><th>通常単価</th><th>特別単価</th><th>差額（期間内）</th><th>交渉した日</th><th>相手</th><th>方法</th><th>交渉の中身</th><th>入れた</th><th></th></tr>` +
+      ng.map(x => `<tr><td>${x.r.交渉.結果 === "決まった" ? "<b>決まった</b>" : "交渉中"}</td><td>${esc(x.r.現場)}</td><td>${esc(mLabel(x.m))}</td><td>${x.r.区分}</td>
+        <td class="small">${md(x.r.開始)}〜${md(x.r.終了)}</td><td class="n">${x.n}</td><td class="n">${x.base != null ? yen(x.base) + "／" + x.unit : ""}</td><td class="n">${special(x.r) ? yen(x.r.交渉.単価) + "／" + x.unit : ""}</td><td class="n">${yen(x.diff)}</td>
+        <td class="small">${x.r.交渉.日 ? x.r.交渉.日.replace(/-/g, "/") : ""}</td><td>${esc(x.r.交渉.相手 || "")}</td><td>${esc(x.r.交渉.方法 || "")}</td><td class="small">${esc(x.r.交渉.メモ || "")}</td>
+        <td class="small">${esc(x.r.交渉.記録 || "")}</td><td><button class="sub" data-ng="${x.r.id}">直す</button></td></tr>`).join("") +
+      `<tr class="tot"><td colspan="8">差額の計（通常の単価との差。期間内の分）</td><td class="n">${yen(tot)}</td><td colspan="6"></td></tr></table>`
+      : `<p class="note">この期間に特別単価（交渉）の予約はありません。稼働表の線を右クリック（指は線をダブルタップ）して、予約の小窓の「特別単価」に入れます。</p>`;
+    csv = [["結果", "現場", "機械", "区分", "開始", "終了", "使った日", "通常単価", "特別単価", "差額", "交渉した日", "相手", "方法", "交渉の中身", "入れた"],
+      ...ng.map(x => [x.r.交渉.結果, x.r.現場, mLabel(x.m), x.r.区分, x.r.開始, x.r.終了, x.n, x.base ?? "", special(x.r) ? x.r.交渉.単価 : "", x.diff ?? "",
+        x.r.交渉.日 || "", x.r.交渉.相手 || "", x.r.交渉.方法 || "", x.r.交渉.メモ || "", x.r.交渉.記録 || ""])];
   } else {
-    /* 現場ごと：その現場で使った機械と日数（Excel の右の「現場名を選ぶ」の代わり） */
+    /* 現場ごと：その現場で使った機械と日数（Excel の右の「現場名を選ぶ」の代わり）。決め方・単価・台数・特別単価が違う予約は別の行 */
     const by = {};
     list.forEach(r => {
       const m = machine(r.機械); if (!m) return;
-      const n = workDays(r, from, to); if (!n) return;
+      const c = costOf(r, from, to, false, m), sp = special(r);
+      if (!c.days && !c.amt) return;
       const x = (by[r.現場] ||= { site: r.現場, items: {}, days: 0, amt: 0 });
-      const it = (x.items[m.id + r.区分] ||= { m, k: r.区分, n: 0, amt: 0 });
-      const p = (r.区分 === "夜" ? m.単価夜 : m.単価昼) || 0;
-      it.n += n; x.days += n;
-      if (isReal(r.現場)) { it.amt += p * n; x.amt += p * n; }
+      const it = (x.items[[m.id, r.区分, c.meth, c.unit, c.n, sp].join("|")] ||= { m, k: r.区分, meth: c.meth, unit: c.unit, n: c.n, sp, days: 0, qty: 0, amt: 0 });
+      it.days += c.days; x.days += c.days;
+      if (c.meth === "日" ? c.days : c.amt) it.qty += c.meth === "日" ? c.days : c.qty;
+      if (isReal(r.現場) && c.amt) { it.amt += c.amt; x.amt += c.amt; }
     });
     const sites = Object.values(by).sort((a, b) => (isReal(b.site) - isReal(a.site)) || b.amt - a.amt);
-    body = `<table class="t"><tr><th>現場</th><th>機械</th><th>区分</th><th>使った日</th><th>単価</th><th>金額の目安</th></tr>` +
+    const itText = it => (it.sp ? "<b>特</b> " : "") + (it.meth === "式" ? "一式" : it.unit == null ? "単価なし" : `${yen(it.unit)}円／${UNIT[it.meth]}`) + (it.meth !== "日" && it.meth !== "式" ? `×${it.qty}` : "") + (it.n > 1 ? `×${it.n}台` : "");
+    body = `<table class="t"><tr><th>現場</th><th>機械</th><th>区分</th><th>使った日</th><th>単価（決め方）</th><th>金額の目安</th></tr>` +
       sites.map(x => {
         const its = Object.values(x.items).sort((a, b) => D.機械.indexOf(a.m) - D.機械.indexOf(b.m));
         const s = siteOf(x.site);
         return its.map((it, i) => `<tr>${i === 0 ? `<td rowspan="${its.length + 1}"><span class="tag${isLightColor(s.色) ? " lt" : ""}" style="background:${s.色}">${esc(x.site)}</span><div class="small">${esc(s.種類)}</div></td>` : ""}
-          <td>${esc(mLabel(it.m))}</td><td>${it.k}</td><td class="n">${it.n}</td><td class="n small">${isReal(x.site) ? yen(it.k === "夜" ? it.m.単価夜 : it.m.単価昼) : ""}</td><td class="n">${isReal(x.site) ? yen(it.amt) : ""}</td></tr>`).join("") +
+          <td>${esc(mLabel(it.m))}</td><td>${it.k}</td><td class="n">${it.days}</td><td class="n small">${isReal(x.site) ? itText(it) : ""}</td><td class="n">${isReal(x.site) ? yen(it.amt) : ""}</td></tr>`).join("") +
           `<tr class="tot"><td colspan="2">計</td><td class="n">${x.days}</td><td></td><td class="n">${isReal(x.site) ? yen(x.amt) : ""}</td></tr>`;
       }).join("") + `</table>`;
-    csv = [["現場", "種類", "機械", "区分", "使った日", "単価", "金額の目安"]];
-    sites.forEach(x => Object.values(x.items).forEach(it => csv.push([x.site, siteOf(x.site).種類, mLabel(it.m), it.k, it.n,
-      isReal(x.site) ? (it.k === "夜" ? it.m.単価夜 : it.m.単価昼) ?? "" : "", isReal(x.site) ? Math.round(it.amt) : ""])));
+    csv = [["現場", "種類", "機械", "区分", "使った日", "決め方", "単価", "数量", "台数", "特別単価", "金額の目安"]];
+    sites.forEach(x => Object.values(x.items).forEach(it => csv.push([x.site, siteOf(x.site).種類, mLabel(it.m), it.k, it.days, METHODS[it.meth],
+      isReal(x.site) ? it.unit ?? "" : "", it.qty, it.n, it.sp ? "特" : "", isReal(x.site) ? Math.round(it.amt) : ""])));
   }
   el.innerHTML = head + body;
   el.querySelectorAll("[data-by]").forEach(b => b.onclick = () => { S.sumBy = b.dataset.by; saveView(); renderSum(); });
+  el.querySelectorAll("[data-ng]").forEach(b => b.onclick = () => { const r = D.予約.find(x => x.id === b.dataset.ng); if (r) openRes(r, {}, true); });
   if ($("sSort")) $("sSort").onchange = () => { S.sumSort = $("sSort").value; saveView(); renderSum(); };
-  $("sCsv").onclick = () => download(`自社機械_${S.sumBy === "machine" ? "機械ごと" : "現場ごと"}_${from}_${to}.csv`,
+  $("sCsv").onclick = () => download(`自社機械_${{ machine: "機械ごと", site: "現場ごと", nego: "特別単価" }[S.sumBy]}_${from}_${to}.csv`,
     "﻿" + csv.map(r => r.map(v => /[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : (v ?? "")).join(",")).join("\r\n"), "text/csv");
 }
 
@@ -869,12 +1035,22 @@ function renderMaster() {
   const keep = cellWant || cellAt(document.activeElement);   // 描き直しても、いた欄（または移る先の欄）へ戻る
   const head = `<div class="tabs2"><button data-mt="machine" class="${MTAB === "machine" ? "on" : ""}">機械</button><button data-mt="site" class="${MTAB === "site" ? "on" : ""}">現場・行き先</button></div>`;
   if (MTAB === "machine") {
-    el.innerHTML = head + `<p class="note">変えたら欄を離れたときに保存します。「使わない」にすると稼働表に出ません（予約は残ります）。単価は1日あたり（金額の目安に使う）。</p>
-    <table class="t grid" id="mt"><tr><th></th><th>分類</th><th>機械名</th><th>規格</th><th>単価 昼</th><th>単価 夜</th><th>メモ</th><th>使わない</th><th>予約</th><th></th></tr>` +
+    /* 単価表の品を選ぶ欄（種別ごと）。空＝単価表を使わない（機械の単価）。自動＝道具が名前で決めた品 */
+    const auto = m => PR?.対応?.[mKey(m)] || "";
+    const itemSel = m => `<select data-f="単価品" class="isel"><option value="*" ${m.単価品 === undefined ? "selected" : ""}>自動${auto(m) ? "：" + esc(itemLabel(PRI[auto(m)])) : "（無し）"}</option>
+      <option value="" ${m.単価品 === "" ? "selected" : ""}>使わない（右の単価）</option>` +
+      (PR?.種別 || []).map(c => `<optgroup label="${esc(c)}">` + PR.品.filter(i => i.種別 === c && !i.無し).map(i =>
+        `<option value="${esc(i.key)}" ${m.単価品 === i.key ? "selected" : ""}>${esc(itemLabel(i))}</option>`).join("") + `</optgroup>`).join("") + `</select>`;
+    const cats = catList();
+    el.innerHTML = head + `<p class="note">変えたら欄を離れたときに保存します。「使わない」にすると稼働表に出ません（予約は残ります）。
+      ${PR ? `単価・分類は単価表（実行予算単価「機材センター」、${esc(PR.元の更新 || "")} 更新の版）の品から。単価表に無い機械だけ右の 単価昼・単価夜（1日あたり）を使います。` : "単価表（単価表.json）を読めていません。単価は右の 単価昼・単価夜（1日あたり）。"}
+      在庫が何台もある機械（送風機など）は 台数 に台数を入れると、予約ごとに使う台数を入れられ、台数を超えたときだけ二重の予約になります。</p>
+    <table class="t grid" id="mt"><tr><th></th><th>分類</th><th>機械名</th><th>規格</th><th>台数</th><th>単価表の品</th><th>単価 昼</th><th>単価 夜</th><th>メモ</th><th>使わない</th><th>予約</th><th></th></tr>` +
       D.機械.map((m, i) => `<tr data-id="${m.id}"><td><button class="sub" tabindex="-1" data-up="${i}" ${i ? "" : "disabled"}>▲</button><button class="sub" tabindex="-1" data-dn="${i}" ${i < D.機械.length - 1 ? "" : "disabled"}>▼</button></td>
-        <td><select data-f="分類">${CATS.map(c => `<option ${(m.分類 || "その他") === c ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+        <td>${itemOf(m) ? `<span class="small" title="単価表の種別">${esc(catOf(m))}</span>` : `<select data-f="分類">${cats.map(c => `<option ${(m.分類 || "その他") === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`}</td>
         <td><input data-f="名前" value="${esc(m.名前)}" size="16"></td><td><input data-f="規格" value="${esc(m.規格 || "")}" size="10"></td>
-        <td><input data-f="単価昼" class="num" inputmode="numeric" value="${m.単価昼 ?? ""}"></td><td><input data-f="単価夜" class="num" inputmode="numeric" value="${m.単価夜 ?? ""}"></td>
+        <td><input data-f="台数" class="num" inputmode="numeric" value="${m.台数 || 1}" size="3"></td><td>${itemSel(m)}</td>
+        <td><input data-f="単価昼" class="num" inputmode="numeric" value="${m.単価昼 ?? ""}" ${itemOf(m) ? 'disabled title="単価表の品を使っています"' : ""}></td><td><input data-f="単価夜" class="num" inputmode="numeric" value="${m.単価夜 ?? ""}" ${itemOf(m) ? 'disabled title="単価表の品を使っています"' : ""}></td>
         <td><input data-f="メモ" value="${esc(m.メモ || "")}" size="16"></td>
         <td style="text-align:center"><input type="checkbox" data-f="使わない" ${m.使わない ? "checked" : ""}></td>
         <td class="n small">${D.予約.filter(r => r.機械 === m.id).length}</td>
@@ -883,6 +1059,8 @@ function renderMaster() {
     el.querySelectorAll("#mt [data-f]").forEach(inp => inp.onchange = () => {
       const id = inp.closest("tr").dataset.id, f = inp.dataset.f;
       commit(d => { const m = d.機械.find(x => x.id === id);
+        if (f === "単価品") { if (inp.value === "*") delete m.単価品; else m.単価品 = inp.value; return; }
+        if (f === "台数") { m.台数 = Math.max(1, Math.round(num(inp.value) || 1)); return; }
         m[f] = inp.type === "checkbox" ? inp.checked : f.startsWith("単価") ? num(inp.value) : inp.value.trim(); });
     });
     el.querySelectorAll("[data-up],[data-dn]").forEach(b => b.onclick = () => {
@@ -1019,7 +1197,7 @@ document.addEventListener("pointerdown", e => {
 function syncBar() {
   $("vFrom").value = S.from; $("vMonths").value = S.months; $("vQ").value = S.q; $("vUnused").checked = S.unused;
   $("vPaint").value = S.paint; $("vIdle").checked = S.idle;
-  const cats = [...new Set(D.機械.map(m => m.分類 || "その他"))];
+  const cats = catList().filter(c => D.機械.some(m => catOf(m) === c));
   $("vCat").innerHTML = `<option value="">分類：全部</option>` + cats.map(c => `<option ${S.cat === c ? "selected" : ""}>${esc(c)}</option>`).join("");
   const active = D.現場.filter(s => !s.完了);
   $("siteList").innerHTML = active.map(s => `<option value="${esc(s.名前)}">`).join("");
@@ -1175,7 +1353,7 @@ async function start() {
   }
   $("loading").hidden = false;
   try {
-    if (!DEMO) await resolveFolder();
+    if (!DEMO) { await resolveFolder(); await loadPrices(); }
     const r = await store.get();
     if (r) { D = normalize(r.data); docTag = r.eTag; }
   } catch (e) {
@@ -1189,6 +1367,7 @@ async function start() {
   ready = true; showSync();
   setTab(S.tab);
   setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
+  setInterval(() => { if (!document.hidden) loadPrices(); }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { pull(); checkVersion(); } });
 }
 start();

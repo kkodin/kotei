@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>自社機械稼働表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/27 18:43">
+<link rel="stylesheet" href="app.css?v=Vr001 10/27 19:20">
 </head>
 <body>
 <header>
-  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/27 18:43</small></h1>
+  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/27 19:20</small></h1>
   <nav id="tabs">
     <button data-tab="chart" class="on">稼働表</button>
     <button data-tab="free">空き探し</button>
@@ -77,7 +77,21 @@
         <div id="rCal"></div>
         <span class="note">日を押すと切り替わります。<i class="lg cyes"></i>使う　<i class="lg cno"></i>使わない　<i class="lg cun"></i>使わなかった（申告）</span></span>
       <label>状態</label><span><label class="ck"><input type="radio" name="rSt" value="確定" checked> 確定</label> <label class="ck"><input type="radio" name="rSt" value="仮"> 仮（相談中）</label></span>
+      <label>台数</label><span><input id="rN" class="num" inputmode="numeric" size="3"> 台 <span id="rNcap" class="note"></span></span>
+      <label>料金</label><span><select id="rPm"></select>
+        <span id="rPqW">数量 <input id="rPq" class="num" inputmode="numeric" size="4"> <span id="rPu"></span></span>
+        <span id="rPaW">金額 <input id="rPa" class="num" inputmode="numeric" size="9"> 円</span>
+        <div id="rPinfo" class="pinfo"></div></span>
       <label>メモ</label><input id="rMemo" placeholder="回送の手配・オペ付き など">
+      <label>特別単価</label><span>
+        <label class="ck"><input type="checkbox" id="rNg"> 予算の無い現場なので、機材センター長と単価を交渉した（する）</label>
+        <div id="rNgBox" class="ngbox" hidden>
+          <div>結果 <label class="ck"><input type="radio" name="rNgR" value="決まった" checked> 決まった</label> <label class="ck"><input type="radio" name="rNgR" value="交渉中"> 交渉中</label></div>
+          <div>特別単価 <input id="rNgP" class="num" inputmode="numeric" placeholder="円"> 円／日 <span id="rNgBase" class="note"></span></div>
+          <div>交渉した日 <input type="date" id="rNgD"> 相手 <input id="rNgW" size="8"> 方法 <select id="rNgH"><option>対面</option><option>電話</option><option>メール</option><option>その他</option></select></div>
+          <div><input id="rNgM" placeholder="交渉の中身（条件・回送費の扱い など）"></div>
+          <div id="rNgLog" class="note"></div>
+        </div></span>
     </div>
     <div id="rInfo" class="note"></div>
     <div id="rWarn"></div>
@@ -113,8 +127,8 @@
 <div id="toast" hidden></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/27 18:43"></script>
-<script src="app.js?v=Vr001 10/27 18:43"></script>
-<script src="excel.js?v=Vr001 10/27 18:43"></script>
+<script src="config.js?v=Vr001 10/27 19:20"></script>
+<script src="app.js?v=Vr001 10/27 19:20"></script>
+<script src="excel.js?v=Vr001 10/27 19:20"></script>
 </body>
 </html>

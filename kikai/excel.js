@@ -14,7 +14,6 @@ const XL_SITE_ALIAS = { "車 検": "車検", "積み置中": "積置き" };
 const XL_KIND = { "機材センター": "置場", "機材センター(仙台)": "置場", "積置き": "置場", "車両ヤード": "置場", "資材置き場": "置場",
   "故障又は修理中": "修理", "整備(リコール)": "修理", "特定自主検査": "検査", "車検": "検査", "クレーン検査": "検査", "名義変更": "検査" };
 const nfkc = v => String(v ?? "").normalize("NFKC").trim();
-const mKey = m => m.名前 + "|" + (m.規格 || "");
 const colName = c => { let s = ""; for (; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + (c - 1) % 26) + s; return s; };
 const colNum = s => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
 const monthDays = M => new Date(+M.slice(0, 4), +M.slice(5, 7), 0).getDate();
@@ -108,7 +107,7 @@ function xlApply(d, P, f, seed) {
   X.元[f.name] = { 月: M, cTag: f.cTag, シート: f.sheet || "", 行: P.rows };
 }
 /* その機械・区分の予約を、その月は Fm（日 → [現場]）、月の外は今のまま、で作り直す。
-   同じ現場が続く日（あいだが土日祝だけなら続き）を1本にし、前の予約の id・状態・メモを引き継ぐ */
+   同じ現場が続く日（あいだが土日祝だけなら続き）を1本にし、前の予約の id・状態・メモ・特別単価を引き継ぐ */
 function xlRebuild(d, mid, kb, from, to, Fm) {
   const old = d.予約.filter(r => r.機械 === mid && r.区分 === kb && r.開始 <= to && r.終了 >= from);
   const days = {};
@@ -138,6 +137,8 @@ function xlRebuild(d, mid, kb, from, to, Fm) {
       const same = best && best.開始 === a && best.終了 === b && best.土 === sat && best.日祝 === sun && !best.出勤.length && best.休み.join() === 休み.join();
       d.予約.push({ id, 機械: mid, 区分: kb, 現場: site, 開始: a, 終了: b, 土: sat, 日祝: sun, 休み, 出勤: [],
         未使用: best ? best.未使用.filter(k => inRun.has(k)) : [], 状態: best ? best.状態 : "確定", メモ: best ? best.メモ : "",
+        交渉: best?.交渉 ? JSON.parse(JSON.stringify(best.交渉)) : null,   // 特別単価（交渉の結果）・台数・料金の決め方も引き継ぐ
+        ...(best?.台数 > 1 ? { 台数: best.台数 } : {}), ...(best?.料金 ? { 料金: JSON.parse(JSON.stringify(best.料金)) } : {}),
         ...(same ? (best.更新 ? { 更新: best.更新 } : {}) : { 更新: now }) });
     });
   });
