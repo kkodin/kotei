@@ -210,7 +210,10 @@ i.lg.cyes { background: #3d7cc9; } i.lg.cno { background: #fff; } i.lg.cun { bac
 .zoom { display: inline-flex; gap: 0; }
 .zoom button { padding: 2px 8px; border-radius: 0; margin-left: -1px; }
 .zoom button:first-child { border-radius: 4px 0 0 4px; } .zoom button:last-child { border-radius: 0 4px 4px 0; }
-#zReset { min-width: 54px; }
+.zoom .zpct { display: inline-flex; align-items: center; gap: 1px; margin-left: -1px; padding: 0 4px; border: 1px solid #c3cad3; background: #fff; font-size: 13px; }
+.zoom #zPct { width: 3.4em; border: 0; padding: 2px 0; text-align: right; font-size: 16px; background: transparent; }   /* 16px：iPad で押したときに拡大しない */
+/* ブラウザの拡大（ピンチ・ダブルタップ）を止める。指1本のスクロールだけ（2026-10-28） */
+html, body, #wrap, #chart, .page, dialog { touch-action: pan-x pan-y; }
 /* 空き探し・機械現場では上の帯（期間・分類・機械名）を出さない（その画面に自分の絞り込みがある） */
 body[data-tab=free] #bar, body[data-tab=master] #bar { display: none; }
 

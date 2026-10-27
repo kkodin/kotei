@@ -402,7 +402,7 @@ const cssPx = n => parseFloat(getComputedStyle(document.documentElement).getProp
 /* 表の拡大・縮小（CSS の zoom を表だけにかける。上の帯・小窓は大きさが変わらない） */
 const ZMIN = 0.5, ZMAX = 2;
 function setZoom(z) {
-  S.zoom = Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 10) / 10)); saveView();
+  S.zoom = Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 100) / 100)); saveView();   // 1% きざみ（倍率を打てるように）
   const w = $("wrap"), cx = (w.scrollLeft + w.clientWidth / 2) / (w.scrollWidth || 1), cy = (w.scrollTop + w.clientHeight / 2) / (w.scrollHeight || 1);
   renderChart();
   w.scrollLeft = cx * w.scrollWidth - w.clientWidth / 2; w.scrollTop = cy * w.scrollHeight - w.clientHeight / 2;
@@ -434,7 +434,7 @@ function renderChart() {
   const avail = $("wrap").clientWidth / z - cssPx("--nw") - cssPx("--kw") - 2;
   const dw = curDW = Math.max(24, Math.floor(avail / N * 10) / 10);
   el.style.setProperty("--dw", dw + "px"); el.style.setProperty("--z", z);
-  $("zReset").textContent = Math.round(z * 100) + "%";
+  if (document.activeElement !== $("zPct")) $("zPct").value = Math.round(z * 100);
   const ms = shownMachines();
   const inRange = D.予約.filter(r => r.開始 <= to && r.終了 >= from);
   const bad = conflictSet(inRange);
@@ -1301,13 +1301,49 @@ $("vFocus").onchange = () => { S.focus = $("vFocus").value; saveView(); renderCh
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
 $("zIn").onclick = () => setZoom((S.zoom || 1) + 0.1);
 $("zOut").onclick = () => setZoom((S.zoom || 1) - 0.1);
-$("zReset").onclick = () => setZoom(1);
-$("wrap").addEventListener("wheel", e => { if (!e.ctrlKey) return; e.preventDefault(); setZoom((S.zoom || 1) + (e.deltaY < 0 ? 0.1 : -0.1)); }, { passive: false });
+/* 倍率を打つ（2026-10-28）：数字（%）を入れて Enter か、一覧から選ぶ。50〜200% */
+$("zPct").addEventListener("change", () => { const v = num($("zPct").value.replace(/[%％\s]/g, "")); if (v) setZoom(v / 100); else $("zPct").value = Math.round((S.zoom || 1) * 100); });
+$("zPct").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("zPct").blur(); } });
+$("zPct").addEventListener("focus", () => setTimeout(() => $("zPct").select(), 0));
+
+/* ---------- ブラウザの拡大を止める（2026-10-28 ユーザー：iPad で画面ごと拡大されて小窓の帯が隠れた。全体工程表と同じに）
+   Ctrl＋ホイール・Ctrl＋＋／－／0・2本指のピンチは、どのタブでもブラウザの拡大にしない。稼働表では表だけを拡大縮小する。
+   iPad の Safari：viewport の maximum-scale=1（入力欄を押したときの自動の拡大も止まる）＋ gesturestart を止める＋ touch-action（app.css） */
+window.addEventListener("wheel", e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  if (S.tab === "chart" && !document.querySelector("dialog[open]")) setZoom((S.zoom || 1) + (e.deltaY < 0 ? 0.1 : -0.1));
+}, { passive: false });
 document.addEventListener("keydown", e => {
-  if (!(e.ctrlKey || e.metaKey) || S.tab !== "chart" || document.querySelector("dialog[open]")) return;
-  if (e.key === "+" || e.key === ";" || e.key === "=") { e.preventDefault(); setZoom((S.zoom || 1) + 0.1); }
-  else if (e.key === "-") { e.preventDefault(); setZoom((S.zoom || 1) - 0.1); }
-  else if (e.key === "0") { e.preventDefault(); setZoom(1); }
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || !["+", ";", "=", "-", "_", "0"].includes(e.key)) return;
+  e.preventDefault();
+  if (S.tab !== "chart" || document.querySelector("dialog[open]")) return;
+  if (e.key === "0") setZoom(1); else setZoom((S.zoom || 1) + (e.key === "-" || e.key === "_" ? -0.1 : 0.1));
+});
+["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+/* 2本指のピンチ＝表だけ拡大縮小（稼働表）。ほかの所の2本指はブラウザに渡さない */
+let pinch = null;
+const dist2 = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+document.addEventListener("touchstart", e => {
+  if (e.touches.length !== 2) { pinch = null; return; }
+  drag = null; lastTap = null; hideTip(); hideCtx();   // 1本目の指で予約の小窓を開かない
+  pinch = { onChart: S.tab === "chart" && !!e.target.closest?.("#wrap") && !document.querySelector("dialog[open]"), d0: dist2(e.touches), z0: S.zoom || 1, z: S.zoom || 1, zoomed: false };
+}, { passive: false });
+document.addEventListener("touchmove", e => {
+  if (e.touches.length < 2) return;
+  if (e.cancelable) e.preventDefault();
+  if (!pinch || !pinch.onChart) return;
+  const k = dist2(e.touches) / pinch.d0;
+  if (!pinch.zoomed && Math.abs(k - 1) > 0.12) pinch.zoomed = true;   // 指の間が少し動いただけでは変えない
+  if (!pinch.zoomed) return;
+  pinch.z = Math.min(ZMAX, Math.max(ZMIN, pinch.z0 * k));
+  const now = Date.now();   // 表の描き直しは重いので 60ms に1回・5% 以上変わったときだけ
+  if (now - (pinch.t || 0) >= 60 && Math.abs(pinch.z - (S.zoom || 1)) >= 0.05) { pinch.t = now; setZoom(pinch.z); }
+}, { passive: false });
+document.addEventListener("touchend", e => {
+  if (e.touches.length >= 2 || !pinch) return;
+  if (pinch.zoomed && pinch.z !== S.zoom) setZoom(pinch.z);   // 指を離したときの倍率にそろえる
+  pinch = null;
 });
 let resizeT = 0;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === "chart") renderChart(); }, 150); });
