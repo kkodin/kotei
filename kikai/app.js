@@ -779,11 +779,22 @@ $("rCal").addEventListener("click", e => {
 document.querySelectorAll("input[name=rCalM]").forEach(x => x.addEventListener("change", () => { CAL.mode = x.value; renderCal(); }));
 
 /* ---------- 小窓を開いている間は後ろを動かさない（2026-10-28 iPad：小窓をなぞると後ろの表が動いていた） ----------
-   body.modal で後ろのスクロールを止め、指の動きは小窓の中身（.dbody）の中だけ通す */
-const syncModal = () => document.body.classList.toggle("modal", !!document.querySelector("dialog[open]"));
+   body.modal で後ろのスクロールを止め、指の動きは小窓の中身（.dbody）の中だけ通す
+   2026-10-28 2回目：iPad で指で拡大したままだと、小窓は拡大前の画面に合わせて置かれ、帯が見える所の外に出ていた（中身もスクロールしない）
+   → 小窓の大きさと位置を いま見えている所（visualViewport）に合わせる。二本指（拡大・縮小）と拡大中の移動は止めない */
+const VV = window.visualViewport;
+const zoomed = () => VV && (VV.scale > 1.01 || Math.abs(VV.offsetTop) > 1 || Math.abs(VV.offsetLeft) > 1);
+function fitDialog() {
+  const d = document.querySelector("dialog[open]"); if (!d || !VV) return;
+  d.style.maxHeight = Math.floor(VV.height - 20) + "px"; d.style.maxWidth = Math.floor(Math.min(640, VV.width - 20)) + "px";
+  if (zoomed()) Object.assign(d.style, { margin: "0", right: "auto", bottom: "auto", top: VV.offsetTop + 10 + "px", left: VV.offsetLeft + Math.max(10, (VV.width - d.offsetWidth) / 2) + "px" });
+  else Object.assign(d.style, { margin: "", right: "", bottom: "", top: "", left: "" });
+}
+const syncModal = () => { document.body.classList.toggle("modal", !!document.querySelector("dialog[open]")); fitDialog(); };
 document.querySelectorAll("dialog").forEach(d => new MutationObserver(syncModal).observe(d, { attributes: true, attributeFilter: ["open"] }));
+if (VV) { VV.addEventListener("resize", fitDialog); VV.addEventListener("scroll", fitDialog); }
 document.addEventListener("touchmove", e => {
-  if (!document.body.classList.contains("modal")) return;
+  if (!document.body.classList.contains("modal") || e.touches.length > 1 || zoomed()) return;
   const b = e.target.closest?.("dialog[open] .dbody");
   if (!b || b.scrollHeight <= b.clientHeight) e.preventDefault();
 }, { passive: false });
