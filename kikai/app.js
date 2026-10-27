@@ -436,6 +436,7 @@ const barTip = r => {
 
 /* ---------- 稼働表の操作（マウス・ペン。指はスクロールと、押して小窓） ---------- */
 let drag = null;
+let lastTap = null;   // 指で線を押した直前の1回（ダブルタップを見分ける）
 function laneAt(x, y) { const c = document.elementFromPoint(x, y)?.closest?.(".cells"); return c ? { m: c.dataset.m, k: c.dataset.k, el: c } : null; }
 function dayIndexAt(cells, x) {   // 拡大・縮小していても合うように、画面の上の幅÷日数で取る
   const r = cells.getBoundingClientRect(), N = rangeDays().length;
@@ -493,7 +494,12 @@ $("chart").addEventListener("pointerup", e => {
   if (!g) return;
   if (g.touch) {
     if (Math.abs(e.clientX - g.x0) > 8 || Math.abs(e.clientY - g.y0) > 8) return;   // スクロールだった
-    if (g.r) openRes(g.r);
+    if (g.r) {   // 線：1回で選ぶだけ。続けてもう1回（ダブルタップ）で直す
+      const t = lastTap, now = Date.now();
+      lastTap = { id: g.r.id, at: now };
+      if (t && t.id === g.r.id && now - t.at < 450) { lastTap = null; openRes(g.r); }
+      else setSel(g.r.id);
+    }
     else if (S.paint) quickAdd(g.cells.dataset.m, g.cells.dataset.k, rangeDays()[g.d0], rangeDays()[g.d0]);
     else openRes(null, { 機械: g.cells.dataset.m, 区分: g.cells.dataset.k, 開始: rangeDays()[g.d0], 終了: rangeDays()[g.d0] });
     return;
@@ -534,6 +540,7 @@ $("chart").addEventListener("pointerup", e => {
 });
 /* ダブルクリック：バー＝直す／空いている所＝線を引く現場を選んでいればその日1日、なければ小窓 */
 $("chart").addEventListener("dblclick", e => {
+  if ($("dRes").open) return;   // 指のダブルタップで上が開いたあとに届いた分
   const t = document.elementFromPoint(e.clientX, e.clientY);   // 押している間は #chart に捕まえているので、下の要素を取り直す
   const cells = t?.closest(".cells"); if (!cells) return;
   const barEl = t.closest(".bar"), r = barEl && D.予約.find(x => x.id === barEl.dataset.id);
@@ -1107,7 +1114,8 @@ $("bData").onclick = () => openDataDlg();
 function openDataDlg() {
   $("ioWhere").innerHTML = DEMO ? "いまは<b>このブラウザの中だけ</b>に覚えています（試し。ほかの人とは共有しません）。"
     : "データは会社の OneDrive（社内共有フォルダ\\03_自社機械稼働表\\稼働データ\\稼働データ.json）に保存し、全員で共有しています。" +
-      (window.FOLDER_ITEM_ID ? `<br>稼働データ フォルダの itemId：<b>${esc(window.FOLDER_ITEM_ID)}</b>（config.js に入れて公開し直す）` : "");
+      (window.FOLDER_ITEM_ID ? `<br>稼働データ フォルダの itemId：<b>${esc(window.FOLDER_ITEM_ID)}</b>（config.js に入れて公開し直す）` : "") +
+      "<br>" + xlNote();
   $("ioImport").hidden = !window.KIKAI_IMPORT;
   $("ioClear").hidden = !DEMO;   // 共有しているときは全部消すを出さない
   $("ioMsg").textContent = `いま：機械 ${D.機械.length}台・現場 ${D.現場.length}・予約 ${D.予約.length}本` + (D.更新 ? `　最後の変更：${D.更新.いつ} ${D.更新.だれ}` : "");

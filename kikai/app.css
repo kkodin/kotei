@@ -45,7 +45,7 @@ main { flex: 1; min-height: 0; position: relative; }
 
 /* ---- 稼働表 ---- */
 #wrap { position: absolute; inset: 0; overflow: auto; }
-#chart { position: relative; display: inline-block; min-width: 100%; user-select: none; -webkit-user-select: none; zoom: var(--z, 1); }
+#chart { touch-action: manipulation; position: relative; display: inline-block; min-width: 100%; user-select: none; -webkit-user-select: none; zoom: var(--z, 1); }
 .hdr { position: sticky; top: 0; z-index: 6; display: flex; background: #fff; border-bottom: 1px solid #9aa5b1; }
 .corner { position: sticky; left: 0; z-index: 7; width: calc(var(--nw) + var(--kw)); flex: none; background: #fff; border-right: 1px solid #9aa5b1; padding: 4px 6px; font-size: 12px; color: #555; display: flex; align-items: flex-end; }
 .days { display: flex; flex-direction: column; }
@@ -114,6 +114,7 @@ body:not([data-tab=chart]) #legend { display: none; }
 
 /* ---- 小窓 ---- */
 dialog { border: 1px solid #889; border-radius: 6px; padding: 14px 18px; max-width: min(640px, calc(100vw - 20px)); box-shadow: 0 6px 30px rgba(0,0,0,.25); }
+dialog h3:focus { outline: none; }   /* 開いたときは見出しにフォーカス（機械名のリストを勝手に開かない） */
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h3 { margin: 0 0 10px; font-size: 16px; color: var(--head); }
 dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
