@@ -369,7 +369,10 @@ const S = Object.assign({ tab: "chart", from: "", months: 2, cat: "", q: "", unu
 S.sel = null;
 if (!/^\d{4}-\d\d-\d\d$/.test(S.from)) S.from = todayKey().slice(0, 8) + "01";
 const saveView = () => { const { sel, ...v } = S; lsSet(LS_VIEW, JSON.stringify(v)); };
-const rangeEnd = () => dayAdd(addMonths(S.from, S.months), -1);
+/* 表示の長さ：1週間・2週間・1か月・2か月（"1w"〜"2m"）。◀ ▶ はこの長さずつ動く */
+if (!/^[12][wm]$/.test(S.span || "")) S.span = S.months === 1 ? "1m" : "2m";   // 前の「か月」の選び方から
+const spanMove = (k, dir) => S.span.endsWith("w") ? dayAdd(k, dir * 7 * +S.span[0]) : addMonths(k, dir * +S.span[0]);
+const rangeEnd = () => dayAdd(spanMove(S.from, 1), -1);
 function rangeDays() { const out = [], e = rangeEnd(); for (let k = S.from; k <= e; k = dayAdd(k, 1)) out.push(k); return out; }
 function shownMachines() {
   const q = S.q.trim().toLowerCase();
@@ -937,7 +940,7 @@ function renderSum() {
   const list = D.予約.filter(r => r.開始 <= to && r.終了 >= from);
   const ms = shownMachines();
   const head = `<div class="tabs2"><button data-by="machine" class="${S.sumBy === "machine" ? "on" : ""}">機械ごと</button><button data-by="site" class="${S.sumBy === "site" ? "on" : ""}">現場ごと</button><button data-by="nego" class="${S.sumBy === "nego" ? "on" : ""}">特別単価</button>
-    <span class="note" style="align-self:center">期間：${from.replace(/-/g, "/")} 〜 ${to.replace(/-/g, "/")}（上の「開始」と「か月」）　平日 ${wd}日　金額は単価表（その日の単価）×使った日・台数の目安。月極・施工・一式は開始日の期間に数える。特別単価が決まった予約はその単価</span>
+    <span class="note" style="align-self:center">期間：${from.replace(/-/g, "/")} 〜 ${to.replace(/-/g, "/")}（上の「開始」と長さ）　平日 ${wd}日　金額は単価表（その日の単価）×使った日・台数の目安。月極・施工・一式は開始日の期間に数える。特別単価が決まった予約はその単価</span>
     <span class="sp"></span><button class="sub" id="sCsv">CSV に書き出す</button></div>`;
   let body = "", csv = [];
   if (S.sumBy === "machine") {
@@ -1195,7 +1198,7 @@ document.addEventListener("pointerdown", e => {
 
 /* ---------- 上の帯・凡例 ---------- */
 function syncBar() {
-  $("vFrom").value = S.from; $("vMonths").value = S.months; $("vQ").value = S.q; $("vUnused").checked = S.unused;
+  $("vFrom").value = S.from; $("vMonths").value = S.span; $("vQ").value = S.q; $("vUnused").checked = S.unused;
   $("vPaint").value = S.paint; $("vIdle").checked = S.idle;
   const cats = catList().filter(c => D.機械.some(m => catOf(m) === c));
   $("vCat").innerHTML = `<option value="">分類：全部</option>` + cats.map(c => `<option ${S.cat === c ? "selected" : ""}>${esc(c)}</option>`).join("");
@@ -1236,9 +1239,9 @@ function renderAll() {
 
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 $("vFrom").onchange = () => { if ($("vFrom").value) { S.from = $("vFrom").value; saveView(); renderAll(); } };
-$("vMonths").onchange = () => { S.months = +$("vMonths").value; saveView(); renderAll(); };
-$("vPrev").onclick = () => { S.from = addMonths(S.from, -1); saveView(); renderAll(); };
-$("vNext").onclick = () => { S.from = addMonths(S.from, 1); saveView(); renderAll(); };
+$("vMonths").onchange = () => { S.span = $("vMonths").value; saveView(); renderAll(); };
+$("vPrev").onclick = () => { S.from = spanMove(S.from, -1); saveView(); renderAll(); };
+$("vNext").onclick = () => { S.from = spanMove(S.from, 1); saveView(); renderAll(); };
 $("vToday").onclick = () => { S.from = dayAdd(todayKey(), -((dayDow(todayKey()) + 6) % 7)); saveView(); renderAll();   // 今週の月曜から
   requestAnimationFrame(() => { $("wrap").scrollLeft = 0; }); };
 $("vCat").onchange = () => { S.cat = $("vCat").value; saveView(); renderAll(); };
