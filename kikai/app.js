@@ -1312,7 +1312,7 @@ $("zPct").addEventListener("focus", () => setTimeout(() => $("zPct").select(), 0
 window.addEventListener("wheel", e => {
   if (!e.ctrlKey) return;
   e.preventDefault();
-  if (S.tab === "chart" && !document.querySelector("dialog[open]")) setZoom((S.zoom || 1) + (e.deltaY < 0 ? 0.1 : -0.1));
+  if (S.tab === "chart" && !document.querySelector("dialog[open]")) { setZoom((S.zoom || 1) + (e.deltaY < 0 ? 0.1 : -0.1)); zBadge(S.zoom); }
 }, { passive: false });
 document.addEventListener("keydown", e => {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || !["+", ";", "=", "-", "_", "0"].includes(e.key)) return;
@@ -1321,30 +1321,49 @@ document.addEventListener("keydown", e => {
   if (e.key === "0") setZoom(1); else setZoom((S.zoom || 1) + (e.key === "-" || e.key === "_" ? -0.1 : 0.1));
 });
 ["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
-/* 2本指のピンチ＝表だけ拡大縮小（稼働表）。ほかの所の2本指はブラウザに渡さない */
+/* 2本指のピンチ＝表だけ拡大縮小（稼働表）。ほかの所の2本指はブラウザに渡さない
+   2回目（同日 iPad：ピンチで少ししか拡大しない）：動かしている間は表を描き直さず --z だけ変える（軽い）。指の真ん中を中心に拡大し、
+   2本指で動かせばスクロール。指を離したときに setZoom で描き直す。倍率は真ん中の小窓（#zBadge）と上の欄に出す */
 let pinch = null;
 const dist2 = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+const mid2 = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+let zBadgeT = 0;
+function zBadge(z) { const b = $("zBadge"); b.textContent = Math.round(z * 100) + "%"; b.hidden = false; clearTimeout(zBadgeT); zBadgeT = setTimeout(() => { b.hidden = true; }, 800); }
+function pinchScroll() {   // 指の真ん中の点が、指の下から動かないように
+  const w = $("wrap"), r = w.getBoundingClientRect();
+  w.scrollLeft = pinch.cx * pinch.z - (pinch.x - r.left); w.scrollTop = pinch.cy * pinch.z - (pinch.y - r.top);
+}
 document.addEventListener("touchstart", e => {
-  if (e.touches.length !== 2) { pinch = null; return; }
+  if (e.touches.length !== 2) { if (e.touches.length > 2) pinch = null; return; }
+  if (e.cancelable) e.preventDefault();   // 2本目の指が付いたところでブラウザの拡大を止める（iPad の Safari）
   drag = null; lastTap = null; hideTip(); hideCtx();   // 1本目の指で予約の小窓を開かない
-  pinch = { onChart: S.tab === "chart" && !!e.target.closest?.("#wrap") && !document.querySelector("dialog[open]"), d0: dist2(e.touches), z0: S.zoom || 1, z: S.zoom || 1, zoomed: false };
+  const onChart = S.tab === "chart" && !!e.target.closest?.("#wrap") && !document.querySelector("dialog[open]");
+  const w = $("wrap"), r = w.getBoundingClientRect(), [x, y] = mid2(e.touches), z = S.zoom || 1;
+  pinch = { onChart, d0: dist2(e.touches), z0: z, z, zoomed: false, x, y, cx: (w.scrollLeft + x - r.left) / z, cy: (w.scrollTop + y - r.top) / z };
 }, { passive: false });
 document.addEventListener("touchmove", e => {
   if (e.touches.length < 2) return;
   if (e.cancelable) e.preventDefault();
   if (!pinch || !pinch.onChart) return;
   const k = dist2(e.touches) / pinch.d0;
-  if (!pinch.zoomed && Math.abs(k - 1) > 0.12) pinch.zoomed = true;   // 指の間が少し動いただけでは変えない
-  if (!pinch.zoomed) return;
-  pinch.z = Math.min(ZMAX, Math.max(ZMIN, pinch.z0 * k));
-  const now = Date.now();   // 表の描き直しは重いので 60ms に1回・5% 以上変わったときだけ
-  if (now - (pinch.t || 0) >= 60 && Math.abs(pinch.z - (S.zoom || 1)) >= 0.05) { pinch.t = now; setZoom(pinch.z); }
+  if (!pinch.zoomed && Math.abs(k - 1) > 0.08) pinch.zoomed = true;   // 指の間が少し動いただけでは変えない（2本指で流したいとき）
+  [pinch.x, pinch.y] = mid2(e.touches);
+  if (pinch.zoomed) {
+    pinch.z = Math.round(Math.min(ZMAX, Math.max(ZMIN, pinch.z0 * k)) * 100) / 100;
+    $("chart").style.setProperty("--z", pinch.z);
+    $("zPct").value = Math.round(pinch.z * 100); zBadge(pinch.z);
+  }
+  pinchScroll();
 }, { passive: false });
-document.addEventListener("touchend", e => {
+function pinchEnd(e) {
   if (e.touches.length >= 2 || !pinch) return;
-  if (pinch.zoomed && pinch.z !== S.zoom) setZoom(pinch.z);   // 指を離したときの倍率にそろえる
-  pinch = null;
-});
+  const p = pinch; pinch = null;
+  if (!p.onChart || !p.zoomed || p.z === (S.zoom || 1)) return;
+  setZoom(p.z);   // 描き直して覚える
+  pinch = p; pinchScroll(); pinch = null;
+}
+document.addEventListener("touchend", pinchEnd);
+document.addEventListener("touchcancel", pinchEnd);
 let resizeT = 0;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === "chart") renderChart(); }, 150); });
 $("warn").onclick = () => { const b = document.querySelector(".bar.conf"); if (b) b.scrollIntoView({ block: "center", inline: "center" }); };

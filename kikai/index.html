@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>自社機械稼働表</title>
-<link rel="stylesheet" href="app.css?v=Vr001 10/28 08:54">
+<link rel="stylesheet" href="app.css?v=Vr001 10/28 09:05">
 </head>
 <body>
 <header>
-  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/28 08:54</small></h1>
+  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/28 09:05</small></h1>
   <nav id="tabs">
     <button data-tab="chart" class="on">稼働表</button>
     <button data-tab="free">空き探し</button>
@@ -16,6 +16,8 @@
     <button data-tab="master">機械・現場</button>
   </nav>
   <div class="sp"></div>
+  <span class="chartOnly zoom" title="表の大きさ（数字を入れるか一覧から選ぶ。Ctrl＋ホイール・2本指ピンチでも）"><button class="sub" id="zOut">－</button><label class="zpct"><input id="zPct" list="zList" inputmode="numeric" value="100" aria-label="表の大きさ（%）">%</label><button class="sub" id="zIn">＋</button></span>
+  <datalist id="zList"><option value="50"><option value="75"><option value="90"><option value="100"><option value="110"><option value="125"><option value="150"><option value="175"><option value="200"></datalist>
   <button class="sub" id="bUndo" title="元に戻す（Ctrl＋Z）">↶ 戻す</button>
   <button class="sub" id="bRedo" title="やり直す（Ctrl＋Y）">↷</button>
   <button class="sub" id="bData">データ ▾</button>
@@ -38,8 +40,6 @@
   <label class="chartOnly paint" title="先に現場を選んでおくと、空いている所をなぞるだけで、その現場の予約の線が引ける。空のときは、なぞった後に小窓で現場を選ぶ">線を引く現場
     <input id="vPaint" list="siteList" placeholder="選ぶと、なぞるだけで予約" size="16"></label>
   <label class="ck chartOnly"><input type="checkbox" id="vIdle"> 遊びを色で</label>
-  <span class="chartOnly zoom" title="表の大きさ（数字を入れるか一覧から選ぶ。Ctrl＋ホイール・2本指ピンチでも）"><button class="sub" id="zOut">－</button><label class="zpct"><input id="zPct" list="zList" inputmode="numeric" value="100" aria-label="表の大きさ（%）">%</label><button class="sub" id="zIn">＋</button></span>
-  <datalist id="zList"><option value="50"><option value="75"><option value="90"><option value="100"><option value="110"><option value="125"><option value="150"><option value="175"><option value="200"></datalist>
   <label class="chartOnly">現場を目立たせる <select id="vFocus"><option value="">―</option></select></label>
   <span class="sp"></span>
   <span id="warn"></span>
@@ -131,10 +131,11 @@
 <div id="ctx" hidden></div>
 <div id="tip" hidden></div>
 <div id="toast" hidden></div>
+<div id="zBadge" hidden></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/28 08:54"></script>
-<script src="app.js?v=Vr001 10/28 08:54"></script>
-<script src="excel.js?v=Vr001 10/28 08:54"></script>
+<script src="config.js?v=Vr001 10/28 09:05"></script>
+<script src="app.js?v=Vr001 10/28 09:05"></script>
+<script src="excel.js?v=Vr001 10/28 09:05"></script>
 </body>
 </html>
