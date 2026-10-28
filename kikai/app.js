@@ -830,7 +830,15 @@ function fitDialog() {
   if (zoomed()) Object.assign(d.style, { margin: "0", right: "auto", bottom: "auto", top: VV.offsetTop + 10 + "px", left: VV.offsetLeft + Math.max(10, (VV.width - d.offsetWidth) / 2) + "px" });
   else Object.assign(d.style, { margin: "", right: "", bottom: "", top: "", left: "" });
 }
-const syncModal = () => { document.body.classList.toggle("modal", !!document.querySelector("dialog[open]")); fitDialog(); };
+/* 小窓を開く・閉じるときに、上の帯の欄（現場を目立たせる などの select）に入力を戻さない（2026-10-28 iPad）。
+   dialog は閉じると開く前に入力のあった欄へ戻し、iPad では select の一覧が開く → 外をタップすると表に届いて小窓が開く…の繰り返しだった
+   閉じたあとは、開いている小窓の外の欄から入力を外す（close の合図は来ないことがあるので、open の出入りを見る syncModal で）。 */
+function showDialog(d) { const a = document.activeElement; if (a && a !== document.body) a.blur(); d.showModal(); }
+const syncModal = () => {
+  const open = !!document.querySelector("dialog[open]");
+  document.body.classList.toggle("modal", open); fitDialog();
+  const a = document.activeElement; if (a && a !== document.body && !a.closest("dialog[open]")) a.blur();
+};
 document.querySelectorAll("dialog").forEach(d => new MutationObserver(syncModal).observe(d, { attributes: true, attributeFilter: ["open"] }));
 if (VV) { VV.addEventListener("resize", fitDialog); VV.addEventListener("scroll", fitDialog); }
 document.addEventListener("touchmove", e => {
@@ -867,7 +875,7 @@ function openRes(r, init = {}, ng = false) {
   $("dRes")._rest = { 休み: v.休み.slice(), 出勤: v.出勤.slice(), 未使用: v.未使用.slice() };
   CAL.mode = r && r.開始 <= todayKey() ? CAL.mode : "plan";
   resInfo();
-  $("dRes").showModal();
+  showDialog($("dRes"));
   if (ng) setTimeout(() => { $("rNgBox").scrollIntoView({ block: "nearest" }); $("rNgP").focus(); }, 30);
   else if (!matchMedia("(any-pointer: coarse)").matches) setTimeout(() => (r ? $("rSite") : $("rSite").value ? $("rTo") : $("rSite")).focus(), 30);
 }
@@ -1401,7 +1409,7 @@ function openDataDlg() {
   $("ioImport").hidden = !window.KIKAI_IMPORT;
   $("ioClear").hidden = !DEMO;   // 共有しているときは全部消すを出さない
   $("ioMsg").textContent = `いま：機械 ${D.機械.length}台・現場 ${D.現場.length}・予約 ${D.予約.length}本` + (D.更新 ? `　最後の変更：${D.更新.いつ} ${D.更新.だれ}` : "");
-  $("dData").showModal();
+  showDialog($("dData"));
 };
 $("ioClose").onclick = () => $("dData").close();
 $("ioImport").onclick = importBundled;
