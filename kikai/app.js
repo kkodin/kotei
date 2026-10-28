@@ -378,7 +378,7 @@ function spanText(keys) {
 }
 
 /* ---------- 画面の状態（その人のブラウザに覚える） ---------- */
-const S = Object.assign({ tab: "chart", from: "", months: 2, cat: "", q: "", unused: false, paint: "", idle: true, focus: "", sumBy: "machine", sumSort: "order", zoom: 1, showDone: false },
+const S = Object.assign({ tab: "chart", from: "", months: 2, cat: "", q: "", unused: false, paint: "", idle: true, focus: "", sumBy: "machine", sumSort: "order", font: 2, showDone: false },
   (() => { try { return JSON.parse(lsGet(LS_VIEW)) || {}; } catch { return {}; } })());
 S.sel = null;
 if (!/^\d{4}-\d\d-\d\d$/.test(S.from)) S.from = todayKey().slice(0, 8) + "01";
@@ -399,13 +399,16 @@ function shownMachines() {
 let curDW = 24;
 const DW = () => curDW;
 const cssPx = n => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n)) || 0;
-/* 表の拡大・縮小（CSS の zoom を表だけにかける。上の帯・小窓は大きさが変わらない） */
-const ZMIN = 0.5, ZMAX = 2;
-function setZoom(z) {
-  S.zoom = Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 100) / 100)); saveView();   // 1% きざみ（倍率を打てるように）
-  const w = $("wrap"), cx = (w.scrollLeft + w.clientWidth / 2) / (w.scrollWidth || 1), cy = (w.scrollTop + w.clientHeight / 2) / (w.scrollHeight || 1);
-  renderChart();
-  w.scrollLeft = cx * w.scrollWidth - w.clientWidth / 2; w.scrollTop = cy * w.scrollHeight - w.clientHeight / 2;
+/* 文字の大きさ（5段階）。--fs（文字の倍率）・--rh（行の高さ）・--nw（機械名の幅）を html に置く */
+const FONTS = [{ 名: "小", k: 0.85 }, { 名: "やや小", k: 0.92 }, { 名: "標準", k: 1 }, { 名: "やや大", k: 1.15 }, { 名: "大", k: 1.3 }], FONT_STD = 2;
+function applyFont() {
+  const i = Math.min(FONTS.length - 1, Math.max(0, S.font ?? FONT_STD)), k = FONTS[i].k, st = document.documentElement.style;
+  st.setProperty("--fs", k); st.setProperty("--rh", Math.round(22 * k) + "px"); st.setProperty("--nw", Math.round((innerWidth <= 700 ? 110 : 150) * k) + "px");
+  $("vFont").value = i;
+}
+function setFont(i) {
+  S.font = Math.min(FONTS.length - 1, Math.max(0, i)); saveView(); applyFont();
+  if (S.tab === "chart") renderChart();
 }
 const RH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rh")) || 22;
 
@@ -430,11 +433,9 @@ function renderChart() {
     $("warn").textContent = ""; return;
   }
   const days = rangeDays(), N = days.length, from = S.from, to = days[N - 1], rh = RH(), today = todayKey();
-  const z = S.zoom || 1;
-  const avail = $("wrap").clientWidth / z - cssPx("--nw") - cssPx("--kw") - 2;
+  const avail = $("wrap").clientWidth - cssPx("--nw") - cssPx("--kw") - 2;
   const dw = curDW = Math.max(24, Math.floor(avail / N * 10) / 10);
-  el.style.setProperty("--dw", dw + "px"); el.style.setProperty("--z", z);
-  if (document.activeElement !== $("zPct")) $("zPct").value = Math.round(z * 100);
+  el.style.setProperty("--dw", dw + "px");
   const ms = shownMachines();
   const inRange = D.予約.filter(r => r.開始 <= to && r.終了 >= from);
   const bad = conflictSet(inRange);
@@ -475,6 +476,14 @@ function renderChart() {
         <span class="rate${rate < 50 ? " low" : ""}"><i><s style="width:${rate}%"></s></i>${rate}%</span></div>
       <div class="lks">${lanes.map(l => `<div class="lk${l.k === "夜" ? " n" : ""}" style="height:${l.n * rh}px">${l.k}</div>`).join("")}</div>
     </div><div class="lanes">`);
+    /* 線の下が空いているか（同じ機械の中で、すぐ下の行。昼の最後の行の下は夜の1行目）：字が収まらないとき下へ折り返す（labelFit） */
+    const rowsOf = [], gRow = (l, row) => (l.k === "昼" ? 0 : lanes[0].n) + row;
+    lanes.forEach(l => l.list.forEach(r => (rowsOf[gRow(l, l.at[r.id])] ||= []).push([Math.max(0, dayDiff(from, r.開始)), Math.min(N - 1, dayDiff(from, r.終了))])));
+    const freeBelow = (l, r) => {
+      const a = Math.max(0, dayDiff(from, r.開始)), b = Math.min(N - 1, dayDiff(from, r.終了)), all = lanes[0].n + lanes[1].n;
+      let n = 0; for (let g = gRow(l, l.at[r.id]) + 1; g < all && n < 2; g++, n++) if ((rowsOf[g] || []).some(([x, y]) => x <= b && a <= y)) break;
+      return n;
+    };
     lanes.forEach(l => {
       h.push(`<div class="cells${l.k === "夜" ? " n" : ""}" data-m="${m.id}" data-k="${l.k}" style="width:${N * dw}px;height:${l.n * rh}px">`);
       if (l.k === "昼" && S.idle) {
@@ -487,19 +496,20 @@ function renderChart() {
           i = e;
         }
       }
-      l.list.forEach(r => h.push(barHtml(r, from, N, dw, rh, l.at[r.id], bad.has(r.id))));
+      l.list.forEach(r => h.push(barHtml(r, from, N, dw, rh, l.at[r.id], bad.has(r.id), freeBelow(l, r))));
       h.push(`</div>`);
     });
     h.push(`</div></div>`);
   });
   el.innerHTML = h.join("");
   el.style.width = `calc(var(--nw) + var(--kw) + ${N * dw}px)`;
+  labelFit();
   const nBad = bad.size;
   $("warn").textContent = nBad ? `⚠ 二重の予約（台数を超える予約） ${nBad}本` : "";
   $("warn").title = nBad ? "押すと最初の場所へ" : "";
 }
 
-function barHtml(r, from, N, dw, rh, row, conf) {
+function barHtml(r, from, N, dw, rh, row, conf, free = 0) {
   const s = Math.max(0, dayDiff(from, r.開始)), e = Math.min(N - 1, dayDiff(from, r.終了));
   const st = siteOf(r.現場), color = st.色 || "#8a96a3";
   const gaps = [], g = [];
@@ -522,9 +532,30 @@ function barHtml(r, from, N, dw, rh, row, conf) {
   if (conf) cls.push("conf");
   if (S.sel === r.id) cls.push("sel");
   if (S.focus && r.現場 !== S.focus) cls.push("dim");
-  return `<div class="${cls.join(" ")}" data-id="${r.id}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color}">` +
+  return `<div class="${cls.join(" ")}" data-id="${r.id}" data-free="${free}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color}">` +
     g.join("") + `<span class="lbl">${(r.台数 || 1) > 1 ? `<b class="tk n">${r.台数}台</b>` : ""}${r.交渉 ? `<b class="tk${special(r) ? "" : " ing"}">${special(r) ? "特" : "交渉中"}</b>` : ""}${esc(r.現場)}</span><i class="eg l"></i><i class="eg r"></i></div>`;
 }
+/* 線の字（2026-10-28 ユーザー）
+   ①線の開始日が画面の左（機械名の列の下）に隠れているときは、字を見えている所まで右へ逃がす（スクロールのたびに labelShift）。
+   ②字が線に収まらず、すぐ下の行が空いていれば（data-free＝空いている行の数。最大2）、下へ折り返す（.wrap）。 */
+let LBL = [];
+function labelFit() {
+  const rh = RH();
+  LBL = [...$("chart").querySelectorAll(".bar")].map(b => {
+    const l = b.querySelector(".lbl"), W = b.offsetWidth, free = +b.dataset.free || 0;
+    if (free && b.scrollWidth > b.clientWidth + 1) { b.classList.add("wrap"); l.style.maxHeight = (free + 1) * rh - 4 + "px"; }   // 字が線からはみ出している（線は overflow: hidden）
+    return { b, l, L: b.offsetLeft, W };
+  });
+  labelShift();
+}
+function labelShift() {
+  const x0 = $("wrap").scrollLeft, dw = DW();
+  for (const o of LBL) {
+    const v = x0 > o.L && x0 < o.L + o.W ? Math.min(x0 - o.L, Math.max(0, o.W - dw)) : 0;
+    if ((o.v || 0) !== v) { o.v = v; o.l.style.left = v ? v + "px" : ""; }
+  }
+}
+$("wrap").addEventListener("scroll", labelShift, { passive: true });
 const ngText = x => x ? (x.結果 === "決まった" && x.単価 != null ? `特別単価 ${yen(x.単価)}円／日` : "特別単価 交渉中") +
   `（${[x.日 ? md(x.日) : "", x.相手, x.方法].filter(Boolean).join("・")}）${x.メモ ? "　" + x.メモ : ""}` : "";
 const barTip = r => {
@@ -1299,73 +1330,31 @@ $("vPaint").onchange = () => { S.paint = $("vPaint").value.trim(); saveView(); }
 $("vIdle").onchange = () => { S.idle = $("vIdle").checked; saveView(); renderChart(); };
 $("vFocus").onchange = () => { S.focus = $("vFocus").value; saveView(); renderChart(); renderLegend(); };
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
-$("zIn").onclick = () => setZoom((S.zoom || 1) + 0.1);
-$("zOut").onclick = () => setZoom((S.zoom || 1) - 0.1);
-/* 倍率を打つ（2026-10-28）：数字（%）を入れて Enter か、一覧から選ぶ。50〜200% */
-$("zPct").addEventListener("change", () => { const v = num($("zPct").value.replace(/[%％\s]/g, "")); if (v) setZoom(v / 100); else $("zPct").value = Math.round((S.zoom || 1) * 100); });
-$("zPct").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("zPct").blur(); } });
-$("zPct").addEventListener("focus", () => setTimeout(() => $("zPct").select(), 0));
+/* 文字の大きさ（2026-10-28 ユーザー：稼働表は拡大縮小しないほうが良い。文字の大きさを5段階で選べるように）
+   表の拡大縮小（CSS zoom・ピンチ）はやめた。上の「文字」で 小・やや小・標準・やや大・大。行の高さと機械名の幅も一緒に変える。その人のブラウザに覚える（S.font） */
+$("vFont").innerHTML = FONTS.map((f, i) => `<option value="${i}">${f.名}</option>`).join("");
+$("vFont").onchange = () => setFont(+$("vFont").value);
+applyFont();
 
 /* ---------- ブラウザの拡大を止める（2026-10-28 ユーザー：iPad で画面ごと拡大されて小窓の帯が隠れた。全体工程表と同じに）
-   Ctrl＋ホイール・Ctrl＋＋／－／0・2本指のピンチは、どのタブでもブラウザの拡大にしない。稼働表では表だけを拡大縮小する。
-   iPad の Safari：viewport の maximum-scale=1（入力欄を押したときの自動の拡大も止まる）＋ gesturestart を止める＋ touch-action（app.css） */
-window.addEventListener("wheel", e => {
-  if (!e.ctrlKey) return;
-  e.preventDefault();
-  if (S.tab === "chart" && !document.querySelector("dialog[open]")) { setZoom((S.zoom || 1) + (e.deltaY < 0 ? 0.1 : -0.1)); zBadge(S.zoom); }
-}, { passive: false });
+   Ctrl＋ホイール・2本指のピンチ・ダブルタップは、どのタブでもブラウザの拡大にしない（表も拡大しない）。Ctrl＋＋／－／0 は稼働表の文字の大きさ。
+   iPad の Safari：viewport の maximum-scale=1（入力欄を押したときの自動の拡大も止まる）＋ gesturestart を止める＋ 2本指の touchstart／touchmove を止める＋ touch-action（app.css） */
+window.addEventListener("wheel", e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 document.addEventListener("keydown", e => {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || !["+", ";", "=", "-", "_", "0"].includes(e.key)) return;
   e.preventDefault();
   if (S.tab !== "chart" || document.querySelector("dialog[open]")) return;
-  if (e.key === "0") setZoom(1); else setZoom((S.zoom || 1) + (e.key === "-" || e.key === "_" ? -0.1 : 0.1));
+  setFont(e.key === "0" ? FONT_STD : (S.font ?? FONT_STD) + (e.key === "-" || e.key === "_" ? -1 : 1));
 });
 ["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
-/* 2本指のピンチ＝表だけ拡大縮小（稼働表）。ほかの所の2本指はブラウザに渡さない
-   2回目（同日 iPad：ピンチで少ししか拡大しない）：動かしている間は表を描き直さず --z だけ変える（軽い）。指の真ん中を中心に拡大し、
-   2本指で動かせばスクロール。指を離したときに setZoom で描き直す。倍率は真ん中の小窓（#zBadge）と上の欄に出す */
-let pinch = null;
-const dist2 = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-const mid2 = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
-let zBadgeT = 0;
-function zBadge(z) { const b = $("zBadge"); b.textContent = Math.round(z * 100) + "%"; b.hidden = false; clearTimeout(zBadgeT); zBadgeT = setTimeout(() => { b.hidden = true; }, 800); }
-function pinchScroll() {   // 指の真ん中の点が、指の下から動かないように
-  const w = $("wrap"), r = w.getBoundingClientRect();
-  w.scrollLeft = pinch.cx * pinch.z - (pinch.x - r.left); w.scrollTop = pinch.cy * pinch.z - (pinch.y - r.top);
-}
 document.addEventListener("touchstart", e => {
-  if (e.touches.length !== 2) { if (e.touches.length > 2) pinch = null; return; }
-  if (e.cancelable) e.preventDefault();   // 2本目の指が付いたところでブラウザの拡大を止める（iPad の Safari）
-  drag = null; lastTap = null; hideTip(); hideCtx();   // 1本目の指で予約の小窓を開かない
-  const onChart = S.tab === "chart" && !!e.target.closest?.("#wrap") && !document.querySelector("dialog[open]");
-  const w = $("wrap"), r = w.getBoundingClientRect(), [x, y] = mid2(e.touches), z = S.zoom || 1;
-  pinch = { onChart, d0: dist2(e.touches), z0: z, z, zoomed: false, x, y, cx: (w.scrollLeft + x - r.left) / z, cy: (w.scrollTop + y - r.top) / z };
-}, { passive: false });
-document.addEventListener("touchmove", e => {
   if (e.touches.length < 2) return;
-  if (e.cancelable) e.preventDefault();
-  if (!pinch || !pinch.onChart) return;
-  const k = dist2(e.touches) / pinch.d0;
-  if (!pinch.zoomed && Math.abs(k - 1) > 0.08) pinch.zoomed = true;   // 指の間が少し動いただけでは変えない（2本指で流したいとき）
-  [pinch.x, pinch.y] = mid2(e.touches);
-  if (pinch.zoomed) {
-    pinch.z = Math.round(Math.min(ZMAX, Math.max(ZMIN, pinch.z0 * k)) * 100) / 100;
-    $("chart").style.setProperty("--z", pinch.z);
-    $("zPct").value = Math.round(pinch.z * 100); zBadge(pinch.z);
-  }
-  pinchScroll();
+  if (e.cancelable) e.preventDefault();   // 2本目の指が付いたところでブラウザの拡大を止める
+  drag = null; lastTap = null; hideTip(); hideCtx();   // 1本目の指で予約の小窓を開かない
 }, { passive: false });
-function pinchEnd(e) {
-  if (e.touches.length >= 2 || !pinch) return;
-  const p = pinch; pinch = null;
-  if (!p.onChart || !p.zoomed || p.z === (S.zoom || 1)) return;
-  setZoom(p.z);   // 描き直して覚える
-  pinch = p; pinchScroll(); pinch = null;
-}
-document.addEventListener("touchend", pinchEnd);
-document.addEventListener("touchcancel", pinchEnd);
+document.addEventListener("touchmove", e => { if (e.touches.length >= 2 && e.cancelable) e.preventDefault(); }, { passive: false });
 let resizeT = 0;
-addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === "chart") renderChart(); }, 150); });
+addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { applyFont(); if (S.tab === "chart") renderChart(); }, 150); });
 $("warn").onclick = () => { const b = document.querySelector(".bar.conf"); if (b) b.scrollIntoView({ block: "center", inline: "center" }); };
 
 /* ---------- データの読み書き ---------- */

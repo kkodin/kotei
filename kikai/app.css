@@ -45,15 +45,15 @@ main { flex: 1; min-height: 0; position: relative; }
 
 /* ---- 稼働表 ---- */
 #wrap { position: absolute; inset: 0; overflow: auto; }
-#chart { touch-action: manipulation; position: relative; display: inline-block; min-width: 100%; user-select: none; -webkit-user-select: none; zoom: var(--z, 1); }
+#chart { touch-action: manipulation; position: relative; display: inline-block; min-width: 100%; user-select: none; -webkit-user-select: none; }
 .hdr { position: sticky; top: 0; z-index: 6; display: flex; background: #fff; border-bottom: 1px solid #9aa5b1; }
-.corner { position: sticky; left: 0; z-index: 7; width: calc(var(--nw) + var(--kw)); flex: none; background: #fff; border-right: 1px solid #9aa5b1; padding: 4px 6px; font-size: 12px; color: #555; display: flex; align-items: flex-end; }
+.corner { position: sticky; left: 0; z-index: 7; width: calc(var(--nw) + var(--kw)); flex: none; background: #fff; border-right: 1px solid #9aa5b1; padding: 4px 6px; font-size: calc(12px * var(--fs, 1)); color: #555; display: flex; align-items: flex-end; }
 .days { display: flex; flex-direction: column; }
 .days > div { display: flex; }
-.days .mo { height: 18px; }
-.days .mo div { flex: none; font-size: 12px; font-weight: 700; color: var(--head); padding-left: 3px; white-space: nowrap; overflow: visible; border-left: 1px solid #9aa5b1; }
-.days .dn div, .days .dw div { width: var(--dw); flex: none; text-align: center; font-size: 11.5px; line-height: 17px; border-left: 1px solid #eef0f3; }
-.days .dw div { font-size: 10.5px; color: #777; }
+.days .mo { height: calc(18px * var(--fs, 1)); }
+.days .mo div { flex: none; font-size: calc(12px * var(--fs, 1)); font-weight: 700; color: var(--head); padding-left: 3px; white-space: nowrap; overflow: visible; border-left: 1px solid #9aa5b1; }
+.days .dn div, .days .dw div { width: var(--dw); flex: none; text-align: center; font-size: calc(11.5px * var(--fs, 1)); line-height: calc(17px * var(--fs, 1)); border-left: 1px solid #eef0f3; }
+.days .dw div { font-size: calc(10.5px * var(--fs, 1)); color: #777; }
 .days .sun, .days .hol { color: #c62828 !important; }
 .days .sat { color: #1565c0 !important; }
 .days .today { background: var(--today); font-weight: 700; }
@@ -65,19 +65,19 @@ main { flex: 1; min-height: 0; position: relative; }
 #cols .today { background: var(--today); opacity: .65; }
 
 .grp { position: relative; z-index: 1; display: flex; align-items: stretch; background: #e9eef4; border-bottom: 1px solid #9aa5b1; }
-.grp .gh { position: sticky; left: 0; width: calc(var(--nw) + var(--kw)); padding: 2px 6px; font-weight: 700; font-size: 12.5px; color: var(--head); background: #e9eef4; }
+.grp .gh { position: sticky; left: 0; width: calc(var(--nw) + var(--kw)); padding: 2px 6px; font-weight: 700; font-size: calc(12.5px * var(--fs, 1)); color: var(--head); background: #e9eef4; }
 .mach { position: relative; z-index: 1; display: flex; border-bottom: 1px solid #c3cad2; }
 .mach.unused .mname { color: #999; }
 .mh { position: sticky; left: 0; z-index: 4; display: flex; flex: none; background: #fff; border-right: 1px solid #9aa5b1; }
 .mname { width: var(--nw); padding: 2px 6px; display: flex; flex-direction: column; justify-content: center; line-height: 1.2; overflow: hidden; border-right: 1px solid #e3e6ea; cursor: default; }
-.mname b { font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mname .sp2 { font-size: 11px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mname .rate { font-size: 10.5px; color: #555; display: flex; align-items: center; gap: 4px; }
+.mname b { font-weight: 700; font-size: calc(13px * var(--fs, 1)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mname .sp2 { font-size: calc(11px * var(--fs, 1)); color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mname .rate { font-size: calc(10.5px * var(--fs, 1)); color: #555; display: flex; align-items: center; gap: 4px; }
 .mname .rate i { display: inline-block; height: 5px; width: 50px; background: #e3e6ea; border-radius: 3px; overflow: hidden; }
 .mname .rate i s { display: block; height: 100%; background: #3f9a45; text-decoration: none; }
 .mname .rate.low i s { background: #ef7d1a; }
 .lks { width: var(--kw); display: flex; flex-direction: column; }
-.lk { display: flex; align-items: center; justify-content: center; font-size: 11px; color: #555; border-bottom: 1px dotted #d0d5db; }
+.lk { display: flex; align-items: center; justify-content: center; font-size: calc(11px * var(--fs, 1)); color: #555; border-bottom: 1px dotted #d0d5db; }
 .lk.n { color: #1f3a8a; background: #f2f4fb; font-weight: 700; }
 .lk:last-child, .cells:last-child { border-bottom: 0; }
 .lanes { display: flex; flex-direction: column; }
@@ -87,11 +87,15 @@ main { flex: 1; min-height: 0; position: relative; }
 .idle { position: absolute; top: 1px; bottom: 1px; background: var(--idle); border-radius: 2px; pointer-events: none; }
 .idle.past { opacity: .45; }
 
-.bar { position: absolute; height: calc(var(--rh) - 4px); border-radius: 3px; color: #fff; font-size: 11.5px; line-height: calc(var(--rh) - 4px);
+.bar { position: absolute; height: calc(var(--rh) - 4px); border-radius: 3px; color: #fff; font-size: calc(11.5px * var(--fs, 1)); line-height: calc(var(--rh) - 4px);
   white-space: nowrap; overflow: hidden; padding: 0 4px; cursor: grab; box-shadow: 0 0 0 1px rgba(0,0,0,.18) inset; z-index: 2; }
 .bar.lt { color: #222; }
 .bar .gap { position: absolute; top: 2px; bottom: 2px; background: rgba(255,255,255,.82); pointer-events: none; }
 .bar .lbl { position: relative; z-index: 1; pointer-events: none; background-color: inherit; padding-right: 3px; border-radius: 2px; }
+/* 字が線に収まらず下が空いているとき：下へ折り返す（2026-10-28）。字の箱は線の色のまま下へ伸びる */
+.bar.wrap { overflow: visible; }
+.bar.wrap .lbl { position: absolute; top: 0; left: 0; right: 0; padding: 0 4px; white-space: normal; word-break: break-all; overflow: hidden;
+  line-height: calc(var(--rh) - 6px); padding-top: 1px; padding-bottom: 2px; border-radius: 0 0 3px 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.18) inset; pointer-events: auto; }   /* 伸ばした字を押しても、その線を押したことに */
 .bar.kari { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px) !important; outline: 1.5px dashed rgba(0,0,0,.55); outline-offset: -1.5px; }
 .bar.kari .lbl::before { content: "仮 "; font-weight: 700; }
 .bar.conf { box-shadow: 0 0 0 2px #d50000 inset, 0 0 0 1px #fff; }
@@ -102,7 +106,7 @@ main { flex: 1; min-height: 0; position: relative; }
 .bar::before, .bar::after { content: ""; }
 .bar .eg { position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 2; }
 .bar .eg.l { left: 0; } .bar .eg.r { right: 0; }
-.ghost { position: absolute; height: calc(var(--rh) - 4px); border: 2px dashed var(--head); background: rgba(31, 78, 121, .12); border-radius: 3px; pointer-events: none; z-index: 4; font-size: 11px; color: var(--head); padding-left: 3px; line-height: calc(var(--rh) - 8px); white-space: nowrap; }
+.ghost { position: absolute; height: calc(var(--rh) - 4px); border: 2px dashed var(--head); background: rgba(31, 78, 121, .12); border-radius: 3px; pointer-events: none; z-index: 4; font-size: calc(11px * var(--fs, 1)); color: var(--head); padding-left: 3px; line-height: calc(var(--rh) - 8px); white-space: nowrap; }
 .empty { padding: 40px; color: #666; }
 .empty button { margin-top: 10px; }
 
@@ -124,10 +128,10 @@ dialog .dbody { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavi
 body.modal #wrap, body.modal .page, body.modal #legend { overflow: hidden; }   /* 小窓を開いている間、後ろは動かさない */
 .ngbox { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 8px; border: 1px solid #e0b85a; border-radius: 4px; background: #fffaf0; }
 .ngbox #rNgM { width: 100%; box-sizing: border-box; }
-.bar .tk { display: inline-block; margin-right: 3px; padding: 0 3px; border-radius: 2px; background: #fff; color: #b26a00; font-weight: 700; font-size: 10.5px; line-height: 1.3; }
+.bar .tk { display: inline-block; margin-right: 3px; padding: 0 3px; border-radius: 2px; background: #fff; color: #b26a00; font-weight: 700; font-size: calc(10.5px * var(--fs, 1)); line-height: 1.3; }
 .bar .tk.ing { color: #888; }
 .bar .tk.n { color: #1f3a8a; }
-.mname .cnt { margin-left: 4px; padding: 0 4px; border-radius: 3px; background: #e6ecf8; color: #1f3a8a; font-size: 10.5px; }
+.mname .cnt { margin-left: 4px; padding: 0 4px; border-radius: 3px; background: #e6ecf8; color: #1f3a8a; font-size: calc(10.5px * var(--fs, 1)); }
 #mt .isel { max-width: 15em; }
 .pinfo { font-size: 12px; color: #555; }
 dialog h3:focus { outline: none; }   /* 開いたときは見出しにフォーカス（機械名のリストを勝手に開かない） */
@@ -207,16 +211,9 @@ table.t td button { padding: 2px 8px; font-size: 13px; }
 .cal .cun { background: repeating-linear-gradient(45deg, #fff 0 4px, #f3b0b0 4px 7px); color: #b71c1c; border-color: #d50000; font-weight: 700; }
 i.lg { display: inline-block; width: 12px; height: 12px; border: 1px solid #cfd5dc; border-radius: 2px; vertical-align: -2px; margin-left: 4px; }
 i.lg.cyes { background: #3d7cc9; } i.lg.cno { background: #fff; } i.lg.cun { background: repeating-linear-gradient(45deg, #fff 0 3px, #f3b0b0 3px 5px); border-color: #d50000; }
-/* 表の大きさ（上の濃い帯。全体工程表と同じ所） */
-.zoom { display: inline-flex; align-items: stretch; gap: 0; }
-.zoom button { padding: 4px 10px; min-width: 2.4em; border-radius: 0; margin-left: -1px; font-size: 16px; font-weight: 700; }
-.zoom button:first-child { border-radius: 4px 0 0 4px; } .zoom button:last-child { border-radius: 0 4px 4px 0; }
-.zoom .zpct { display: inline-flex; align-items: center; gap: 1px; margin-left: -1px; padding: 0 6px; border: 1px solid #fff; background: #fff; color: #222; font-size: 14px; font-weight: 700; }
-.zoom #zPct { width: 3.2em; border: 0; padding: 2px 0; text-align: right; font-size: 16px; font-weight: 700; background: transparent; color: #222; }   /* 16px：iPad で押したときに拡大しない */
-body:not([data-tab=chart]) .zoom { display: none; }
-/* 拡大・縮小しているあいだ真ん中に出す倍率 */
-#zBadge { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%); z-index: 50; padding: 10px 22px; border-radius: 10px;
-  background: rgba(20, 40, 70, .85); color: #fff; font-size: 28px; font-weight: 700; pointer-events: none; }
+/* 稼働表の文字の大きさ（上の濃い帯。5段階。--fs は app.js の applyFont） */
+header .font { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; white-space: nowrap; }
+header .font select { font-size: 16px; padding: 3px 6px; }   /* 16px：iPad で押したときに拡大しない */
 /* ブラウザの拡大（ピンチ・ダブルタップ）を止める。指1本のスクロールだけ（2026-10-28） */
 html, body, #wrap, #chart, .page, dialog { touch-action: pan-x pan-y; }
 /* 空き探し・機械現場では上の帯（期間・分類・機械名）を出さない（その画面に自分の絞り込みがある） */
