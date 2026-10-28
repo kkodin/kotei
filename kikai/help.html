@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>自社機械稼働表 使い方</title>
+<!-- 使い方（2026-10-28 ユーザー：使い方ボタンで別窓・全画面。上の帯は固定、文字の大きさ5段階、閉じるは題名の横）。
+     #sp＝指（iPad）／#pc＝マウス（パソコン）。app.js の bHelp は指で操作する端末なら #sp で開く。文字の大きさはこのブラウザに覚える（kikai_help_fs） -->
+<style>
+  :root { --head: #1f4e79; --line: #d0d7de; --soft: #f6f8fa; --ink: #222; --sub: #555; }
+  html { font-size: 15px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "BIZ UDPGothic", "Yu Gothic UI", Meiryo, sans-serif; color: var(--ink); background: #fff; line-height: 1.7; font-size: 1rem; }
+  .stick { position: sticky; top: 0; z-index: 2; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  header { background: var(--head); color: #fff; padding: 8px 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 15px; }
+  header h1 { margin: 0; font-size: 18px; white-space: nowrap; }
+  .close { background: #fff; color: var(--head); border: none; border-radius: 4px; padding: 6px 14px; font-size: 16px; font-weight: bold; cursor: pointer; font-family: inherit; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs a { color: #fff; text-decoration: none; padding: 4px 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; font-size: 14px; white-space: nowrap; }
+  .tabs a.on { background: #fff; color: var(--head); font-weight: bold; }
+  .fs { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
+  .fs select { font-size: 16px; padding: 3px 6px; border-radius: 3px; border: 1px solid #fff; font-family: inherit; }
+  nav.toc { background: var(--soft); border-bottom: 1px solid var(--line); padding: 6px 14px; font-size: 14px; white-space: nowrap; overflow-x: auto; }
+  nav.toc a { color: var(--head); margin-right: 14px; }
+  main { max-width: 900px; margin: 0 auto; padding: 8px 16px 60px; }
+  section.page { display: none; }
+  section.page.on { display: block; }
+  h2 { font-size: 1.15rem; border-left: 5px solid var(--head); padding-left: 8px; margin: 1.6em 0 .5em; scroll-margin-top: 110px; }
+  h3 { font-size: 1.02rem; margin: 1em 0 .2em; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); white-space: nowrap; width: 12em; }
+  ul { padding-left: 1.3em; margin: 4px 0; }
+  li { margin: 2px 0; }
+  kbd { border: 1px solid #aaa; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: .9em; background: #fff; font-family: inherit; }
+  .note { color: var(--sub); font-size: .9rem; }
+  .box { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: .95rem; }
+  .sw { display: inline-block; width: 2.2em; height: .9em; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+  b.k { color: var(--head); }
+  @media (max-width: 600px) { th { width: 7.5em; white-space: normal; } header h1 { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="stick">
+<header>
+  <h1>自社機械稼働表 使い方</h1>
+  <button type="button" id="bClose" class="close">✕ 閉じる</button>
+  <div class="tabs"><a href="#sp" id="tSp">指（iPad）</a><a href="#pc" id="tPc">マウス（パソコン）</a></div>
+  <label class="fs">文字 <select id="fs"><option value="13">小</option><option value="14">やや小</option><option value="15">標準</option><option value="17">やや大</option><option value="19">大</option></select></label>
+</header>
+<nav class="toc">
+  <a href="#" data-go="see">画面の見方</a><a href="#" data-go="op">稼働表の操作</a><a href="#" data-go="res">予約の小窓</a><a href="#" data-go="mark">線の印</a>
+  <a href="#" data-go="other">空き探し・集計・機械現場</a><a href="#" data-go="excel">Excel との関係</a><a href="#" data-go="faq">困ったとき</a>
+</nav>
+</div>
+<main>
+
+<!-- ============ 共通：画面の見方 ============ -->
+<h2 data-sec="see">画面の見方</h2>
+<table>
+  <tr><th>いちばん上の帯</th><td>稼働表・空き探し・集計・機械・現場 の切り替え。<b>文字</b>＝稼働表の文字の大きさ（小・やや小・標準・やや大・大）。
+    <b>↶ 戻す ／ ↷</b>＝元に戻す・やり直す。<b>データ</b>＝読み込み・書き出し・印刷。<b>使い方</b>＝この画面。右に保存の様子とサインインした人。</td></tr>
+  <tr><th>2段目</th><td><b>開始</b>と<b>長さ</b>（1週間〜2か月）、<b>◀ 今週 ▶</b>で表示する期間を動かします。<b>分類</b>・<b>機械名で絞る</b>で機械をしぼり込み。<br>
+    <b>線を引く現場</b>：先に現場を選んでおくと、線を引くだけでその現場の予約になります（空なら、引いたあとに小窓で選ぶ）。<br>
+    <b>遊びを色で</b>：平日に昼も夜も現場にいない日をオレンジにします。<b>現場を目立たせる</b>：その現場の線だけ濃く出します。</td></tr>
+  <tr><th>表</th><td>機械ごとに<b>昼</b>・<b>夜</b>の2行。列は日（土＝青、日・祝＝赤、今日＝黄色）。<br>
+    機械名の下の % は<b>稼働率</b>（表示している期間の平日のうち、現場にいた日）。<br>
+    <span class="sw" style="background:#ffe2b8"></span>オレンジの薄い色＝遊んでいる平日。</td></tr>
+  <tr><th>下の行き先</th><td>この期間の行き先と日数。押す＝その現場だけ目立たせる。ダブルクリック（ダブルタップ）＝線を引く現場にする。</td></tr>
+</table>
+
+<!-- ============ 指（iPad） ============ -->
+<section class="page" id="page-sp">
+<h2 data-sec="op">稼働表の操作（指・iPad）</h2>
+<table>
+  <tr><th>1本指で動かす</th><td>表のスクロール（上下・左右）。</td></tr>
+  <tr><th>何もない所をダブルタップ</th><td>その日1日の<b>予約の小窓</b>が開きます。<br><span class="note">「線を引く現場」を選んでいるときは、小窓を出さずにその現場の1日の線を引きます。</span></td></tr>
+  <tr><th>何もない所を長押し</th><td>そのまま指を左右に動かすと<b>新しい線</b>が伸びます（長さ＝期間）。離すと予約の小窓（線を引く現場を選んでいればそのまま線）。</td></tr>
+  <tr><th>線をタップ</th><td>線を<b>選ぶ</b>（黒い枠）。</td></tr>
+  <tr><th>線をダブルタップ</th><td>予約の小窓が開き、<b>直せます</b>。</td></tr>
+  <tr><th>線を長押し</th><td>線が<b>浮いて</b>（影が付く）、指を動かすと<b>左右（日）</b>と<b>同じ機械の昼⇔夜</b>へ動かせます。離すと決まります。<br>
+    <span class="note">ほかの機械へは指では動かせません（小窓の「機械」で変えます）。</span></td></tr>
+  <tr><th>線の端を長押し</th><td>端が黄色く光り、指を動かすと<b>伸ばす・縮める</b>ができます。端＝線の両はしの 16px ほど（短い線は 1/3 ずつ）。</td></tr>
+  <tr><th>2本指</th><td>何もしません（画面の拡大はしません。字を大きくするには上の「文字」）。</td></tr>
+</table>
+<div class="box">長押しは、指を止めたまま約0.5秒です。押してすぐ動かすとスクロールになります。</div>
+<h3>そのほか（指）</h3>
+<ul>
+  <li>その日だけ休み・使わなかった日の申告・仮⇔確定・消す は、線をダブルタップして小窓で行います。</li>
+  <li>表示している期間の外へ動かすときは、◀ ▶ で期間を変えてから、または小窓の期間で直します。</li>
+</ul>
+</section>
+
+<!-- ============ マウス（パソコン） ============ -->
+<section class="page" id="page-pc">
+<h2 data-sec="op">稼働表の操作（マウス・パソコン）</h2>
+<table>
+  <tr><th>何もない所をなぞる</th><td><b>新しい線</b>（なぞった日数が期間）。離すと予約の小窓（線を引く現場を選んでいればそのまま線）。</td></tr>
+  <tr><th>何もない所をダブルクリック</th><td>その日1日の予約の小窓（線を引く現場を選んでいれば、その日1日の線）。</td></tr>
+  <tr><th>線をクリック</th><td>線を選ぶ。<kbd>Delete</kbd> で消す。</td></tr>
+  <tr><th>線をダブルクリック</th><td>予約の小窓で直す。</td></tr>
+  <tr><th>線をつかんで動かす</th><td>左右（日）と、ほかの機械・昼夜の行へ動かせます。</td></tr>
+  <tr><th>線の端をつかむ</th><td>伸ばす・縮める。</td></tr>
+  <tr><th>右クリック</th><td>メニュー：その日だけ休み／使う・使わなかった（あとから申告）・その日から後を分ける・仮⇔確定・この現場だけ目立たせる・消す。<br>
+    何もない所の右クリック：予約を入れる・その日1日の線・この機械の空きを探す。</td></tr>
+  <tr><th>マウスを載せる</th><td>線の中身（現場・期間・使う日・金額の目安・特別単価 など）が出ます。</td></tr>
+  <tr><th>キー</th><td><kbd>Ctrl</kbd>＋<kbd>Z</kbd>／<kbd>Y</kbd>＝戻す・やり直す。<kbd>Ctrl</kbd>＋<kbd>＋</kbd>／<kbd>－</kbd>／<kbd>0</kbd>＝稼働表の文字の大きさ（0＝標準）。</td></tr>
+</table>
+</section>
+
+<!-- ============ 共通 ============ -->
+<h2 data-sec="res">予約の小窓</h2>
+<p>上の帯に <b>消す・やめる・保存</b>。中身が長いときは中だけスクロールします。</p>
+<table>
+  <tr><th>機械・区分</th><td>機械と、昼／夜。</td></tr>
+  <tr><th>行き先</th><td>現場名（機材センター・修理・検査 なども）。修理・検査・置場は稼働率と金額に数えません。</td></tr>
+  <tr><th>期間・使う曜日</th><td>開始〜終了。平日は使う。土・日祝に使うときはチェック。</td></tr>
+  <tr><th>使う日</th><td>カレンダーの日を押すと切り替え。<b>使う日・使わない日を選ぶ</b>＝予定。<b>使わなかった日を申告する</b>＝あとから、予定の日に使わなかったと記録（線に赤い斜線）。</td></tr>
+  <tr><th>状態</th><td>確定／仮（相談中。線が斜線と点線の枠）。</td></tr>
+  <tr><th>台数</th><td>在庫が複数ある機械で、この予約に使う台数。</td></tr>
+  <tr><th>料金</th><td><b>単価表の行（備考）</b>：同じ機械で備考により単価が違うとき（例：セルフダンプ「セルフ使わない」）に選びます。<br>
+    <b>料金の決め方</b>：単価表どおり／日極・月極・1現場・立坑1基・1m・1枚・一式（金額）。下に金額の目安。</td></tr>
+  <tr><th>特別単価</th><td>予算の無い現場で機材センター長と交渉したとき。結果（決まった／交渉中）・単価・日・相手・方法・中身。決まった単価で金額を数えます。</td></tr>
+</table>
+
+<h2 data-sec="mark">線の印</h2>
+<table>
+  <tr><th>線の字</th><td>現場名。線に収まらないときは、空いていれば線の右（だめなら左）に字だけ出ます（色の付いた太字）。
+    表を右へ流して線の頭が隠れると、字は見えている所へずれます。</td></tr>
+  <tr><th>斜線＋点線の枠</th><td>仮（相談中）。</td></tr>
+  <tr><th>赤い枠と ⚠</th><td>二重の予約（同じ機械・同じ区分で同じ日に、在庫の台数を超える）。上の「⚠ 二重の予約」を押すとその場所へ。</td></tr>
+  <tr><th>特 ／ 交渉中</th><td>特別単価が決まった／交渉中。</td></tr>
+  <tr><th>2台 など</th><td>この予約で使う台数。</td></tr>
+  <tr><th>白く抜けた日</th><td>期間の中で使わない日（休み）。</td></tr>
+  <tr><th>赤い斜線の日</th><td>使わなかった（あとから申告）。</td></tr>
+</table>
+
+<h2 data-sec="other">空き探し・集計・機械・現場</h2>
+<table>
+  <tr><th>空き探し</th><td>期間・区分・分類・機械で、空いている機械を探します。緑＝全部空き・黄＝一部・赤＝ふさがり。前後の予定も出ます。「予約する」で小窓。</td></tr>
+  <tr><th>集計</th><td>機械ごと（昼／夜の日数・稼働率・遊び・金額の目安）・現場ごと・特別単価。CSV に書き出せます。</td></tr>
+  <tr><th>機械・現場</th><td>機械の並び・分類・単価表の品・台数・使わない。現場の種類・色・工事コード・完了。名前を同じにすると1つにまとまります。</td></tr>
+  <tr><th>データ</th><td>ファイルの読み込み・書き出し、印刷（稼働表を A3 横）。</td></tr>
+</table>
+
+<h2 data-sec="excel">Excel との関係</h2>
+<ul>
+  <li>この画面は 3分ごと（と画面に戻ったとき）に、OneDrive の月ごとの Excel（自社機械予定表）を読み、Excel に書いてある日は Excel のとおりにします。</li>
+  <li>画面で入れて Excel に無い日は、Excel のその機械・その日の欄に現場名を書き戻します（Excel に行の無い機械・まだ無い月は書けません）。</li>
+  <li>台数・料金・特別単価・単価表の行（備考）は Excel には書きません（画面だけ）。</li>
+</ul>
+
+<h2 data-sec="faq">困ったとき</h2>
+<table>
+  <tr><th>下に「更新する」の帯</th><td>新しい版が出ています。押すと新しくなります。</td></tr>
+  <tr><th>字が小さい・大きい</th><td>上の「文字」で選びます（画面の拡大はしません）。</td></tr>
+  <tr><th>間違えて動かした・消した</th><td>上の「↶ 戻す」。</td></tr>
+  <tr><th>ほかの人の変更</th><td>30秒ごとと画面に戻ったときに読み直します。同時に保存したときも、両方の変更が残ります。</td></tr>
+  <tr><th>サインインの画面</th><td>会社の Microsoft アカウントでサインインします。</td></tr>
+</table>
+</main>
+<script>
+  const show = () => {
+    const pc = location.hash === "#pc";
+    document.getElementById("page-pc").classList.toggle("on", pc);
+    document.getElementById("page-sp").classList.toggle("on", !pc);
+    document.getElementById("tPc").classList.toggle("on", pc);
+    document.getElementById("tSp").classList.toggle("on", !pc);
+  };
+  addEventListener("hashchange", show);
+  document.getElementById("bClose").onclick = () => {
+    window.close();
+    setTimeout(() => { if (!window.closed) location.href = "./"; }, 300);   // 窓を閉じられないとき（直に開いた）は稼働表へ
+  };
+  /* 文字の大きさ（5段階。このブラウザに覚える） */
+  const fs = document.getElementById("fs");
+  const setFs = v => { document.documentElement.style.fontSize = v + "px"; fs.value = v; try { localStorage.setItem("kikai_help_fs", v); } catch (e) { } };
+  let v0 = "15"; try { v0 = localStorage.getItem("kikai_help_fs") || "15"; } catch (e) { }
+  setFs([...fs.options].some(o => o.value === v0) ? v0 : "15");
+  fs.onchange = () => setFs(fs.value);
+  /* 目次：その見出しへ（いま開いているほうの「稼働表の操作」） */
+  document.querySelector("nav.toc").addEventListener("click", e => {
+    const a = e.target.closest("a[data-go]"); if (!a) return;
+    e.preventDefault();
+    const h = [...document.querySelectorAll(`h2[data-sec="${a.dataset.go}"]`)].find(x => x.offsetParent);
+    if (h) h.scrollIntoView({ behavior: "smooth" });
+  });
+  ["gesturestart", "gesturechange"].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+  show();
+</script>
+</body>
+</html>

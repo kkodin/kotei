@@ -106,6 +106,10 @@ main { flex: 1; min-height: 0; position: relative; }
 .bar.sel { box-shadow: 0 0 0 2px #000 inset, 0 0 0 2px #ffeb3b; z-index: 3; }
 .bar.dim { opacity: .22; }
 .bar.drag { opacity: .85; z-index: 5; cursor: grabbing; }
+/* 指で長押しした線（浮いて動かせる）。端を長押ししたときは、伸ばす向きの端を太く */
+.bar.lift { z-index: 6; opacity: .92; transform: translateY(-2px); box-shadow: 0 0 0 2px #000 inset, 0 6px 14px rgba(0,0,0,.45); }
+.bar.lift-e { box-shadow: 0 0 0 2px #000 inset, 0 0 0 3px #ffeb3b, 0 6px 14px rgba(0,0,0,.45); }
+#chart { -webkit-touch-callout: none; }   /* 長押しで iPad のメニュー・字の選択を出さない */
 .bar::before, .bar::after { content: ""; }
 .bar .eg { position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 2; }
 .bar .eg.l { left: 0; } .bar .eg.r { right: 0; }

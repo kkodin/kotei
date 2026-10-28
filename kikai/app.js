@@ -576,7 +576,12 @@ const barTip = r => {
     (r.交渉 ? "\n" + ngText(r.交渉) : "");
 };
 
-/* ---------- 稼働表の操作（マウス・ペン。指はスクロールと、押して小窓） ---------- */
+/* ---------- 稼働表の操作 ----------
+   マウス・ペン：なぞる＝線を引く・線をつかんで動かす・端で伸ばす・ダブルクリック＝直す（pointer の処理）。
+   指（2026-10-28 ユーザーと決めた。下の touch の処理）：
+     何もない所 … ダブルタップ＝小窓（線を引く現場を選んでいればその日1日の線）／長押し→そのままなぞる＝新しい線（長さで期間）／1回タップ＝選択を外す
+     線 … タップ＝選ぶ／ダブルタップ＝直す（小窓）／長押し＝浮いて動かせる（左右と、同じ機械の昼⇔夜だけ）／端を長押し＝伸ばす・縮める
+     1本指で動かす＝スクロール（長押しの前に動いたらスクロール） */
 let drag = null;
 let lastTap = null;   // 指で線を押した直前の1回（ダブルタップを見分ける）
 function laneAt(x, y) { const c = document.elementFromPoint(x, y)?.closest?.(".cells"); return c ? { m: c.dataset.m, k: c.dataset.k, el: c } : null; }
@@ -592,7 +597,7 @@ $("chart").addEventListener("pointerdown", e => {
   const barEl = e.target.closest(".bar");
   const r = barEl && D.予約.find(x => x.id === barEl.dataset.id);
   const d0 = dayIndexAt(cells, e.clientX);
-  if (e.pointerType === "touch") { drag = { touch: true, r, x0: e.clientX, y0: e.clientY, cells, d0 }; return; }
+  if (e.pointerType === "touch") return;   // 指は下の touch の処理
   e.preventDefault();
   if (r) {
     const mode = e.target.classList.contains("eg") ? (e.target.classList.contains("l") ? "l" : "r") : "move";
@@ -604,10 +609,15 @@ $("chart").addEventListener("pointerdown", e => {
   $("chart").setPointerCapture(e.pointerId);
 });
 $("chart").addEventListener("pointermove", e => {
-  if (!drag) { tipMove(e); return; }
-  if (drag.touch) return;
+  if (!drag) { if (e.pointerType !== "touch") tipMove(e); return; }
+  if (T) return;   // 指で動かしている
   if (!drag.moved && Math.abs(e.clientX - drag.x0) < 4 && Math.abs(e.clientY - drag.y0) < 4) return;
+  dragMove(e.clientX, e.clientY);
+});
+/* つかんでいる線・引いている線を (x, y) へ（マウスと指で同じ）。sameM＝同じ機械の中だけ（指） */
+function dragMove(x, y, sameM = false) {
   drag.moved = true; hideTip();
+  const e = { clientX: x, clientY: y };
   const dw = DW(), di = dayIndexAt(drag.cells, e.clientX);
   if (drag.mode === "new") {
     drag.d1 = di;
@@ -622,7 +632,8 @@ $("chart").addEventListener("pointermove", e => {
   const el = drag.el; el.classList.add("drag");
   if (drag.mode === "move") {
     el.style.left = drag.left + dd * dw + "px";
-    const ln = laneAt(e.clientX, e.clientY);
+    let ln = laneAt(e.clientX, e.clientY);
+    if (ln && sameM && ln.m !== drag.r.機械) ln = null;   // 指：ほかの機械へは動かさない
     if (ln && ln.el !== el.parentNode) { ln.el.appendChild(el); el.style.top = "2px"; }
     if (ln) drag.lane = ln;
   } else if (drag.mode === "l") {
@@ -630,22 +641,10 @@ $("chart").addEventListener("pointermove", e => {
   } else {
     el.style.width = Math.max(dw, drag.width + dd * dw) + "px";
   }
-});
-$("chart").addEventListener("pointerup", e => {
-  const g = drag; drag = null;
-  if (!g) return;
-  if (g.touch) {
-    if (Math.abs(e.clientX - g.x0) > 8 || Math.abs(e.clientY - g.y0) > 8) return;   // スクロールだった
-    if (g.r) {   // 線：1回で選ぶだけ。続けてもう1回（ダブルタップ）で直す
-      const t = lastTap, now = Date.now();
-      lastTap = { id: g.r.id, at: now };
-      if (t && t.id === g.r.id && now - t.at < 450) { lastTap = null; openRes(g.r); }
-      else setSel(g.r.id);
-    }
-    else if (S.paint) quickAdd(g.cells.dataset.m, g.cells.dataset.k, rangeDays()[g.d0], rangeDays()[g.d0]);
-    else openRes(null, { 機械: g.cells.dataset.m, 区分: g.cells.dataset.k, 開始: rangeDays()[g.d0], 終了: rangeDays()[g.d0] });
-    return;
-  }
+}
+$("chart").addEventListener("pointerup", () => { if (T) return; const g = drag; drag = null; if (g) dragEnd(g); });
+/* 離したとき（マウスと指で同じ） */
+function dragEnd(g) {
   const days = rangeDays();
   if (g.mode === "new") {
     g.cells.querySelector(".ghost")?.remove();
@@ -679,10 +678,82 @@ $("chart").addEventListener("pointerup", e => {
     trimDays(x); stamp(x);
     S.sel = x.id;
   });
-});
+}
+/* ---------- 指の操作（上の決まり。長押し 450ms。長押しの前に 8px 動いたらスクロール） ---------- */
+const HOLD_MS = 450;
+let T = null, lastTouch = 0, lastEmptyTap = null;
+function barOf(el) { const b = el?.closest?.(".bar"); return b ? { el: b, r: D.予約.find(x => x.id === b.dataset.id) } : null; }
+function touchCancel() { if (!T) return; clearTimeout(T.timer); if (T.mode) { drag = null; renderChart(); } T = null; }
+$("chart").addEventListener("touchstart", e => {
+  lastTouch = Date.now();
+  if (e.touches.length !== 1) { touchCancel(); return; }
+  const t = e.touches[0], cells = e.target.closest?.(".cells");
+  if (!cells) { T = null; return; }
+  hideCtx(); hideTip();
+  const b = barOf(e.target), x = t.clientX, y = t.clientY;
+  T = { x0: x, y0: y, x, y, cells, b, d0: dayIndexAt(cells, x), mode: null };
+  if (b) {   // 端（線の両端。指なので幅の 1/3 か 16px まで）を押したか
+    const rc = b.el.getBoundingClientRect(), zone = Math.min(16, rc.width / 3), lx = x - rc.left;
+    T.part = lx < zone ? "l" : lx > rc.width - zone ? "r" : "move";
+  }
+  T.timer = setTimeout(holdStart, HOLD_MS);
+}, { passive: true });
+function holdStart() {
+  if (!T || T.mode) return;
+  const { b, cells, d0 } = T;
+  if (b && b.r) {   // 線を浮かせる（動かす・伸ばす）
+    T.mode = "bar";
+    drag = { mode: T.part, r: b.r, el: b.el, cells, d0, dd: 0, lane: { m: b.r.機械, k: b.r.区分, el: cells }, moved: false, x0: T.x0, y0: T.y0,
+      left: parseFloat(b.el.style.left), width: parseFloat(b.el.style.width), top: b.el.style.top };
+    setSel(b.r.id); b.el.classList.add("lift", T.part === "move" ? "lift-m" : "lift-e");
+  } else {   // 何もない所：新しい線を引きはじめる
+    T.mode = "new";
+    drag = { mode: "new", cells, d0, d1: d0, lane: { m: cells.dataset.m, k: cells.dataset.k }, moved: false, x0: T.x0, y0: T.y0 };
+    dragMove(T.x0, T.y0);
+  }
+}
+$("chart").addEventListener("touchmove", e => {
+  if (!T || e.touches.length !== 1) return;
+  const t = e.touches[0]; T.x = t.clientX; T.y = t.clientY;
+  if (!T.mode) {   // 長押しの前に動いた＝スクロール
+    if (Math.abs(T.x - T.x0) > 8 || Math.abs(T.y - T.y0) > 8) { clearTimeout(T.timer); T = null; }
+    return;
+  }
+  if (e.cancelable) e.preventDefault();   // 浮かせている間は画面を流さない
+  dragMove(T.x, T.y, true);
+}, { passive: false });
+$("chart").addEventListener("touchend", e => {
+  if (!T) return;
+  const g = T; T = null; clearTimeout(g.timer); lastTouch = Date.now();
+  if (e.cancelable) e.preventDefault();   // あとから来るマウスの合図（click・dblclick）を出さない
+  if (g.mode) {   // 長押しのあと離した
+    const d = drag; drag = null; if (!d) return;
+    if (d.mode === "new") { d.moved = true; dragEnd(d); return; }   // 長押しだけでも、その1日の線
+    if (!d.dd && d.lane.m === d.r.機械 && d.lane.k === d.r.区分) { renderChart(); return; }   // 動かさなかった
+    d.moved = true; dragEnd(d);
+    return;
+  }
+  const now = Date.now();
+  if (g.b && g.b.r) {   // 線：1回で選ぶ。続けてもう1回（ダブルタップ）で直す
+    const t = lastTap; lastTap = { id: g.b.r.id, at: now };
+    if (t && t.id === g.b.r.id && now - t.at < HOLD_MS) { lastTap = null; openRes(g.b.r); }
+    else setSel(g.b.r.id);
+    return;
+  }
+  /* 何もない所：1回＝選択を外す。ダブルタップ＝マウスのダブルクリックと同じ */
+  const key = g.cells.dataset.m + "|" + g.cells.dataset.k + "|" + g.d0, t = lastEmptyTap;
+  lastEmptyTap = { key, at: now };
+  if (t && t.key === key && now - t.at < HOLD_MS) {
+    lastEmptyTap = null;
+    const k = rangeDays()[g.d0];
+    if (S.paint) quickAdd(g.cells.dataset.m, g.cells.dataset.k, k, k);
+    else openRes(null, { 機械: g.cells.dataset.m, 区分: g.cells.dataset.k, 開始: k, 終了: k });
+  } else setSel(null);
+}, { passive: false });
+$("chart").addEventListener("touchcancel", touchCancel);
 /* ダブルクリック：バー＝直す／空いている所＝線を引く現場を選んでいればその日1日、なければ小窓 */
 $("chart").addEventListener("dblclick", e => {
-  if ($("dRes").open) return;   // 指のダブルタップで上が開いたあとに届いた分
+  if ($("dRes").open || Date.now() - lastTouch < 800) return;   // 指のダブルタップは上の touch で済んでいる
   const t = document.elementFromPoint(e.clientX, e.clientY);   // 押している間は #chart に捕まえているので、下の要素を取り直す
   const cells = t?.closest(".cells"); if (!cells) return;
   const barEl = t.closest(".bar"), r = barEl && D.予約.find(x => x.id === barEl.dataset.id);
@@ -691,7 +762,7 @@ $("chart").addEventListener("dblclick", e => {
   if (S.paint) quickAdd(cells.dataset.m, cells.dataset.k, k, k);
   else openRes(null, { 機械: cells.dataset.m, 区分: cells.dataset.k, 開始: k, 終了: k });
 });
-$("chart").addEventListener("pointercancel",() => { drag = null; renderChart(); });
+$("chart").addEventListener("pointercancel", () => { if (T) return; if (drag) { drag = null; renderChart(); } });
 $("chart").addEventListener("pointerleave", () => hideTip());
 function setSel(id) {
   S.sel = id;
@@ -727,6 +798,7 @@ const hideTip = () => { $("tip").hidden = true; };
 
 /* 右クリックのメニュー */
 $("chart").addEventListener("contextmenu", e => {
+  if (Date.now() - lastTouch < 800) { e.preventDefault(); return; }   // 指の長押し（Android）は上の touch の処理
   const cells = e.target.closest(".cells"); if (!cells) return;
   e.preventDefault(); hideTip();
   const k = rangeDays()[dayIndexAt(cells, e.clientX)];
@@ -1401,6 +1473,12 @@ async function importBundled() {
   }
 }
 $("bData").onclick = () => openDataDlg();
+/* 使い方（2026-10-28）：help.html を別の窓で（iPad は新しいタブで画面いっぱい）。指で操作する端末なら #sp（指の操作）、ほかは #pc */
+$("bHelp").onclick = () => {
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const w = window.open("help.html?v=" + encodeURIComponent($("ver").textContent) + (touch ? "#sp" : "#pc"), "kikai_help", touch ? "" : "width=900,height=900");
+  if (w) w.focus();
+};
 function openDataDlg() {
   $("ioWhere").innerHTML = DEMO ? "いまは<b>このブラウザの中だけ</b>に覚えています（試し。ほかの人とは共有しません）。"
     : "データは会社の OneDrive（社内共有フォルダ\\03_自社機械稼働表\\稼働データ\\稼働データ.json）に保存し、全員で共有しています。" +
