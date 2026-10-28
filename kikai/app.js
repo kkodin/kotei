@@ -681,7 +681,7 @@ function dragEnd(g) {
 }
 /* ---------- 指の操作（上の決まり。長押し 450ms。長押しの前に 8px 動いたらスクロール） ---------- */
 const HOLD_MS = 450;
-let T = null, lastTouch = 0, lastEmptyTap = null;
+let T = null, lastTouch = 0, lastEmptyTap = null, menuT = 0;
 function barOf(el) { const b = el?.closest?.(".bar"); return b ? { el: b, r: D.予約.find(x => x.id === b.dataset.id) } : null; }
 function touchCancel() { if (!T) return; clearTimeout(T.timer); if (T.mode) { drag = null; renderChart(); } T = null; }
 $("chart").addEventListener("touchstart", e => {
@@ -734,9 +734,14 @@ $("chart").addEventListener("touchend", e => {
     return;
   }
   const now = Date.now();
-  if (g.b && g.b.r) {   // 線：1回で選ぶ。続けてもう1回（ダブルタップ）で直す
-    const t = lastTap; lastTap = { id: g.b.r.id, at: now };
+  if (g.b && g.b.r) {   // 線：1回で選ぶ。続けてもう1回（ダブルタップ）で直す。選んである線を1回タップ＝メニュー（右クリックと同じ）
+    const t = lastTap, was = S.sel === g.b.r.id; lastTap = { id: g.b.r.id, at: now };
+    clearTimeout(menuT);
     if (t && t.id === g.b.r.id && now - t.at < HOLD_MS) { lastTap = null; openRes(g.b.r); }
+    else if (was) {   // ダブルタップの1回目かもしれないので、少し待ってからメニュー
+      const el = document.elementFromPoint(g.x0, g.y0) || g.b.el, x = g.x0, y = g.y0;
+      menuT = setTimeout(() => { if (lastTap && lastTap.at === now && !$("dRes").open) chartMenu({ target: el, clientX: x, clientY: y, preventDefault() { } }); }, HOLD_MS);
+    }
     else setSel(g.b.r.id);
     return;
   }
@@ -799,6 +804,10 @@ const hideTip = () => { $("tip").hidden = true; };
 /* 右クリックのメニュー */
 $("chart").addEventListener("contextmenu", e => {
   if (Date.now() - lastTouch < 800) { e.preventDefault(); return; }   // 指の長押し（Android）は上の touch の処理
+  chartMenu(e);
+});
+/* 指：選んである線をもう1回タップしたときも、このメニュー（2026-10-28 ユーザー） */
+function chartMenu(e) {
   const cells = e.target.closest(".cells"); if (!cells) return;
   e.preventDefault(); hideTip();
   const k = rangeDays()[dayIndexAt(cells, e.clientX)];
@@ -831,7 +840,7 @@ $("chart").addEventListener("contextmenu", e => {
   }
   showCtx(e.clientX, e.clientY, items);
   renderChart();
-});
+}
 function showCtx(x, y, items) {
   const c = $("ctx");
   c.innerHTML = items.map((it, i) => it ? `<div data-i="${i}" class="${it[2] || ""}">${esc(it[0])}</div>` : "<hr>").join("");
