@@ -1121,10 +1121,11 @@ function renderSum() {
     <span class="sp"></span><button class="sub" id="sCsv">CSV に書き出す</button></div>`;
   let body = "", csv = [];
   if (S.sumBy === "machine") {
+    /* 機械ごと（2026-10-28 ユーザー）：1台の中で、使った単価表の行（備考。例：8tセルフダンプ「セルフ使わない」）ごと・特別単価（交渉）の予約ごとに行を分ける。
+       稼働率などは機械の最初の行に。金額は 単価表どおり（元）／交渉の単価（特別単価の行だけ）／金額の目安（実際に数える方） */
     const rows = ms.map(m => {
       const mine = list.filter(r => r.機械 === m.id);
       let dn = 0, nn = 0, used = 0, idle = 0, rep = 0;
-      const amt = mine.filter(r => isReal(r.現場)).reduce((s, r) => s + (costOf(r, from, to, false, m).amt || 0), 0);
       days.forEach(k => {
         const on = mine.filter(r => works(r, k));
         const real = on.filter(r => isReal(r.現場));
@@ -1135,24 +1136,53 @@ function renderSum() {
         else if (on.some(r => ["修理", "検査"].includes(siteOf(r.現場).種類))) rep++;
         else idle++;
       });
-      return { m, dn, nn, used, idle, rep, amt, rate: wd ? used / wd : 0 };
+      const vs = variantsOf(m), subs = {};
+      mine.filter(r => isReal(r.現場)).forEach(r => {
+        const c = costOf(r, from, to, false, m), bc = costOf(r, from, to, true, m);
+        if (!c.days && !c.amt) return;
+        const i = resItem(r, m), sp = special(r);
+        const x = (subs[(i?.key || "") + "|" + (sp ? "sp" : "")] ||= { i, sp, days: 0, base: 0, amt: 0, spU: new Set(), meth: c.meth });
+        x.days += c.days; x.base += bc.amt || 0; x.amt += c.amt || 0;
+        if (sp) x.spU.add(`${yen(r.交渉.単価)}／${UNIT[c.meth]}`);
+      });
+      const order = x => (vs.indexOf(x.i) + 1) * 2 + (x.sp ? 1 : 0);
+      const sub = Object.values(subs).sort((p, q) => order(p) - order(q));
+      return { m, dn, nn, used, idle, rep, sub, vs, amt: sub.reduce((t, x) => t + x.amt, 0), rate: wd ? used / wd : 0 };
     });
     if (S.sumSort === "rate") rows.sort((a, b) => a.rate - b.rate);
-    const tot = rows.reduce((a, x) => ({ dn: a.dn + x.dn, nn: a.nn + x.nn, amt: a.amt + x.amt, idle: a.idle + x.idle }), { dn: 0, nn: 0, amt: 0, idle: 0 });
-    /* 単価の欄：単価表の品ならその日極・月極（期間の終わりの日の単価）、無ければ機械の単価 */
-    const pText = m => { const i = itemOf(m);
+    const all = rows.flatMap(x => x.sub);
+    const tot = rows.reduce((a, x) => ({ dn: a.dn + x.dn, nn: a.nn + x.nn, idle: a.idle + x.idle }), { dn: 0, nn: 0, idle: 0 });
+    const tBase = all.reduce((t, x) => t + x.base, 0), tSp = all.filter(x => x.sp).reduce((t, x) => t + x.amt, 0), tAmt = all.reduce((t, x) => t + x.amt, 0);
+    /* 単価の欄：単価表の行ならその日極・月極・施工（期間の終わりの日の単価）、無ければ機械の単価 */
+    const pText = (m, i = itemOf(m)) => {
       if (!i) return yen(m.単価昼) + (m.単価夜 !== m.単価昼 ? "／" + yen(m.単価夜) : "");
       const d = priceAt(i, "日", to), mo = priceAt(i, "月", to), s = priceAt(i, "施工", to);
       return [d != null ? yen(d) + "／日" : "", mo != null ? yen(mo) + "／月" : "", s != null ? yen(s) + "／" + (i.単位 || "施工") : ""].filter(Boolean).join(" ") || "—"; };
+    /* 備考の欄：単価表の行（備考で単価が分かれる機械は「8t セルフ使わない」）＋特別単価 */
+    const note = (x, vs) => [x.i ? (vs.length ? noteLabel(x.i) : x.i.備考 || "") : "", x.sp ? `特別単価 ${[...x.spU].join("・")}（交渉）` : ""].filter(Boolean).join("　");
     body = `<div class="form"><label>並び <select id="sSort"><option value="order" ${S.sumSort === "order" ? "selected" : ""}>機械の並び</option><option value="rate" ${S.sumSort === "rate" ? "selected" : ""}>稼働率の低い順（遊んでいる順）</option></select></label></div>
-    <table class="t"><tr><th>分類</th><th>機械</th><th>規格</th><th>在庫</th><th>昼 使った日</th><th>夜 使った日</th><th>稼働率（平日）</th><th>遊び（平日）</th><th>修理・検査</th><th>単価（単価表）</th><th>金額の目安</th></tr>` +
-      rows.map(x => `<tr><td class="small" style="white-space:nowrap">${esc(catOf(x.m))}</td><td>${esc(x.m.名前)}</td><td>${esc(x.m.規格 || "")}</td><td class="n">${x.m.台数 || 1}</td><td class="n">${x.dn || ""}</td><td class="n">${x.nn || ""}</td>
-        <td class="n"><span class="meter${x.rate < .5 ? " low" : ""}"><s style="width:${Math.round(x.rate * 100)}%"></s></span>${Math.round(x.rate * 100)}%</td>
-        <td class="n">${x.idle ? x.idle + "日" : ""}</td><td class="n">${x.rep ? x.rep + "日" : ""}</td>
-        <td class="n small">${pText(x.m)}</td><td class="n">${yen(x.amt || null)}</td></tr>`).join("") +
-      `<tr class="tot"><td colspan="4">計</td><td class="n">${tot.dn}</td><td class="n">${tot.nn}</td><td></td><td class="n">${tot.idle}日</td><td></td><td></td><td class="n">${yen(tot.amt)}</td></tr></table>`;
-    csv = [["分類", "機械", "規格", "在庫", "昼 使った日", "夜 使った日", "稼働率", "遊び", "修理・検査", "単価", "金額の目安"],
-      ...rows.map(x => [catOf(x.m), x.m.名前, x.m.規格, x.m.台数 || 1, x.dn, x.nn, Math.round(x.rate * 100) + "%", x.idle, x.rep, pText(x.m).replace(/,/g, ""), Math.round(x.amt)])];
+    <table class="t sumM"><tr><th>分類</th><th>機械</th><th>規格</th><th>在庫</th><th>昼 使った日</th><th>夜 使った日</th><th>稼働率（平日）</th><th>遊び（平日）</th><th>修理・検査</th>
+      <th>備考（単価表の行・特別単価）</th><th>使った日</th><th>単価（単価表）</th><th>単価表どおりの金額</th><th>交渉の単価の金額</th><th>金額の目安</th></tr>` +
+      rows.map(x => {
+        const n = Math.max(1, x.sub.length), rs = n > 1 ? ` rowspan="${n}"` : "";
+        const left = `<td class="small"${rs} style="white-space:nowrap">${esc(catOf(x.m))}</td><td${rs}>${esc(x.m.名前)}</td><td${rs}>${esc(x.m.規格 || "")}</td><td class="n"${rs}>${x.m.台数 || 1}</td>
+          <td class="n"${rs}>${x.dn || ""}</td><td class="n"${rs}>${x.nn || ""}</td>
+          <td class="n"${rs}><span class="meter${x.rate < .5 ? " low" : ""}"><s style="width:${Math.round(x.rate * 100)}%"></s></span>${Math.round(x.rate * 100)}%</td>
+          <td class="n"${rs}>${x.idle ? x.idle + "日" : ""}</td><td class="n"${rs}>${x.rep ? x.rep + "日" : ""}</td>`;
+        if (!x.sub.length) return `<tr>${left}<td></td><td></td><td class="n small">${pText(x.m)}</td><td></td><td></td><td></td></tr>`;
+        return x.sub.map((s, j) => `<tr class="${j ? "subr" : ""}">${j ? "" : left}<td class="small${s.sp ? " spn" : ""}">${esc(note(s, x.vs))}</td><td class="n">${s.days || ""}</td>
+          <td class="n small">${pText(x.m, s.i)}</td><td class="n${s.sp ? " notad" : ""}">${yen(s.base || null)}</td><td class="n${s.sp ? " adopt" : ""}">${s.sp ? yen(s.amt) : ""}</td><td class="n">${yen(s.amt || null)}</td></tr>`).join("");
+      }).join("") +
+      `<tr class="tot"><td colspan="4">計</td><td class="n">${tot.dn}</td><td class="n">${tot.nn}</td><td></td><td class="n">${tot.idle}日</td><td></td><td></td><td></td><td></td>
+        <td class="n">${yen(tBase)}</td><td class="n">${tSp ? yen(tSp) : ""}</td><td class="n">${yen(tAmt)}</td></tr></table>
+      <p class="note">同じ機械でも、単価表の備考で単価が違う行（例：セルフダンプ「セルフ使わない」）や、特別単価（交渉）の予約は、行を分けて出します。
+        「単価表どおりの金額」＝交渉しなかったときの金額。「交渉の単価の金額」＝特別単価で数えた金額（その行だけ）。「金額の目安」＝実際に数える方。特別単価の行は、採用した交渉の単価の金額に<b style="outline:2px solid #d50000;outline-offset:1px;padding:0 3px">赤い枠</b>（単価表どおりの金額は薄い字）。</p>`;
+    csv = [["分類", "機械", "規格", "在庫", "昼 使った日", "夜 使った日", "稼働率", "遊び", "修理・検査", "備考（単価表の行・特別単価）", "使った日", "単価", "単価表どおりの金額", "交渉の単価の金額", "金額の目安"]];
+    rows.forEach(x => {
+      const left = [catOf(x.m), x.m.名前, x.m.規格, x.m.台数 || 1, x.dn, x.nn, Math.round(x.rate * 100) + "%", x.idle, x.rep];
+      if (!x.sub.length) csv.push([...left, "", "", pText(x.m).replace(/,/g, ""), "", "", ""]);
+      x.sub.forEach(s => csv.push([...left, note(s, x.vs).replace(/,/g, ""), s.days, pText(x.m, s.i).replace(/,/g, ""), Math.round(s.base), s.sp ? Math.round(s.amt) : "", Math.round(s.amt)]));
+    });
   } else if (S.sumBy === "nego") {
     /* 特別単価：機材センター長と交渉した予約の一覧（期間にかかるもの） */
     const ng = list.filter(r => r.交渉).map(r => {
