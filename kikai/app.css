@@ -92,10 +92,13 @@ main { flex: 1; min-height: 0; position: relative; }
 .bar.lt { color: #222; }
 .bar .gap { position: absolute; top: 2px; bottom: 2px; background: rgba(255,255,255,.82); pointer-events: none; }
 .bar .lbl { position: relative; z-index: 1; pointer-events: none; background-color: inherit; padding-right: 3px; border-radius: 2px; }
-/* 字が線に収まらず下が空いているとき：下へ折り返す（2026-10-28）。字の箱は線の色のまま下へ伸びる */
-.bar.wrap { overflow: visible; }
-.bar.wrap .lbl { position: absolute; top: 0; left: 0; right: 0; padding: 0 4px; white-space: normal; word-break: break-all; overflow: hidden;
-  line-height: calc(var(--rh) - 6px); padding-top: 1px; padding-bottom: 2px; border-radius: 0 0 3px 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.18) inset; pointer-events: auto; }   /* 伸ばした字を押しても、その線を押したことに */
+/* 字が線に収まらないとき、空いている右（左）に字だけを出す（2026-10-28）。塗りなし・現場の色の太字＋白い縁取り。押すとその線 */
+.bar.out { overflow: visible; }
+.bar.out .lbl { position: absolute; top: 0; background: none; color: var(--c); font-weight: 700; padding: 0 2px; pointer-events: auto;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff, 0 0 3px #fff; }
+.bar.out.lt .lbl { color: #333; }
+.bar.outR .lbl { left: calc(100% + 1px); }
+.bar.outL .lbl { right: calc(100% + 1px); }
 .bar.kari { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px) !important; outline: 1.5px dashed rgba(0,0,0,.55); outline-offset: -1.5px; }
 .bar.kari .lbl::before { content: "仮 "; font-weight: 700; }
 .bar.conf { box-shadow: 0 0 0 2px #d50000 inset, 0 0 0 1px #fff; }

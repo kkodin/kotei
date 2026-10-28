@@ -476,14 +476,6 @@ function renderChart() {
         <span class="rate${rate < 50 ? " low" : ""}"><i><s style="width:${rate}%"></s></i>${rate}%</span></div>
       <div class="lks">${lanes.map(l => `<div class="lk${l.k === "夜" ? " n" : ""}" style="height:${l.n * rh}px">${l.k}</div>`).join("")}</div>
     </div><div class="lanes">`);
-    /* 線の下が空いているか（同じ機械の中で、すぐ下の行。昼の最後の行の下は夜の1行目）：字が収まらないとき下へ折り返す（labelFit） */
-    const rowsOf = [], gRow = (l, row) => (l.k === "昼" ? 0 : lanes[0].n) + row;
-    lanes.forEach(l => l.list.forEach(r => (rowsOf[gRow(l, l.at[r.id])] ||= []).push([Math.max(0, dayDiff(from, r.開始)), Math.min(N - 1, dayDiff(from, r.終了))])));
-    const freeBelow = (l, r) => {
-      const a = Math.max(0, dayDiff(from, r.開始)), b = Math.min(N - 1, dayDiff(from, r.終了)), all = lanes[0].n + lanes[1].n;
-      let n = 0; for (let g = gRow(l, l.at[r.id]) + 1; g < all && n < 2; g++, n++) if ((rowsOf[g] || []).some(([x, y]) => x <= b && a <= y)) break;
-      return n;
-    };
     lanes.forEach(l => {
       h.push(`<div class="cells${l.k === "夜" ? " n" : ""}" data-m="${m.id}" data-k="${l.k}" style="width:${N * dw}px;height:${l.n * rh}px">`);
       if (l.k === "昼" && S.idle) {
@@ -496,7 +488,7 @@ function renderChart() {
           i = e;
         }
       }
-      l.list.forEach(r => h.push(barHtml(r, from, N, dw, rh, l.at[r.id], bad.has(r.id), freeBelow(l, r))));
+      l.list.forEach(r => h.push(barHtml(r, from, N, dw, rh, l.at[r.id], bad.has(r.id))));
       h.push(`</div>`);
     });
     h.push(`</div></div>`);
@@ -509,7 +501,7 @@ function renderChart() {
   $("warn").title = nBad ? "押すと最初の場所へ" : "";
 }
 
-function barHtml(r, from, N, dw, rh, row, conf, free = 0) {
+function barHtml(r, from, N, dw, rh, row, conf) {
   const s = Math.max(0, dayDiff(from, r.開始)), e = Math.min(N - 1, dayDiff(from, r.終了));
   const st = siteOf(r.現場), color = st.色 || "#8a96a3";
   const gaps = [], g = [];
@@ -532,25 +524,42 @@ function barHtml(r, from, N, dw, rh, row, conf, free = 0) {
   if (conf) cls.push("conf");
   if (S.sel === r.id) cls.push("sel");
   if (S.focus && r.現場 !== S.focus) cls.push("dim");
-  return `<div class="${cls.join(" ")}" data-id="${r.id}" data-free="${free}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color}">` +
+  return `<div class="${cls.join(" ")}" data-id="${r.id}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color};--c:${color}">` +
     g.join("") + `<span class="lbl">${(r.台数 || 1) > 1 ? `<b class="tk n">${r.台数}台</b>` : ""}${r.交渉 ? `<b class="tk${special(r) ? "" : " ing"}">${special(r) ? "特" : "交渉中"}</b>` : ""}${esc(r.現場)}</span><i class="eg l"></i><i class="eg r"></i></div>`;
 }
 /* 線の字（2026-10-28 ユーザー）
    ①線の開始日が画面の左（機械名の列の下）に隠れているときは、字を見えている所まで右へ逃がす（スクロールのたびに labelShift）。
-   ②字が線に収まらず、すぐ下の行が空いていれば（data-free＝空いている行の数。最大2）、下へ折り返す（.wrap）。 */
+   ②字が線に収まらないとき：同じ行で右が空いていれば線の右に、だめなら左が空いていれば線の左に、字だけを出す（.out.outR／.outL）。
+     外に出した字は塗りなし・現場の色の太字＋白い縁取り（線と見分ける）。両側ともふさがっていれば線の中で切る（マウス・押すと全部出る）。
+     はじめは下の空いた行へ折り返していたが、昼と夜の両方で使うように見えるのでやめた（同日 ユーザー）。 */
 let LBL = [];
 function labelFit() {
-  const rh = RH();
+  const rows = new Map();
   LBL = [...$("chart").querySelectorAll(".bar")].map(b => {
-    const l = b.querySelector(".lbl"), W = b.offsetWidth, free = +b.dataset.free || 0;
-    if (free && b.scrollWidth > b.clientWidth + 1) { b.classList.add("wrap"); l.style.maxHeight = (free + 1) * rh - 4 + "px"; }   // 字が線からはみ出している（線は overflow: hidden）
-    return { b, l, L: b.offsetLeft, W };
+    const o = { b, l: b.querySelector(".lbl"), L: b.offsetLeft, W: b.offsetWidth };
+    const key = b.parentNode; (rows.get(key) || rows.set(key, []).get(key)).push(o);
+    return o;
+  });
+  rows.forEach((list, cells) => {
+    const byTop = {}; list.forEach(o => (byTop[o.b.style.top] ||= []).push(o));
+    Object.values(byTop).forEach(row => {
+      row.sort((a, b) => a.L - b.L);
+      let used = 0;   // この行で、線と外に出した字が使っている右の端
+      row.forEach((o, i) => {
+        const tw = o.l.getBoundingClientRect().width, next = row[i + 1]?.L ?? cells.offsetWidth;
+        if (tw <= o.W - 6) { used = o.L + o.W; return; }
+        if (o.L + o.W + tw + 6 <= next) { o.b.classList.add("out", "outR"); o.out = true; used = o.L + o.W + tw + 6; return; }
+        if (o.L - tw - 6 >= used) { o.b.classList.add("out", "outL"); o.out = true; }
+        used = o.L + o.W;
+      });
+    });
   });
   labelShift();
 }
 function labelShift() {
   const x0 = $("wrap").scrollLeft, dw = DW();
   for (const o of LBL) {
+    if (o.out) continue;
     const v = x0 > o.L && x0 < o.L + o.W ? Math.min(x0 - o.L, Math.max(0, o.W - dw)) : 0;
     if ((o.v || 0) !== v) { o.v = v; o.l.style.left = v ? v + "px" : ""; }
   }
