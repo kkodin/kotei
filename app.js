@@ -163,7 +163,22 @@ function sortSites(list) {
   if (sortBy === "start") return [...list].sort((a, b) => { const x = firstDay(a), y = firstDay(b); return last(x, y, () => x.localeCompare(y)) || byName(a, b); });
   return list;
 }
-const shownSites = () => sortSites(sites().filter(s => S.print ? S.print.sites.includes(s.id) : (showDone || !s.完了)));
+// 表示する現場を選んでいるとき（上の「現場：」ボタン）はその現場だけ。選んだ現場は完了でも出す
+let onlyIds = null;
+try { onlyIds = JSON.parse(localStorage.getItem("kotei_only")); } catch (e) { }
+const onlySet = () => Array.isArray(onlyIds) ? new Set(onlyIds) : null;
+function setOnly(ids) {
+  onlyIds = ids;
+  try { localStorage.setItem("kotei_only", JSON.stringify(ids)); } catch (e) { }
+  showOnly(); render();
+}
+function showOnly() {
+  const on = onlySet(), b = $("bOnly");
+  if (!b) return;
+  b.classList.toggle("on", !!on);
+  b.textContent = !on ? "現場：すべて" : on.size === 1 ? "現場：" + (sites().find(s => on.has(s.id)) ? nm(sites().find(s => on.has(s.id))) : "1件") : `現場：${on.size}件`;
+}
+const shownSites = () => { const on = onlySet(); return sortSites(sites().filter(s => S.print ? S.print.sites.includes(s.id) : on ? on.has(s.id) : (showDone || !s.完了))); };
 const fileOfSite = id => "現場_" + id + ".json";
 const stamp = d => { d.更新 = { だれ: me.name, いつ: new Date().toLocaleString("ja-JP") }; };
 
@@ -290,10 +305,17 @@ function addMonths(k, n) {
   const last = new Date(y, m + 1, 0).getDate();
   return keyOf(new Date(y, m, Math.min(d, last)));
 }
+/* 表示の長さ（2026-10-30 ユーザー：単位を 1日・1週間・2週間・1か月〜4か月に）。S.view.span＝"1d"／"1w"／"2w"／"1m"〜"4m"。
+   前の版の S.view.months（数）は「○か月」とみなす */
+const spanOf = () => /^\d+[dwm]$/.test(S.view.span || "") ? S.view.span : (S.view.months || 2) + "m";
+function spanEnd(from, sp) {
+  const n = parseInt(sp, 10), u = sp.slice(-1);
+  return u === "d" ? dayAdd(from, n - 1) : u === "w" ? dayAdd(from, n * 7 - 1) : dayAdd(addMonths(from, n), -1);
+}
 function range() {
   // 印刷の小窓で期間を決めて印刷している間は、その期間（S.print）
   const from = S.print ? S.print.from : fromKey(S.view.from);
-  const end = S.print ? S.print.end : dayAdd(addMonths(from, S.view.months), -1);
+  const end = S.print ? S.print.end : spanEnd(from, spanOf());
   const days = [];
   for (let k = from; k <= end; k = dayAdd(k, 1)) days.push(k);
   return { from, end, days };
@@ -448,8 +470,36 @@ function spansOf(s, from, end) {
   return out;
 }
 
+/* 1日の幅を画面の幅に合わせる（2026-10-30 ユーザー：1か月にすると右に余白ができる）。
+   表示の長さが短いほど広く、長くて入りきらないときは 14px まで細くして、それでも入らなければ横にスクロール。
+   印刷の間（S.print）は印刷の側（fitChart）が決めるので触らない */
+const MIN_DW = 14, BASE_DW = 24;
+function leftWidth() {
+  const cs = getComputedStyle(document.documentElement);
+  return (parseFloat(cs.getPropertyValue("--sw")) + parseFloat(cs.getPropertyValue("--lw"))) * (parseFloat(cs.getPropertyValue("--lz")) || 1);
+}
+function fitDayWidth(n) {
+  const w = $("wrap");
+  if (S.print || !w || !w.clientWidth) return;
+  const avail = w.clientWidth / ZOOM - leftWidth() - 2;
+  const dw = Math.max(MIN_DW, Math.floor(avail / n * 100) / 100);
+  root.setProperty("--dw", dw + "px");
+  $("chart").classList.toggle("narrow", dw < 20);
+  $("chart").classList.toggle("wide", dw >= 60);
+}
+function fitFlowWidth(n) {
+  const w = $("flow");
+  if (S.print || !w || !w.clientWidth) return;
+  const nameW = (w.querySelector("th.nm") || {}).offsetWidth || 130;
+  const avail = w.clientWidth / ZOOM - nameW - 4;
+  root.setProperty("--fw", Math.max(46, Math.floor(avail / n)) + "px");
+}
+let fitTimer = null;
+window.addEventListener("resize", () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { if (!S.print) render(); }, 150); });
+
 function renderChart() {
   const { from, end, days } = range();
+  fitDayWidth(days.length);
   const dw = DW(), rh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--rh"));
   const width = days.length * dw;
   const h = [];
@@ -682,10 +732,13 @@ function renderFlow() {
   }
   h.push(`</tbody></table>`);
   $("flow").innerHTML = h.join("");
+  // 表示の長さが短いときは画面の幅いっぱいに（名前の列の幅を測ってから合わせ直す）
+  if (!S.print) { const before = root.getPropertyValue("--fw"); fitFlowWidth(days.length); if (root.getPropertyValue("--fw") !== before) $("flow").innerHTML = h.join(""); }
 }
 
 function render() {
   if (S.tab === "chart") renderChart(); else if (S.tab === "flow") renderFlow(); else renderList();
+  showOnly();
   // 候補（マスタ＋入力済み）
   $("staffList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
   $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.略称 || x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? x.名前 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
@@ -1725,10 +1778,36 @@ function setFrom(k) {
   render();
 }
 $("inFrom").onchange = e => e.target.value && setFrom(e.target.value);
-$("inMonths").onchange = e => { S.view.months = +e.target.value; setFrom(S.view.from); };
-// ◀ ▶ は1か月ずつ（日はそのまま）。今日＝今日から
-$("bPrev").onclick = () => setFrom(addMonths(fromKey(S.view.from), -1));
-$("bNext").onclick = () => setFrom(addMonths(fromKey(S.view.from), 1));
+$("inMonths").onchange = e => { S.view.span = e.target.value; S.view.months = parseInt(e.target.value, 10); $("wrap").scrollLeft = 0; setFrom(S.view.from); };
+// ◀ ▶ は ○か月なら1か月ずつ（日はそのまま）、1日・○週間ならその長さの分。今日＝今日から
+function stepView(dir) {
+  const sp = spanOf(), n = parseInt(sp, 10), u = sp.slice(-1), f = fromKey(S.view.from);
+  setFrom(u === "m" ? addMonths(f, dir) : dayAdd(f, dir * (u === "w" ? n * 7 : n)));
+}
+$("bPrev").onclick = () => stepView(-1);
+$("bNext").onclick = () => stepView(1);
+/* 表示する現場を選ぶ（2026-10-30 ユーザー：指定した現場だけ表示する機能）。その人のブラウザに覚える kotei_only（id の並び。null＝すべて） */
+function openOnly() {
+  const all = sortSites(sites()), on = onlySet();
+  $("oSites").innerHTML = all.map(s => `<label class="${s.完了 ? "done" : ""}"><input type="checkbox" value="${esc(s.id)}" ${!on || on.has(s.id) ? "checked" : ""}>` +
+    `${s.完了 ? "【完了】" : ""}${esc(nm(s))}${s.担当 ? `<span class="tanto">担当 ${esc(s.担当)}</span>` : ""}</label>`).join("");
+  const tantos = [...new Set(all.map(s => s.担当).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+  $("oTanto").innerHTML = `<option value="">担当で選ぶ…</option>` + tantos.map(t => `<option>${esc(t)}</option>`).join("");
+  openDlg($("dOnly"));
+}
+$("bOnly").onclick = openOnly;
+$("oAll").onclick = () => $("oSites").querySelectorAll("input").forEach(c => { c.checked = true; });
+$("oNone").onclick = () => $("oSites").querySelectorAll("input").forEach(c => { c.checked = false; });
+$("oTanto").onchange = e => {
+  const t = e.target.value; if (!t) return;
+  $("oSites").querySelectorAll("input").forEach(c => { const s = sites().find(x => x.id === c.value); c.checked = !!s && s.担当 === t; });
+  e.target.value = "";
+};
+$("bOnlyCancel").onclick = () => $("dOnly").close();
+$("fOnly").onsubmit = () => {
+  const boxes = [...$("oSites").querySelectorAll("input")], ids = boxes.filter(c => c.checked).map(c => c.value);
+  setOnly(ids.length === boxes.length ? null : ids);
+};
 $("bToday").onclick = () => { setFrom(todayKey()); $("wrap").scrollLeft = 0; };
 $("bReload").onclick = () => { checkVersion(); pull().then(() => toast("最新にしました")); };
 $("tabs").addEventListener("click", e => {
@@ -2218,7 +2297,7 @@ setTimeout(checkVersion, 3000);
 async function start() {
   try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
   S.view.from = fromKey(S.view.from) || todayKey().slice(0, 8) + "01";
-  $("inFrom").value = S.view.from; $("inMonths").value = S.view.months;
+  $("inFrom").value = S.view.from; $("inMonths").value = spanOf(); showOnly();
 
   if (DEMO) {
     seedDemo();

@@ -64,6 +64,10 @@ table.fl, #list table { zoom: var(--z, 1); }
 .hd[data-day] { cursor: pointer; }
 .hd[data-day]:hover { outline: 1px solid var(--head); outline-offset: -1px; }
 .hd.rest { background: #cfd3d8; color: #333; font-weight: bold; }
+/* 1日の幅が細いとき（3〜4か月を画面に収めたとき）は日付の字を小さく */
+#chart.narrow .hrow.d > .hd, #chart.narrow .hrow.w > .hd { font-size: 10px; letter-spacing: -1px; }
+/* 1日・1週間のように幅が広いときは、日付に曜日も並べる */
+#chart.wide .hrow.d > .hd { font-size: 13px; font-weight: bold; }
 
 #body { position: relative; }
 .col { position: absolute; top: 0; bottom: 0; width: var(--dw); z-index: 0; pointer-events: none; }
@@ -322,6 +326,13 @@ header .zoom #bZoom { min-width: 3.6em; }
 /* 印刷の小窓 */
 #dPrint { width: 600px; }
 .pquick { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+#dOnly { width: 520px; }
+#oSites { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
+#oSites label { display: block; padding: 3px 0; font-size: 14px; cursor: pointer; }
+#oSites label.done { color: #888; }
+#oSites input { margin-right: 6px; }
+#oSites .tanto { color: #666; font-size: 12px; margin-left: 8px; }
+#bOnly.on { background: #ffe082; color: #222; border-color: #ffe082; font-weight: bold; }
 #pSites { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
 #pSites label { display: block; padding: 3px 0; font-size: 14px; cursor: pointer; }
 #pSites label.done { color: #888; }
