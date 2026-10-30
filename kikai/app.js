@@ -100,7 +100,14 @@ function httpErr(res, what) { const e = new Error(what + " " + res.status); e.st
 let folderBase = "";
 async function resolveFolder() {
   const f = CFG.folder || {};
-  if (f.itemId) { folderBase = `/drives/${f.driveId}/items/${f.itemId}`; return; }
+  if (f.itemId) {
+    folderBase = `/drives/${f.driveId}/items/${f.itemId}`;
+    /* 共有されていない人は、フォルダの中の 稼働データ.json も 404 になり「まだ機械がありません」と見えてしまう（2026-10-31 吉成さん）。
+       先にフォルダそのものを開けるか確かめ、開けなければ「共有を頼んで」を出す */
+    const res = await g(folderBase + "?$select=id");
+    if (!res.ok) throw httpErr(res, "稼働データ フォルダ");
+    return;
+  }
   /* itemId をまだ config.js に入れていないとき（はじめだけ）：持ち主の OneDrive の道筋で探す（持ち主しか通らない）。
      見つけた ID は「データ」の小窓に出す → config.js に貼って公開し直す */
   const res = await g(`/drives/${f.driveId}/root:/${f.path.split("/").map(encodeURIComponent).join("/")}`);
@@ -1589,7 +1596,7 @@ async function start() {
     console.error(e);
     $("loading").hidden = true;
     $("signin").hidden = false; $("bSignIn").hidden = true;
-    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? "稼働データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください。" : "読み込めませんでした：" + e.message;
+    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。北澤さんに 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
     return;
   }
   $("loading").hidden = true;
