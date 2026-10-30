@@ -1,0 +1,210 @@
+:root {
+  --head: #1f4e79;
+  --xlg: #217346;          /* Excel の緑 */
+  --grid: #d4d4d4;         /* 枠線 */
+  --hdbg: #f3f3f3;         /* 行番号・列の文字 */
+  --rh: 25px;              /* 行の高さ（Excel の 18.8pt） */
+  --font: "ＭＳ Ｐゴシック", "MS PGothic", "Yu Gothic UI", Meiryo, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { font-family: "Yu Gothic UI", Meiryo, sans-serif; font-size: 14px; color: #222; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+button { font: inherit; font-size: 13px; padding: 3px 10px; border: 1px solid var(--head); background: var(--head); color: #fff; border-radius: 3px; cursor: pointer; }
+button.sub { background: #fff; color: var(--head); }
+button:disabled { opacity: .45; cursor: default; }
+input, select { font: inherit; font-size: 14px; padding: 2px 5px; border: 1px solid #b8bec7; border-radius: 3px; }
+.ng { color: #c62828; }
+.note { color: #666; font-size: 12px; }
+.center { margin: 80px auto; text-align: center; }
+.empty { padding: 30px; color: #777; }
+
+header { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 5px 10px; background: var(--head); color: #fff; flex: none; }
+header .ttl { font-size: 17px; font-weight: bold; }
+header .grp { display: flex; gap: 5px; align-items: center; }
+header .right { margin-left: auto; }
+header select#inSite { min-width: 220px; font-weight: bold; }
+#views { display: flex; gap: 2px; }
+#views button { background: transparent; border-color: rgba(255,255,255,.5); }
+#views button.on { background: #fff; color: var(--head); font-weight: bold; }
+.sync { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.sync.ok { background: #2e7d32; } .sync.busy { background: #f9a825; color: #222; } .sync.err { background: #c62828; }
+.ver { font-size: 11px; opacity: .7; }
+
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main > section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ribbon { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 5px 8px; background: #f8f9fa; border-bottom: 1px solid #ddd; flex: none; }
+.rsep { width: 1px; height: 22px; background: #ccc; margin: 0 4px; }
+.rstatus { margin-left: 8px; font-size: 13px; color: #555; }
+.httl { font-size: 15px; margin: 0 6px; }
+#bReport { background: var(--xlg); border-color: var(--xlg); font-weight: bold; }
+#bReport.sub { background: #fff; color: #c62828; border-color: #c62828; font-weight: normal; }
+
+/* 数式バー */
+.fbar { display: flex; align-items: center; gap: 0; border-bottom: 1px solid #ccc; padding: 3px 6px; background: #fff; flex: none; }
+.namebox { width: 70px; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
+.fxl { width: 34px; text-align: center; font-style: italic; color: #777; font-family: serif; }
+.fx { flex: 1; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
+
+.body { flex: 1; min-height: 0; display: flex; }
+#sheetWrap { flex: 1; min-width: 0; overflow: auto; background: #fff; position: relative; }
+#side { width: 300px; flex: none; border-left: 1px solid #ccc; overflow: auto; padding: 8px 10px; background: #fbfbfb; font-size: 13px; }
+
+/* ---------- Excel の表 ---------- */
+.xl { position: relative; display: inline-block; outline: none; font-family: var(--font); font-size: 12px; user-select: none; }
+.xlt { border-collapse: collapse; table-layout: fixed; }
+.xlt td { height: var(--rh); border: 1px solid var(--grid); padding: 0 3px; white-space: nowrap; overflow: hidden; position: relative; background: #fff; cursor: cell; }
+.xlt td.flow { overflow: visible; z-index: 1; }
+.xlt td .xc { overflow: hidden; text-overflow: clip; line-height: calc(var(--rh) - 2px); }
+.xlt td.flow .xc { position: relative; background: transparent; }
+.xlt td.r { text-align: right; } .xlt td.c { text-align: center; }
+.xlt td.pb, .xlt th.pb { border-left: 2px dashed #5b9bd5; }   /* 改ページの位置（ここから右が2ページ目） */
+.xlt thead th { position: sticky; top: 0; z-index: 5; height: 20px; background: var(--hdbg); border: 1px solid #c6c6c6; font-weight: normal; color: #444; font-size: 12px; font-family: "Segoe UI", sans-serif; }
+.xlt thead th.on { background: #d2e7da; color: var(--xlg); border-bottom: 2px solid var(--xlg); }
+.xlt th.xlrh { position: sticky; left: 0; z-index: 4; background: var(--hdbg); border: 1px solid #c6c6c6; font-weight: normal; color: #444; font-size: 11px; font-family: "Segoe UI", sans-serif; cursor: default; }
+.xlt th.xlrh.on { background: #d2e7da; color: var(--xlg); border-right: 2px solid var(--xlg); }
+.xlt thead th.xlcorner { left: 0; z-index: 7; }
+.xlt tr.xlhr td { background: #fff; cursor: default; position: sticky; z-index: 3; }
+.xlt tr.xlhr th.xlrh { position: sticky; z-index: 6; }
+.xlt tr.hr1 td, .xlt tr.hr1 th { top: 20px; height: 26px; }
+.xlt tr.hr2 td, .xlt tr.hr2 th { top: 46px; height: 24px; }
+.xlt tr.hr1 td { border-color: #fff; border-bottom-color: #222; font-size: 13px; }
+.xlt tr.hr1 .date { font-weight: normal; }
+.xlt tr.hr1 .date2 { color: #888; font-size: 12px; }
+.xlt tr.hr1 .lbl { text-align: right; }
+.xlt tr.hr1 .wx { cursor: pointer; font-weight: bold; }
+.xlt tr.hr1 .wx:hover { background: #eef6f0; }
+.xlt tr.hr1 .wx .sug { color: #9aa; font-weight: normal; font-style: italic; }
+.xlt tr.hr1 .st .rep { color: #2e7d32; font-size: 11px; } .xlt tr.hr1 .st .plan { color: #1565c0; font-size: 11px; }
+.xlt tr.hr2 td { border: 1px solid #222; text-align: center; font-size: 11px; background: #fff; }
+.xlt tr.hr2 td.sp { letter-spacing: 1px; }
+/* 予定から直したセル（コメントの赤い三角のように右上に印） */
+.xlt td.chg { background: #fff3e0; }
+.xlt td.add { background: #e3f2fd; }
+.xlt td.chg::after, .xlt td.add::after { content: ""; position: absolute; right: 0; top: 0; border-left: 6px solid transparent; border-top: 6px solid #ef6c00; }
+.xlt td.add::after { border-top-color: #1e88e5; }
+/* データの左の枠（Excel の工事日誌の黒い枠） */
+.xlt tbody tr:not(.xlhr) td { border-color: #d4d4d4 #bdbdbd; }
+.xlt tbody tr:not(.xlhr) td:nth-child(2), .xlt tbody tr:not(.xlhr) td:nth-child(3), .xlt tbody tr:not(.xlhr) td:nth-child(4), .xlt tbody tr:not(.xlhr) td:nth-child(7),
+.xlt tbody tr:not(.xlhr) td:nth-child(10), .xlt tbody tr:not(.xlhr) td:nth-child(11), .xlt tbody tr:not(.xlhr) td:nth-child(12), .xlt tbody tr:not(.xlhr) td:nth-child(13) { border-left-color: #555; }
+.xlt tbody tr:not(.xlhr) td:nth-child(14) { border-right-color: #555; }
+
+.xlsel { position: absolute; pointer-events: none; z-index: 8; }
+.xlsel.multi { background: rgba(33,115,70,.12); border: 1px solid var(--xlg); }
+.xlact { position: absolute; pointer-events: none; z-index: 9; border: 2px solid var(--xlg); }
+.xlfill { position: absolute; width: 7px; height: 7px; background: var(--xlg); border: 1px solid #fff; z-index: 11; cursor: crosshair; }
+.xlfillbox { position: absolute; pointer-events: none; z-index: 10; border: 1px dashed #555; }
+.xlant { position: absolute; pointer-events: none; z-index: 10; display: none; border: 2px dashed var(--xlg); animation: ant 1s linear infinite; }
+@keyframes ant { 50% { border-color: #9ccc65; } }
+/* 打つ欄：選んだだけのときは見えない（打った字を受けるため、いつもここにいる） */
+.xled { position: absolute; z-index: 12; border: none; outline: none; padding: 0 3px; margin: 0; font-family: var(--font); font-size: 12px; background: transparent; color: transparent; caret-color: transparent; border-radius: 0; }
+.xled.on { background: #fff; color: #000; caret-color: #000; box-shadow: 0 0 0 2px var(--xlg); }
+.xled.r { text-align: right; }
+.xllist { position: absolute; z-index: 20; background: #fff; border: 1px solid #888; max-height: 220px; overflow: auto; box-shadow: 2px 2px 6px rgba(0,0,0,.25); font-family: var(--font); font-size: 12px; }
+.xllist div { padding: 2px 6px; cursor: pointer; white-space: nowrap; }
+.xllist div.on, .xllist div:hover { background: #cce8d6; }
+
+/* 下のシートの見出し */
+.tabbar { display: flex; align-items: stretch; background: #f0f0f0; border-top: 1px solid #c6c6c6; flex: none; height: 28px; }
+.tnav { background: transparent; color: #555; border: none; padding: 0 8px; font-size: 12px; }
+.tnav:hover { background: #e0e0e0; }
+#tabs { display: flex; overflow-x: auto; scrollbar-width: thin; flex: 1; }
+#tabs button { flex: none; background: transparent; color: #333; border: none; border-right: 1px solid #ccc; border-radius: 0; padding: 0 10px; font-size: 12px; font-family: var(--font); position: relative; }
+#tabs button:hover { background: #e4e4e4; }
+#tabs button.on { background: #fff; color: var(--xlg); font-weight: bold; border-bottom: 3px solid var(--xlg); }
+#tabs button.sun { color: #c62828; } #tabs button.sat { color: #1565c0; }
+#tabs button.today { box-shadow: inset 0 -3px 0 #f9a825; }
+#tabs button.edited { background: #fffde7; }
+#tabs button.rep { background: #e8f5e9; }
+#tabs button.on.rep, #tabs button.on.edited { background: #fff; }
+#tabs button i { font-style: normal; font-size: 10px; margin-left: 2px; color: #2e7d32; }
+.statusbar { display: flex; gap: 20px; align-items: center; height: 22px; padding: 0 10px; background: var(--xlg); color: #fff; font-size: 12px; flex: none; }
+.statusbar .keys { margin-left: auto; opacity: .8; }
+
+/* 右の「予定と比べる」 */
+.sideTtl { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+#side .sum { padding: 6px 8px; border-radius: 4px; font-weight: bold; margin-bottom: 6px; }
+#side .sum.ok { background: #e8f5e9; color: #2e7d32; } #side .sum.ng { background: #fff3e0; color: #e65100; }
+#side .sum span { font-weight: normal; font-size: 12px; }
+#side .tot { font-size: 12px; margin-bottom: 4px; }
+#side h4 { margin: 10px 0 3px; font-size: 13px; color: #333; border-bottom: 1px solid #ddd; }
+#side .none { color: #999; margin: 2px 0; font-size: 12px; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.cmp th, table.cmp td { padding: 2px 4px; border-bottom: 1px solid #eee; text-align: left; }
+table.cmp th { color: #888; font-weight: normal; }
+table.cmp td:nth-child(2), table.cmp td:nth-child(3) { text-align: right; width: 44px; }
+table.cmp tr.up td { background: #e3f2fd; font-weight: bold; } table.cmp tr.down td { background: #fff3e0; font-weight: bold; }
+#side .legend { margin-top: 10px; font-size: 11px; color: #666; }
+.chgbox, .addbox { display: inline-block; width: 12px; height: 12px; vertical-align: middle; border: 1px solid #ccc; }
+.chgbox { background: #fff3e0; } .addbox { background: #e3f2fd; margin-left: 6px; }
+#side .note { margin-top: 10px; }
+#side .kakunin { margin-top: 10px; color: #2e7d32; font-weight: bold; }
+
+/* 天候を選ぶ */
+.wxpick { position: fixed; z-index: 30; background: #fff; border: 1px solid #888; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px; width: 260px; box-shadow: 2px 2px 8px rgba(0,0,0,.25); }
+.wxpick button { background: #fff; color: #222; border-color: #bbb; }
+.wxpick button.on { background: var(--xlg); color: #fff; }
+.wxpick input { width: 80px; }
+/* 右クリックのメニュー（Excel の形） */
+.ctx { position: fixed; z-index: 40; background: #fff; border: 1px solid #bbb; box-shadow: 2px 2px 8px rgba(0,0,0,.25); padding: 3px 0; min-width: 240px; font-size: 13px; }
+.ctx div { display: flex; justify-content: space-between; padding: 4px 14px; cursor: pointer; }
+.ctx div:hover { background: #e5f1e9; }
+.ctx kbd { color: #888; font-family: inherit; font-size: 11px; }
+.ctx hr { border: none; border-top: 1px solid #ddd; margin: 3px 0; }
+
+dialog { border: 1px solid #888; border-radius: 6px; padding: 0; min-width: 300px; }
+dialog h3 { margin: 0; padding: 8px 14px; background: var(--head); color: #fff; font-size: 15px; }
+dialog .btns { display: flex; gap: 6px; padding: 10px 14px; }
+dialog .sp { flex: 1; }
+.calgrid { display: grid; grid-template-columns: repeat(7, 34px); gap: 3px; padding: 10px 14px 4px; }
+.calgrid b { text-align: center; font-size: 12px; color: #666; font-weight: normal; }
+.calgrid button { padding: 4px 0; background: #fff; color: #222; border-color: #bbb; }
+.calgrid button.sun { color: #c62828; } .calgrid button.sat { color: #1565c0; }
+.calgrid button.today { background: #1565c0; color: #fff; }
+.calgrid button.on { background: #ffeb3b; color: #222; }
+.calgrid button.rep { border-color: #2e7d32; border-width: 2px; }
+.calgrid button.edited { border-color: #f9a825; border-width: 2px; }
+button.link { background: none; border: none; color: #1565c0; text-decoration: underline; margin: 0 14px; padding: 0; }
+
+/* 配置まとめ・月の集計 */
+.scroll { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+table.hz { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+table.hz th, table.hz td { border: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
+table.hz thead th { position: sticky; top: 0; background: #eef3f8; z-index: 1; }
+table.hz tr.changed td { background: #fffaf2; }
+table.hz .nm a { font-weight: bold; color: var(--head); }
+table.hz .tanto, .when { font-size: 11px; color: #777; }
+table.hz .b { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 11px; color: #fff; }
+.b.ok { background: #2e7d32; } .b.chg { background: #ef6c00; } .b.edit { background: #f9a825; color: #222; } .b.none { background: #c62828; } .b.plan { background: #1565c0; }
+.chg { color: #e65100; font-weight: bold; }
+s.del, .del { color: #999; }
+table.hz tfoot th, table.hz tfoot td { background: #f5f5f5; font-weight: bold; }
+table.mz { border-collapse: collapse; font-size: 12px; font-family: var(--font); }
+table.mz th, table.mz td { border: 1px solid #ccc; padding: 2px 6px; white-space: nowrap; }
+table.mz thead th { position: sticky; top: 0; background: #eef3f8; }
+table.mz th.st { background: #fff8e1; } table.mz th.pp { background: #e8f5e9; } table.mz th.mc { background: #e3f2fd; }
+table.mz td.r { text-align: right; } table.mz td.c { text-align: center; }
+table.mz tr.plan td { color: #aaa; }
+table.mz tr.sun td:first-child a { color: #c62828; } table.mz tr.sat td:first-child a { color: #1565c0; }
+table.mz tfoot td, table.mz tfoot th { background: #f5f5f5; font-weight: bold; }
+
+.toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; font-size: 14px; }
+.toast.on { opacity: .95; }
+
+/* ---------- 印刷：B5 縦、1日を2ページ（Excel の工事日誌と同じ形） ---------- */
+#printArea { display: none; }
+@media print {
+  @page { size: 182mm 257mm; margin: 12mm 10mm 10mm 14mm; }
+  body { display: block; overflow: visible; height: auto; }
+  header, main, .toast, dialog, .wxpick, .ctx { display: none !important; }
+  #printArea { display: block; }
+  .pp { page-break-after: always; break-after: page; font-family: var(--font); }
+  .pp:last-child { page-break-after: auto; }
+  .ph { display: flex; gap: 60px; font-size: 10pt; margin-bottom: 2mm; }
+  .ph.r { justify-content: flex-end; color: #666; font-size: 8pt; }
+  .pp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .pp td, .pp th { border: 0.6pt solid #444; height: 6.1mm; font-size: 9pt; padding: 0 1mm; white-space: nowrap; overflow: hidden; font-weight: normal; }
+  .pp tr.h th { font-size: 8pt; height: 6.6mm; }
+  .pp td.c { text-align: center; } .pp td.r { text-align: right; }
+  .pl td:nth-child(3) { border-right: none; } .pl td:nth-child(4) { border-left: none; border-right: none; } .pl td:nth-child(5) { border-left: none; }
+}
