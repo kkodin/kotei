@@ -4,21 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>工事日報</title>
-<link rel="stylesheet" href="app.css?v=202610301300">
+<link rel="stylesheet" href="app.css?v=202610301928">
 </head>
 <body>
 <header id="top">
   <span class="ttl">工事日報</span>
   <nav id="views">
-    <button data-tab="sheet" class="on" title="1日1枚の工事日誌（Excel と同じ形）">日誌</button>
+    <button data-tab="sheet" class="on" title="1日1枚の日報（施工・社員・作業員・外注・材料・機械）">日報</button>
     <button data-tab="haichi" title="全現場のその日の予定・報告（人員配置表へ写す）">配置まとめ</button>
     <button data-tab="month" title="この現場の月の出面・人数・機械">月の集計</button>
   </nav>
   <span class="grp">
     <select id="inSite" title="現場（全体工程表の現場）"></select>
-    <button id="bPrevM" class="sub" title="前の月">◀</button>
-    <input type="month" id="inMonth" title="月">
-    <button id="bNextM" class="sub" title="次の月">▶</button>
+    <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
+    <input type="date" id="inDay" title="日">
+    <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
     <button id="bToday" class="sub" title="今日の日誌">今日</button>
     <button id="bTomorrow" class="sub" title="明日の日誌（予定を直しておく）">明日</button>
   </span>
@@ -26,7 +26,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込み・工程の変更を読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver">Vr001 10/30 13:00</span>
+    <span id="ver" class="ver">Vr002 10/30 19:28</span>
   </span>
 </header>
 
@@ -37,7 +37,7 @@
 </div>
 
 <main id="app">
-  <!-- 日誌（Excel の形） -->
+  <!-- 日報（6つの欄。セルの動きは Excel と同じ） -->
   <section id="pSheet">
     <div class="ribbon">
       <button id="bReport" title="この日の日誌を報告する（予定と違う所は色が付いたまま残る）">予定どおりで報告する</button>
@@ -50,11 +50,11 @@
       <button id="bUndo" class="sub" title="元に戻す（Ctrl+Z）">↶</button>
       <button id="bRedo" class="sub" title="やり直す（Ctrl+Y）">↷</button>
       <span class="rsep"></span>
-      <button id="bPrint" class="sub" title="B5 縦で印刷（Ctrl+P）。左が A〜H、右が I〜M の2ページ">印刷</button>
+      <button id="bPrint" class="sub" title="B5 縦で印刷（Ctrl+P）。1日1ページ">印刷</button>
       <span id="status" class="rstatus"></span>
     </div>
     <div class="fbar">
-      <input id="nameBox" class="namebox" title="名前ボックス（A3 と打って Enter でそのセルへ）">
+      <input id="nameBox" class="namebox" readonly title="いま選んでいるセル（欄・行・項目）">
       <span class="fxl">fx</span>
       <input id="fx" class="fx" autocomplete="off" title="数式バー（選んだセルの中身。ここでも直せる）">
     </div>
@@ -68,7 +68,7 @@
       <button id="bCal" class="tnav cal" title="日付を選ぶ">📅</button>
       <div id="tabs"></div>
     </div>
-    <div class="statusbar"><span id="mode">準備完了</span><span id="stat"></span><span class="keys">Enter↓ Tab→ F2 直す　Alt(Ctrl)+PageUp/Down 日を移る　Alt+↓ 候補　Ctrl+D 下へコピー</span></div>
+    <div class="statusbar"><span id="mode">準備完了</span><span id="stat"></span><span class="keys">Enter↓ Tab→ F2・ダブルクリック 直す　Alt+PageUp/Down 日を移る　Alt+↓ 候補　Ctrl+D 下へコピー</span></div>
   </section>
 
   <!-- 配置まとめ（田村さん） -->
@@ -107,15 +107,15 @@
 
 <dialog id="dPrint">
   <h3>印刷（B5 縦）</h3>
-  <p class="note" style="padding:0 16px">Excel の工事日誌と同じく、1日を左（施工箇所〜作業内容）と右（使用機材〜備考）の2ページで出します。<br>両面に刷るときは、プリンターの設定で「両面・長辺とじ」にしてください。</p>
+  <p class="note" style="padding:0 16px">1日を1ページ（施工・社員・作業員・外注・材料・機械の順）で出します。</p>
   <div class="btns"><span class="sp"></span><button type="button" id="bPrCancel" class="sub">やめる</button>
     <button type="button" id="bPrMonth" class="sub">この月の書いた日すべて</button><button type="button" id="bPrDay">この日</button></div>
 </dialog>
 
 <div id="toast" class="toast"></div>
-<script src="config.js?v=202610301300"></script>
+<script src="config.js?v=202610301928"></script>
 <script src="lib/msal-browser.min.js"></script>
-<script src="grid.js?v=202610301300"></script>
-<script src="app.js?v=202610301300"></script>
+<script src="grid.js?v=202610301928"></script>
+<script src="app.js?v=202610301928"></script>
 </body>
 </html>

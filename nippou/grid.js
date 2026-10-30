@@ -5,7 +5,11 @@
    ・Ctrl+C／X／V（Excel との間でもコピー・貼り付けできる。タブ区切り）／Ctrl+Z／Y／Ctrl+D（下へコピー）／Ctrl+R（右へコピー）
    ・Ctrl+Enter＝選んだ範囲すべてに入れる／Alt+↓＝その列に前に打った言葉の一覧／打ち始めると前に打った言葉を続きに出す（オートコンプリート）
    ・Ctrl+;＝今日の日付／Ctrl+:＝今の時刻／右下の■をドラッグ＝コピー（フィル）／右クリック＝メニュー
-   表そのもののデータは持たない。読むのは opt.get(r,c)、変えるのは opt.apply([{r,c,v}]) */
+   表そのもののデータは持たない。読むのは opt.get(r,c)、変えるのは opt.apply([{r,c,v}])
+   Vr002（2026-10-30）：1画面に表を縦にいくつも並べる（入力欄の6種類）。
+   ・opt.noLetters：A B C の行を出さず、opt.head() の見出しの行（data-col 付き）を列の見出しにする
+   ・opt.onEdge(dir, c)：上の端・下の端から ↑↓／Enter で出たとき、となりの表へ（true を返したら動いたこと）
+   ・opt.isCur()：数式バーはいま選んでいる表だけが受ける／opt.onFocus()：この表を選んだ */
 "use strict";
 
 function createGrid(opt) {
@@ -45,7 +49,8 @@ function createGrid(opt) {
     const h = [];
     h.push(`<table class="xlt"><colgroup><col style="width:${opt.rowHeadW || 34}px">` + cols.map(c => `<col style="width:${c.w}px">`).join("") + `</colgroup>`);
     // 列の文字（A B C …）
-    h.push(`<thead><tr class="xlch"><th class="xlcorner" data-all="1"></th>` + cols.map((c, i) => `<th data-col="${i}" class="${c.pb ? "pb" : ""}">${c.letter}</th>`).join("") + `</tr></thead><tbody>`);
+    if (!opt.noLetters) h.push(`<thead><tr class="xlch"><th class="xlcorner" data-all="1"></th>` + cols.map((c, i) => `<th data-col="${i}" class="${c.pb ? "pb" : ""}">${c.letter}</th>`).join("") + `</tr></thead>`);
+    h.push(`<tbody>`);
     // 上の見出しの行（日付・天候・項目名）は opt.head が html を返す
     h.push(opt.head());
     for (let r = 0; r < nRows; r++) {
@@ -103,7 +108,7 @@ function createGrid(opt) {
     if (!st.edit) { ed.value = ""; }
     if (opt.onSelect) opt.onSelect(cellName(st.r, st.c), st.edit ? null : opt.get(st.r, st.c), rangeStat());
   }
-  const cellName = (r, c) => cols[c].letter + (r + opt.rowBase);
+  const cellName = (r, c) => opt.cellName ? opt.cellName(r, c) : cols[c].letter + (r + opt.rowBase);
   function rangeStat() {
     if (top() === bot() && lef() === rig()) return "";
     let n = 0, sum = 0, nums = 0;
@@ -113,21 +118,25 @@ function createGrid(opt) {
     }
     return `データの個数: ${n}` + (nums ? `　合計: ${Math.round(sum * 1000) / 1000}` : "");
   }
+  // 選んだセルが見えるように（表が縦にいくつも並んでも効くよう、画面の上の位置で比べる）
   function scrollIntoView() {
     const A = cellEl(st.r, st.c), sc = opt.scroller;
     if (!A || !sc) return;
-    const hh = table.tHead.offsetHeight + headH(), rw = opt.rowHeadW || 34;
-    const x = A.offsetLeft, y = A.offsetTop, w = A.offsetWidth, h = A.offsetHeight;
-    if (y - hh < sc.scrollTop) sc.scrollTop = y - hh;
-    else if (y + h > sc.scrollTop + sc.clientHeight) sc.scrollTop = y + h - sc.clientHeight + 2;
-    if (x - rw < sc.scrollLeft) sc.scrollLeft = x - rw;
-    else if (x + w > sc.scrollLeft + sc.clientWidth) sc.scrollLeft = x + w - sc.clientWidth + 2;
+    const s = sc.getBoundingClientRect(), a = A.getBoundingClientRect();
+    const top = s.top + (opt.stickyTop ? opt.stickyTop() : 0) + (opt.noLetters ? 0 : table.tHead.offsetHeight + headH());
+    const left = s.left + (opt.rowHeadW || 34);
+    if (a.top < top) sc.scrollTop -= top - a.top + (st.r === 0 ? headH() + 24 : 0);
+    else if (a.bottom > s.top + sc.clientHeight) sc.scrollTop += a.bottom - (s.top + sc.clientHeight) + 2;
+    if (a.left < left) sc.scrollLeft -= left - a.left;
+    else if (a.right > s.left + sc.clientWidth) sc.scrollLeft += a.right - (s.left + sc.clientWidth) + 2;
   }
   // 上に止めてある見出しの行（日付・項目名）の高さ
-  const headH = () => { let h = 0; for (let i = 1; i < opt.headRows; i++) h += table.rows[i].offsetHeight; return h; };
+  const headH = () => { let h = 0; for (let i = opt.noLetters ? 0 : 1; i < opt.headRows; i++) h += table.rows[i].offsetHeight; return h; };
 
   /* ---------- 選ぶ・動く ---------- */
   function go(r, c, extend) {
+    // 1つずつ上・下へ出たら、となりの表へ
+    if (!extend && opt.onEdge && Math.abs(r - st.r) === 1 && (r < 0 || r >= nRows) && opt.onEdge(r < 0 ? -1 : 1, st.c)) return;
     st.r = clampR(r); st.c = clampC(c);
     if (!extend) { st.ar = st.r; st.ac = st.c; }
     place(); scrollIntoView();
@@ -165,6 +174,7 @@ function createGrid(opt) {
     ed.focus();
     const n = ed.value.length; ed.setSelectionRange(n, n);
     if (opt.onEditText) opt.onEditText(ed.value);
+    if (opt.onMode) opt.onMode(mode);
     return true;
   }
   function commit(all) {
@@ -181,6 +191,7 @@ function createGrid(opt) {
   function cancel() { endEdit(); place(); }
   function endEdit() {
     st.edit = null; ed.classList.remove("on"); ed.value = ""; hideList();
+    if (opt.onMode) opt.onMode(null);
     el.focus({ preventScroll: true }); ed.focus({ preventScroll: true });
   }
   function clearRange() {
@@ -350,6 +361,8 @@ function createGrid(opt) {
   });
   document.addEventListener("mouseup", () => { if (st.fill) fillDone(); st.drag = null; });
   el.addEventListener("dblclick", e => {
+    // 選んでいるセルの上には打つ欄（見えない）が重なっているので、そこへのダブルクリックもそのセルを直す
+    if (e.target === ed) { if (!st.edit) startEdit("edit"); return; }
     const h = hit(e);
     if (h && h.r !== undefined) { go(h.r, h.c); startEdit("edit"); }
   });
@@ -360,6 +373,7 @@ function createGrid(opt) {
   });
 
   /* ---------- キー ---------- */
+  ed.addEventListener("focus", () => { opt.onFocus && opt.onFocus(); });
   ed.addEventListener("compositionstart", () => {
     composing = true;
     if (!st.edit) { if (!startEdit("enter", "")) { ed.blur(); ed.focus(); } }
@@ -464,13 +478,15 @@ function createGrid(opt) {
   /* ---------- 数式バー（上の入力欄）とつなぐ ---------- */
   if (opt.formula) {
     const fb = opt.formula;
+    const mine = () => !opt.isCur || opt.isCur();
     fb.addEventListener("focus", () => {
+      if (!mine()) return;
       if (!editable(st.c)) { fb.blur(); return; }
       if (!st.edit) { st.edit = { mode: "edit", r: st.r, c: st.c, orig: opt.get(st.r, st.c) }; ed.value = st.edit.orig; ed.classList.add("on"); place(); }
     });
-    fb.addEventListener("input", () => { if (st.edit) ed.value = fb.value; });
+    fb.addEventListener("input", () => { if (mine() && st.edit) ed.value = fb.value; });
     fb.addEventListener("keydown", e => {
-      if (e.isComposing || e.keyCode === 229) return;
+      if (!mine() || e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") { e.preventDefault(); ed.value = fb.value; commit(); moveIn(e.shiftKey ? -1 : 1, 0); ed.focus(); }
       if (e.key === "Escape") { e.preventDefault(); cancel(); ed.focus(); }
       if (e.key === "Tab") { e.preventDefault(); ed.value = fb.value; commit(); moveIn(0, e.shiftKey ? -1 : 1); ed.focus(); }
@@ -481,7 +497,14 @@ function createGrid(opt) {
   return {
     render, place,
     focus() { ed.focus({ preventScroll: true }); },
-    select(r, c) { if (st.edit) commit(); go(r, c); },
+    select(r, c) { if (st.edit) commit(); go(r, c); ed.focus({ preventScroll: true }); },
+    // となりの表から入ってきた（dir 1＝上から下へ → 1行目、-1＝下から上へ → 最後の行）
+    enter(dir, c) {
+      if (st.edit) commit();
+      nRows = opt.rows();
+      st.r = st.ar = dir > 0 ? 0 : nRows - 1; st.c = st.ac = clampC(c);
+      ed.focus({ preventScroll: true }); place(); scrollIntoView();
+    },
     selection: () => ({ r: st.r, c: st.c, r0: top(), r1: bot(), c0: lef(), c1: rig() }),
     setSelection(s) { st.r = s.r; st.c = s.c; st.ar = s.ar ?? s.r; st.ac = s.ac ?? s.c; place(); },
     editing: () => !!st.edit,

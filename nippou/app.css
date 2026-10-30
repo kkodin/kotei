@@ -42,7 +42,7 @@ main > section { flex: 1; min-height: 0; display: flex; flex-direction: column; 
 
 /* 数式バー */
 .fbar { display: flex; align-items: center; gap: 0; border-bottom: 1px solid #ccc; padding: 3px 6px; background: #fff; flex: none; }
-.namebox { width: 70px; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
+.namebox { width: 150px; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
 .fxl { width: 34px; text-align: center; font-style: italic; color: #777; font-family: serif; }
 .fx { flex: 1; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
 
@@ -83,11 +83,29 @@ main > section { flex: 1; min-height: 0; display: flex; flex-direction: column; 
 .xlt td.add { background: #e3f2fd; }
 .xlt td.chg::after, .xlt td.add::after { content: ""; position: absolute; right: 0; top: 0; border-left: 6px solid transparent; border-top: 6px solid #ef6c00; }
 .xlt td.add::after { border-top-color: #1e88e5; }
-/* データの左の枠（Excel の工事日誌の黒い枠） */
-.xlt tbody tr:not(.xlhr) td { border-color: #d4d4d4 #bdbdbd; }
-.xlt tbody tr:not(.xlhr) td:nth-child(2), .xlt tbody tr:not(.xlhr) td:nth-child(3), .xlt tbody tr:not(.xlhr) td:nth-child(4), .xlt tbody tr:not(.xlhr) td:nth-child(7),
-.xlt tbody tr:not(.xlhr) td:nth-child(10), .xlt tbody tr:not(.xlhr) td:nth-child(11), .xlt tbody tr:not(.xlhr) td:nth-child(12), .xlt tbody tr:not(.xlhr) td:nth-child(13) { border-left-color: #555; }
-.xlt tbody tr:not(.xlhr) td:nth-child(14) { border-right-color: #555; }
+/* ---------- Vr002：6つの欄を縦に並べる ---------- */
+#sheet { padding: 0 10px 40px; }
+.dayhead { position: sticky; top: 0; z-index: 20; display: flex; gap: 14px; align-items: center; padding: 8px 4px; background: #fff; border-bottom: 2px solid #222; font-size: 15px; }
+.dayhead .date { font-weight: bold; font-size: 16px; }
+.dayhead .date.sun { color: #c62828; } .dayhead .date.sat { color: #1565c0; }
+.dayhead .lbl { color: #555; font-size: 13px; }
+.dayhead .wx { min-width: 60px; padding: 2px 8px; border: 1px solid #bbb; border-radius: 3px; cursor: pointer; font-weight: bold; }
+.dayhead .wx:hover { background: #eef6f0; }
+.dayhead .wx .sug { color: #9aa; font-weight: normal; font-style: italic; }
+.dayhead .rep { color: #2e7d32; font-size: 12px; } .dayhead .plan { color: #1565c0; font-size: 12px; } .dayhead .edit { color: #b26a00; font-size: 12px; }
+.sec { margin-top: 12px; }
+.secT { display: flex; align-items: baseline; gap: 12px; padding: 3px 6px; background: #eef3f8; border-left: 4px solid var(--head); font-size: 13px; width: 790px; }
+.sec.cur .secT { background: #dff0e5; border-left-color: var(--xlg); }
+.secT .cnt { color: #555; font-size: 12px; }
+.xlt tr.sh th { height: 22px; background: #f3f3f3; border: 1px solid #bdbdbd; font-weight: normal; font-size: 12px; color: #333; font-family: "Yu Gothic UI", Meiryo, sans-serif; }
+.xlt tr.sh th.on { background: #d2e7da; color: var(--xlg); border-bottom: 2px solid var(--xlg); }
+.xlt tr.sh th.xlrh { position: static; }
+.xlt th.xlrh { position: static; }
+.sec:not(.cur) .xlsel, .sec:not(.cur) .xlact, .sec:not(.cur) .xlfill { display: none; }
+.sec:not(.cur) .xlrh.on, .sec:not(.cur) tr.sh th.on { background: #f3f3f3; color: #444; border-color: #c6c6c6; }
+table.hz .names { font-size: 11px; color: #555; }
+table.mz tfoot tr.all td, table.mz tfoot tr.all th { color: #888; font-weight: normal; }
+h4.mh { margin: 16px 0 4px; font-size: 13px; }
 
 .xlsel { position: absolute; pointer-events: none; z-index: 8; }
 .xlsel.multi { background: rgba(33,115,70,.12); border: 1px solid var(--xlg); }
@@ -191,7 +209,7 @@ table.mz tfoot td, table.mz tfoot th { background: #f5f5f5; font-weight: bold; }
 .toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; font-size: 14px; }
 .toast.on { opacity: .95; }
 
-/* ---------- 印刷：B5 縦、1日を2ページ（Excel の工事日誌と同じ形） ---------- */
+/* ---------- 印刷：B5 縦、1日1ページ（6つの欄を上から順に） ---------- */
 #printArea { display: none; }
 @media print {
   @page { size: 182mm 257mm; margin: 12mm 10mm 10mm 14mm; }
@@ -200,11 +218,11 @@ table.mz tfoot td, table.mz tfoot th { background: #f5f5f5; font-weight: bold; }
   #printArea { display: block; }
   .pp { page-break-after: always; break-after: page; font-family: var(--font); }
   .pp:last-child { page-break-after: auto; }
-  .ph { display: flex; gap: 60px; font-size: 10pt; margin-bottom: 2mm; }
-  .ph.r { justify-content: flex-end; color: #666; font-size: 8pt; }
+  .ph { display: flex; gap: 8mm; font-size: 10pt; margin-bottom: 2mm; border-bottom: 0.8pt solid #222; padding-bottom: 1mm; }
+  .ph b { font-size: 12pt; } .ph .rp { margin-left: auto; font-size: 8pt; color: #555; }
+  .pp h4 { margin: 2.5mm 0 0.8mm; font-size: 9pt; }
   .pp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .pp td, .pp th { border: 0.6pt solid #444; height: 6.1mm; font-size: 9pt; padding: 0 1mm; white-space: nowrap; overflow: hidden; font-weight: normal; }
-  .pp tr.h th { font-size: 8pt; height: 6.6mm; }
+  .pp td, .pp th { border: 0.6pt solid #444; height: 5.6mm; font-size: 9pt; padding: 0 1mm; white-space: nowrap; overflow: hidden; font-weight: normal; }
+  .pp tr.h th { font-size: 8pt; height: 5mm; background: #eee; }
   .pp td.c { text-align: center; } .pp td.r { text-align: right; }
-  .pl td:nth-child(3) { border-right: none; } .pl td:nth-child(4) { border-left: none; border-right: none; } .pl td:nth-child(5) { border-left: none; }
 }
