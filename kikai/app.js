@@ -1596,6 +1596,7 @@ async function start() {
     console.error(e);
     $("loading").hidden = true;
     $("signin").hidden = false; $("bSignIn").hidden = true;
+    $("signinHead").textContent = "サインインは済んでいます（" + me.name + "）。";
     $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。北澤さんに 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
     return;
   }
