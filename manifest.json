@@ -3,6 +3,7 @@
   "short_name": "社内工程",
   "start_url": "./",
   "scope": "./",
+  "display": "standalone",
   "background_color": "#1f3a5f",
   "theme_color": "#1f3a5f",
   "icons": [
