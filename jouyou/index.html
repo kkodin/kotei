@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311319">
+<link rel="stylesheet" href="app.css?v=202610311341">
 </head>
 <body>
 <header id="top">
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 10/31 13:19</span>
+    <span id="ver" class="ver">Vr000 10/31 13:41</span>
   </span>
 </header>
 
@@ -77,7 +77,7 @@
   <section id="pSum" hidden>
     <div class="ribbon">
       <span>期間</span>
-      <input type="date" id="sumFrom"> 〜 <input type="date" id="sumTo">
+      <input type="hidden" id="sumFrom"><input type="hidden" id="sumTo"><button id="sumRange" class="sub daybtn" title="押すと始まり・終わりのカレンダーで選べます"></button>
       <button id="sumPrev" class="sub" title="前の締め期間">◀</button>
       <button id="sumNext" class="sub" title="次の締め期間">▶</button>
       <span class="rsep"></span>
@@ -107,7 +107,7 @@
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>期間で出力</h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody">
     <div class="grid">
-      <label>期間</label><span><input type="date" id="outFrom"> 〜 <input type="date" id="outTo"></span>
+      <label>期間</label><span><input type="hidden" id="outFrom"><input type="hidden" id="outTo"><button type="button" id="outRange" class="sub daybtn" title="押すと始まり・終わりのカレンダーで選べます"></button></span>
       <label>入れる日</label><span><label><input type="checkbox" id="outOnlyData" checked> 書いた日だけ</label></span>
       <label>集計</label><span><label><input type="checkbox" id="outSum" checked> 集計シートも付ける</label></span>
     </div>
@@ -158,6 +158,15 @@
   </div>
 </dialog>
 
+<dialog id="dRange">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>期間を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="rgInfo"></p>
+    <div class="rgwrap"><div><div class="rgT">始まり</div><div id="rgA"></div></div><div><div class="rgT">終わり（始まりより前は選べません）</div><div id="rgB"></div></div></div>
+    <div class="btns"><button type="button" class="sub" id="rgPrevPer">◀ 前の締め期間</button><button type="button" class="sub" id="rgPer">締め期間</button><button type="button" class="sub" id="rgNextPer">次の締め期間 ▶</button><button type="button" class="sub" id="rgMonth">その月（1日〜末日）</button><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="rgOk">決める</button></div>
+  </div>
+</dialog>
+
 <dialog id="dEdit">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody" id="eBody"></div>
@@ -166,11 +175,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311319"></script>
+<script src="config.js?v=202610311341"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202610311319"></script>
-<script src="app.js?v=202610311319"></script>
+<script src="grid.js?v=202610311341"></script>
+<script src="app.js?v=202610311341"></script>
 </body>
 </html>
