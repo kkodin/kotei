@@ -2190,6 +2190,8 @@ const weekMono = () => $("pColor").value === "mono";   // 週間工程表：カ�
 function fmtView() {
   document.querySelectorAll("#dPrint .fmt-chart").forEach(el => { el.hidden = isWeek(); });
   document.querySelectorAll("#dPrint .fmt-week").forEach(el => { el.hidden = !isWeek(); });
+  // Excel は 週間工程表（現場ごとに1シート）と 工程表（1シート。2026-10-31 追加）
+  $("bPrintXlsx").title = isWeek() ? "週間工程表を Excel ファイルで出す（地図の貼り付けや細かい直しは Excel で）" : "工程表を Excel ファイルで出す（工程線は図形。細かい直しは Excel で）";
 }
 // 週間工程表は必ず月曜はじまり（2026-10-13 ユーザー指定）：開始日を月曜に寄せる
 function snapMonday() { if (isWeek() && $("pFrom").value) $("pFrom").value = monday($("pFrom").value); }
@@ -2207,6 +2209,7 @@ function printCount() {
   const pages = S.tab === "list" ? 0 : (+$("pNx").value || 1) * (S.tab === "chart" ? Math.min(n || 1, +$("pNy").value || 1) : 1);
   $("pSum").textContent = `現場 ${n} 件・${days ? days + " 日間" : "期間が正しくありません"}` + (pages ? `・${pages} ページ` : "");
   $("bPrintGo").disabled = !n || !days || days > 366;
+  $("bPrintXlsx").disabled = $("bPrintGo").disabled || S.tab !== "chart";   // 工程表の Excel は工程表のタブから
   if (days > 366) $("pSum").textContent += "（1年までにしてください）";
 }
 ["pFrom", "pTo", "pNx", "pNy"].forEach(id => $(id).addEventListener("change", printCount));

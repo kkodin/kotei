@@ -404,10 +404,18 @@ function downloadBlob(blob, name) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
-// 印刷の小窓の「Excel で出す」
+// 印刷の小窓の「Excel で出す」（形式が工程表なら chartxlsx.js の工程表。2026-10-31 追加）
 $("bPrintXlsx").onclick = async () => {
   const ids = [...$("pSites").querySelectorAll("input:checked")].map(c => c.value);
   if (!ids.length || !$("pFrom").value) return;
+  if (!isWeek()) {
+    const a = $("pFrom").value, z = $("pTo").value;
+    if (!z || z < a || dayDiff(a, z) > 365) return;
+    const name = "全体工程表_" + a.replace(/-/g, "") + "-" + z.replace(/-/g, "") + ".xlsx";
+    downloadBlob(chartXlsx(shownSitesOf(ids), a, z, await loadLogo()), name);
+    toast("Excel を作りました：" + name);
+    return;
+  }
   const mon = monday($("pFrom").value), list = shownSitesOf(ids);
   const name = "週間工程_" + (list.length === 1 ? (list[0].略称 || list[0].名前) + "_" : "") + mon.replace(/-/g, "") + ".xlsx";
   // 地図は現場の設定で入れたもの（読んでから組む）
