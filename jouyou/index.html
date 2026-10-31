@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311410">
+<link rel="stylesheet" href="app.css?v=202610311420">
 </head>
 <body>
 <header id="top">
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 10/31 14:10</span>
+    <span id="ver" class="ver">Vr000 10/31 14:20</span>
   </span>
 </header>
 
@@ -168,6 +168,19 @@
   </div>
 </dialog>
 
+<dialog id="dNew">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>一覧に無い言葉</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div id="nwBody"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" id="nwNo">足さない（もう聞かない）</button><button type="button" id="nwOk">チェックしたものを足す</button></div>
+  </div>
+</dialog>
+
+<dialog id="dKp">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="kpTtl">期間ごとの単価</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody" id="kpBody"></div>
+</dialog>
+
 <dialog id="dEdit">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody" id="eBody"></div>
@@ -176,11 +189,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311410"></script>
+<script src="config.js?v=202610311420"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202610311410"></script>
-<script src="app.js?v=202610311410"></script>
+<script src="grid.js?v=202610311420"></script>
+<script src="app.js?v=202610311420"></script>
 </body>
 </html>

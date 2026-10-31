@@ -35,6 +35,9 @@ function createGrid(opt) {
   const handle = document.createElement("div"); handle.className = "xlfill"; handle.title = "ドラッグでコピー（フィル）";
   const fillBox = document.createElement("div"); fillBox.className = "xlfillbox"; fillBox.hidden = true;
   const listBox = document.createElement("div"); listBox.className = "xllist"; listBox.hidden = true;
+  // 常用日報（2026-10-31）：選択肢のある列は、選んだセルの右に ▾。押すと一覧（Alt+↓ と同じ）。iPad でも選べるように
+  const dd = document.createElement("div"); dd.className = "xldd"; dd.textContent = "▾"; dd.title = "一覧から選ぶ（Alt+↓）。打って自由に入れることもできます"; dd.hidden = true;
+  dd.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); if (st.list) hideList(); else showList(); ed.focus({ preventScroll: true }); });
   let table = null, composing = false, lastInputType = "";
 
   const top = () => Math.min(st.r, st.ar), bot = () => Math.max(st.r, st.ar);
@@ -66,7 +69,7 @@ function createGrid(opt) {
     const hadFocus = document.activeElement === ed;
     tw.innerHTML = h.join("");
     table = tw.querySelector("table");
-    if (!ed.parentNode) el.append(selBox, actBox, handle, fillBox, ed, listBox);
+    if (!ed.parentNode) el.append(selBox, actBox, handle, fillBox, ed, dd, listBox);
     if (hadFocus && document.activeElement !== ed) ed.focus({ preventScroll: true });
     overflowText();
     place();
@@ -102,6 +105,9 @@ function createGrid(opt) {
     Object.assign(handle.style, { left: R.x + R.w - 4 + "px", top: R.y + R.h - 4 + "px" });
     Object.assign(ed.style, { left: A.x + "px", top: A.y + "px", width: Math.max(A.w, st.edit ? 60 : 0) + "px", height: A.h - 1 + "px" });
     ed.classList.toggle("r", cols[st.c].align === "r");
+    const hasDd = !!(opt.hasList && opt.hasList(st.c)) && editable(st.c) && top() === bot() && lef() === rig();
+    dd.hidden = !hasDd;
+    if (hasDd) Object.assign(dd.style, { left: A.x + A.w - 17 + "px", top: A.y + 1 + "px", height: A.h - 3 + "px" });
     // 見出しの色（選んでいる行・列）
     table.querySelectorAll(".xlch th.on, .xlrh.on").forEach(x => x.classList.remove("on"));
     for (let c = lef(); c <= rig(); c++) { const th = table.rows[0].cells[c + 1]; th && th.classList.add("on"); }

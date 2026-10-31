@@ -29,7 +29,7 @@ const now = () => { const d = new Date(); return ymd(d) + " " + pad(d.getHours()
 // 日 = { 天気, 気温, 担当者, 上:[[工種,作業内容,人員,資機材]×5], 下:[[12列]], 備考, サイン(dataURL), サイン日時, 人員手(true＝人員を手で直した), 更新 }
 // 職種単価：{ 工種: { 昼, 夜, 残業 } }（全部の現場で共通。2026-10-31 ユーザー）。共通更新＝職種・単価・天気を直した時刻（共有の 共通.json と合わせる）
 function blankDB() {
-  return { 形式: "常用日報", 版: 1, 元請: [], 現場: [], 職種: ["職長", "重機OP", "土工", "普通作業員", "管理"], 天気: ["晴", "曇", "雨", "雪", "晴/曇", "曇/晴", "曇/雨", "雨/曇", "晴/雨"] };
+  return { 形式: "常用日報", 版: 1, 元請: [], 現場: [], 職種: ["職長", "重機OP", "普通作業員", "管理"], 天気: ["晴", "曇", "雨", "雪", "晴/曇", "曇/晴", "曇/雨", "雨/曇", "晴/雨"] };
 }
 function fixSite(s) {
   s.id ||= uid(); s.名前 ||= ""; s.担当者 ||= ""; s.始業 ||= "8:00"; s.終業 ||= "17:00";
@@ -42,7 +42,8 @@ function fixSite(s) {
 function fixDB(d) {
   const b = blankDB();
   for (const k in b) if (d[k] == null) d[k] = b[k];
-  d.職種単価 ||= {}; d.共通更新 ||= "";
+  d.職種単価 ||= {}; d.共通更新 ||= ""; d.会社一覧 ||= [];
+  d.職種別名 ||= {};   // まとめた工種の古い名前 → 新しい名前（2026-10-31：土工 → 普通作業員）。打った・読んだ古い名前は新しい名前にする   // 会社・所有者の共通の一覧（2026-10-31）
   d.現場.forEach(fixSite);
   return d;
 }
@@ -254,7 +255,7 @@ function companyOf(name, s = site()) {
   return "";
 }
 function companies(s = site()) {
-  const set = new Set([SELF]);
+  const set = new Set([SELF, ...(DB.会社一覧 || [])]);
   DB.現場.forEach(x => x.作業員.forEach(w => w.会社 && set.add(w.会社)));
   if (s) Object.values(s.日).forEach(d => d.下.forEach(r => r && r[12] && set.add(r[12])));
   MS.外注業者.forEach(n => set.add(n));
@@ -306,7 +307,7 @@ function rememberKizai(s, r) {
 const PK = ["労務", "残業", "機械", "材料", "その他"];
 function priceOf(s, kubun, name, spec, owner, date, shift) {
   // 昼夜：その昼夜の行を先に、空（どちらでも）の行を次に
-  const rows = (s.単価 || []).filter(p => p.区分 === kubun && nk(p.名前) === nk(name) && p.単価 !== "" && p.単価 != null && (!p.開始 || p.開始 <= date) && (!p.昼夜 || !shift || p.昼夜 === shift));
+  const rows = (s.単価 || []).filter(p => p.区分 === kubun && nk(p.名前) === nk(name) && p.単価 !== "" && p.単価 != null && inPeriod(p, date) && (!p.昼夜 || !shift || p.昼夜 === shift));
   const best = f => rows.filter(f).sort((a, b) => ((a.昼夜 === shift ? 0 : 1) - (b.昼夜 === shift ? 0 : 1)) || (b.開始 || "").localeCompare(a.開始 || ""))[0];
   return best(p => (p.規格 || p.所有者) && nk(p.規格) === nk(spec) && nk(p.所有者) === nk(owner))
     || best(p => p.規格 && !p.所有者 && nk(p.規格) === nk(spec))
@@ -315,11 +316,15 @@ function priceOf(s, kubun, name, spec, owner, date, shift) {
 }
 // 工種の略（作業員名別の表のます目に出す）
 const SHORT = { "管理": "管", "職長": "職", "重機OP": "OP", "土工": "土", "普通作業員": "普", "草刈り": "草", "溶接工": "溶", "整備": "整", "（工種なし）": "○" };
-const SHORT_NOTE = "管＝管理・職＝職長・OP＝重機OP・土＝土工・草＝草刈り（ほかは頭の字）・夜＝夜勤";
+const SHORT_NOTE = "管＝管理・職＝職長・OP＝重機OP・普＝普通作業員・土＝土工・草＝草刈り（ほかは頭の字）・夜＝夜勤";
 const shortK = k => { const n = /（夜）$/.test(k), b = String(k).replace(/（夜）$/, ""); return (SHORT[b] || String(b || "○").normalize("NFKC").slice(0, 1)) + (n ? "夜" : ""); };
 // 共通の職種単価（現場の単価マスタに行が無いときに使う）。夜の単価が空なら昼の単価
-function commonPrice(k, sh, kind) {
-  const p = DB.職種単価[k]; if (!p) return null;
+// 期間：DB.職種単価[工種].期間 = [{ 開始, 終了, 昼, 夜, 残業 }]（2026-10-31 ユーザー：何月何日から何月何日まではこの単価）。開始・終了が空ならその側は限りなし
+const inPeriod = (p, date) => !date || ((!p.開始 || p.開始 <= date) && (!p.終了 || date <= p.終了));
+function commonPrice(k, sh, kind, date) {
+  const base = DB.職種単価[k]; if (!base) return null;
+  const per = (base.期間 || []).filter(x => inPeriod(x, date)).sort((a, b) => (b.開始 || "").localeCompare(a.開始 || ""))[0];
+  const p = per || base;
   const v = kind === "残業" ? p.残業 : (sh === "夜" ? (p.夜 !== "" && p.夜 != null ? p.夜 : p.昼) : p.昼);
   return v === "" || v == null || isNaN(Number(v)) ? null : { 単価: Number(v), 共通: true };
 }
@@ -399,12 +404,66 @@ function askYure() {
   $("yrOk").onclick = () => {
     const ch = { up: [], dn: [] };
     const s0 = site(); let nd = 0;
-    q.forEach((x, i) => { const w = (document.querySelector(`input[name="yr${i}"]:checked`) || {}).value; if (w) ch[x.key].push({ r: x.r, c: x.c, v: w }); else if (s0) nd += markDistinct(s0, [x.v, ...x.ask]); });
+    q.forEach((x, i) => { const w = (document.querySelector(`input[name="yr${i}"]:checked`) || {}).value; if (w) ch[x.key].push({ r: x.r, c: x.c, v: w }); else { if (s0) nd += markDistinct(s0, [x.v, ...x.ask]); if (x.isNew && s0 && !(s0.足さない || []).includes(`${x.key}:${x.c}:${loose(x.v)}`)) NQ.push({ key: x.key, c: x.c, v: x.v, 欄: NCOLS[x.key][x.c] }); } });
     if (nd) { save(); toast("別のものとして覚えました（もう聞きません）"); }
     closeDlg($("dYure")); YQ = [];
     for (const k of ["up", "dn"]) if (ch[k].length) applyCells(k, ch[k], true);
+    if (NQ.length) setTimeout(askNew, 50);
   };
 }
+
+/* ---------- 新しい言葉（2026-10-31 ユーザー：選択肢＋自由入力。自由入力は揺らぎを確かめ、新しいものはマスタに足すか聞く） ----------
+   工種 → 工種（職種）の一覧（共通）／作業員名 → この現場の名簿／会社・所有者 → 会社・所有者の一覧（共通）／使用機材 → この現場の機材の一覧。
+   「足さない」と答えたものは現場の 足さない に覚えて、もう聞かない。 */
+const NCOLS = { dn: { 0: "作業員名", 3: "工種", 5: "使用機材", 12: "会社", 13: "所有者" }, up: { 0: "工種" } };
+function inMaster(key, c, v, s) {
+  const k = loose(v); if (!k) return true;
+  const has = list => list.some(x => loose(x) === k);
+  if (key === "up" || c === 3) return has(DB.職種);
+  if (c === 0) return has(people().map(p => p.n)) || has(s.作業員.map(w => w.名前));
+  if (c === 12 || c === 13) return has(owners(s));
+  if (c === 5) return has(MS.機械.map(m => m.名前)) || DB.現場.some(x => has(x.機材.map(m => m.名前)));
+  return true;
+}
+let NQ = [];   // { key, c, v, 欄 }
+function askNew() {
+  if (!NQ.length) return;
+  const s = site(), q = NQ.filter((x, i) => NQ.findIndex(y => y.key === x.key && y.c === x.c && loose(y.v) === loose(x.v)) === i);
+  NQ = [];
+  const where = x => x.key === "up" || x.c === 3 ? "工種（職種）の一覧（全部の現場）" : x.c === 0 ? "この現場の作業員名簿" : x.c === 5 ? "この現場の使用機材の一覧" : "会社・所有者の一覧（全部の現場）";
+  $("nwBody").innerHTML = `<p class="note">一覧（マスタ）に無い言葉です。次から選べるように、一覧に足しますか？</p><table class="sm"><thead><tr><th>欄</th><th>入れた言葉</th><th>足す先</th><th>足す</th></tr></thead><tbody>` +
+    q.map((x, i) => `<tr><td>${esc(x.欄)}</td><td><b>${esc(x.v)}</b></td><td class="note">${esc(where(x))}</td><td class="c"><input type="checkbox" data-nw="${i}" checked></td></tr>`).join("") + `</tbody></table>`;
+  openDlg($("dNew"));
+  const done = add => {
+    let nA = 0, nN = 0;
+    q.forEach((x, i) => {
+      const yes = add && document.querySelector(`[data-nw="${i}"]`).checked;
+      if (yes) {
+        nA++;
+        if (x.key === "up" || x.c === 3) { if (!DB.職種.some(k => loose(k) === loose(x.v))) { DB.職種.push(x.v); DB.共通更新 = now(); } }
+        else if (x.c === 12 || x.c === 13) { if (!(DB.会社一覧 ||= []).some(k => loose(k) === loose(x.v))) { DB.会社一覧.push(x.v); DB.共通更新 = now(); } }
+        // 作業員名・使用機材は日報に入れたときにもう名簿・一覧に入っている
+      } else {
+        nN++;
+        (s.足さない ||= []).push(`${x.key}:${x.c}:${loose(x.v)}`);
+        if (x.c === 0 && x.key === "dn") s.作業員 = s.作業員.filter(w => nk(w.名前) !== nk(x.v) || w.会社 || Object.values(s.日).filter(d => d.下.some(r => r && nk(r[0]) === nk(x.v))).length > 1);
+        if (x.c === 5 && x.key === "dn") s.機材 = s.機材.filter(m => loose(m.名前) !== loose(x.v) || m.所有者);
+        s.設定更新 = now();
+      }
+    });
+    closeDlg($("dNew")); save();
+    toast(nA ? `${nA} 件を一覧に足しました` + (nN ? `（${nN} 件は足さない）` : "") : "一覧には足しませんでした（日報にはそのまま入っています）");
+  };
+  $("nwOk").onclick = () => done(true);
+  $("nwNo").onclick = () => done(false);
+}
+
+$("dYure").addEventListener("close", () => {
+  // 「このままにする」で閉じた（決めるを押さなかった）：入れた言葉はそのまま。一覧に無い言葉なら、続けて足すか聞く
+  const s0 = site(), q = YQ; YQ = [];
+  q.forEach(x => { if (x.isNew && s0 && !(s0.足さない || []).includes(`${x.key}:${x.c}:${loose(x.v)}`)) NQ.push({ key: x.key, c: x.c, v: x.v, 欄: NCOLS[x.key][x.c] }); });
+  if (NQ.length) setTimeout(askNew, 80);
+});   // 「このままにする」で閉じても、新しい言葉は続けて聞く
 
 /* ================= セルを変える ================= */
 function applyCells(key, ch, noCheck) {
@@ -412,13 +471,18 @@ function applyCells(key, ch, noCheck) {
   if (!canEdit()) { refreshSheet(); return; }
   // 揺らぎ：打つ前のこれまでの書き方と比べる（同じならそろえる・似ていれば後で聞く）
   const fixedMsg = [];
+  // まとめた工種の古い名前（土工 など）は新しい名前に
+  ch = ch.map(x => { const isK = (key === "dn" && x.c === 3) || (key === "up" && x.c === 0), to = isK && x.v && DB.職種別名[String(x.v).trim()]; if (to) { fixedMsg.push(`「${x.v}」→「${to}」`); return { ...x, v: to }; } return x; });
+  // 新しい言葉：打つ前に一覧（マスタ）に無かったもの（揺らぎで聞くものは、その答えの後で）
+  const newCand = [];
+  if (!noCheck && NCOLS[key]) ch.forEach(x => { if (NCOLS[key][x.c] && x.v && !inMaster(key, x.c, x.v, s) && !(s.足さない || []).includes(`${key}:${x.c}:${loose(x.v)}`)) newCand.push(x); });
   if (!noCheck && YCOLS[key]) {
     const cns = {};
     ch = ch.map(x => {
       if (!YCOLS[key][x.c] || !x.v) return x;
       const r = checkWord(key, x.c, x.v, cns[x.c] ||= canon(key, x.c, s));
       if (r.fixed) fixedMsg.push(`「${r.fixed}」→「${r.v}」`);
-      if (r.ask && r.ask.length) YQ.push({ key, r: x.r, c: x.c, v: r.v, ask: r.ask });
+      if (r.ask && r.ask.length) YQ.push({ key, r: x.r, c: x.c, v: r.v, ask: r.ask, isNew: NCOLS[key] && NCOLS[key][x.c] && !inMaster(key, x.c, r.v, s) });
       return { ...x, v: r.v };
     });
   }
@@ -469,7 +533,15 @@ function applyCells(key, ch, noCheck) {
   if (!hasData(d)) dropDay(s, UI.day);
   save(); refreshSheet();
   if (fixedMsg.length) toast("これまでの書き方にそろえました：" + fixedMsg.slice(0, 3).join("・") + (fixedMsg.length > 3 ? " ほか" : ""), 4500);
+  // 揺らぎでそろえた・揺らぎで聞くものは除いて、新しい言葉を聞く
+  newCand.forEach(x => {
+    const now3 = (key === "up" ? d.上 : d.下)[x.r], v = now3 && now3[x.c];
+    if (!v || inMasterBefore(x, v) || YQ.some(y => y.key === key && y.r === x.r && y.c === x.c)) return;
+    NQ.push({ key, c: x.c, v, 欄: NCOLS[key][x.c] });
+  });
+  function inMasterBefore(x, v) { return loose(v) !== loose(x.v); }   // そろえて別の言葉になった＝もう一覧にある
   if (YQ.length) setTimeout(askYure, 50);
+  else if (NQ.length) setTimeout(askNew, 50);
 }
 function rowOp(key, op, r, n) {
   const s = site(); if (!s || !canEdit()) return;
@@ -496,6 +568,7 @@ function colWords(key, c) {
   if (key === "dn" && c === 12) companies(s).forEach(x => add(x, 100));
   if (key === "dn" && c === 13) owners(s).forEach(x => add(x, 100));
   if (key === "dn" && c === 6) { s.機材.forEach(m => add(m.規格, 100)); MS.機械.forEach(m => add(m.規格, 50)); }
+  if (key === "dn" && c === 14) { add("昼", 1000); add("夜", 999); }
   if (key === "dn" && (c === 1 || c === 2)) [s.始業, s.終業, "8:00", "17:00", "18:00", "19:00", "20:00"].forEach(t => add(t, 1));
   if (key === "up" && c === 2) countByShoku(day()).forEach(([k, n]) => add(n + "名", 100));
   for (const dd of Object.values(s.日)) (key === "up" ? dd.上 : dd.下).forEach(r => r && add(r[c]));
@@ -559,6 +632,7 @@ function buildSheet() {
       normalize: (c, v) => normalize(cols[c].k, v),
       complete: (c, v) => { const lv = v.toLowerCase(), ws = colWords(key, di(key, c)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
       list: c => colWords(key, di(key, c)),
+      hasList: c => key === "up" ? [0, 1].includes(c) : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
       apply: ch => applyCells(key, ch.map(x => ({ ...x, c: di(key, x.c) }))),
       undo, redo,
       onSheet: dir => moveDay(dir),
@@ -1013,6 +1087,7 @@ function mergeSite(a, b) {
   const bNew = (b.設定更新 || "") > (a.設定更新 || "");
   out.作業員 = a.作業員.map(w => ({ ...w })); b.作業員.forEach(w => { const x = out.作業員.find(y => nk(y.名前) === nk(w.名前)); if (!x) out.作業員.push(w); else if (bNew) Object.assign(x, w); else { if (!x.会社 && w.会社) x.会社 = w.会社; if (!x.職種 && w.職種) x.職種 = w.職種; } });
   out.機材 = [...a.機材]; b.機材.forEach(m => { if (!out.機材.some(x => x.名前 === m.名前 && (x.規格 || "") === (m.規格 || ""))) out.機材.push(m); });
+  out.足さない = [...new Set([...(a.足さない || []), ...(b.足さない || [])])];
   out.別 = [...(a.別 || [])]; (b.別 || []).forEach(p => { if (!out.別.some(q => q.join("\u0001") === p.join("\u0001"))) out.別.push(p); });
   out.消した日 = { ...a.消した日 }; for (const [d, t] of Object.entries(b.消した日)) if (!out.消した日[d] || t > out.消した日[d]) out.消した日[d] = t;
   out.日 = {};
@@ -1053,12 +1128,12 @@ async function sync() {
     if (commonIt && (!SY.common || SY.common.eTag !== commonIt.eTag)) {
       const r = await store.get("共通.json");
       if (r && r.data) {
-        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.共通更新 = r.data.更新; changed = true; }
+        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.会社一覧 = r.data.会社一覧 || DB.会社一覧; DB.職種別名 = r.data.職種別名 || DB.職種別名; DB.共通更新 = r.data.更新; changed = true; }
         SY.common = { eTag: r.eTag, sent: JSON.stringify(r.data) };
       }
     }
     if (DB.共通更新) {
-      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 更新: DB.共通更新 });
+      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 会社一覧: DB.会社一覧, 職種別名: DB.職種別名, 更新: DB.共通更新 });
       if (!SY.common || SY.common.sent !== text) {
         try { const r = await store.put("共通.json", text, SY.common && SY.common.eTag); SY.common = { eTag: r.eTag, sent: text }; }
         catch (e) { if (e.status !== 412 && e.status !== 409) throw e; SY.common = null; SY.again = true; }   // ほかの人が先に書いた → 次の回に読み直して合わせる
@@ -1351,10 +1426,10 @@ function summarize(s, a, b) {
         const cp = compOfRow(r, s); w.会社.set(cp, (w.会社.get(cp) || 0) + 1);
         const C = comp.get(cp) || { 日: {}, 計: 0, 残業: 0, 金額: 0 }; C.日[x] = (C.日[x] || 0) + 1; C.計++; C.残業 += o; comp.set(cp, C);
         // 金額（労務・残業）
-        const pl = priceOf(s, "労務", base === "（工種なし）" ? "" : base, "", "", x, sh) || commonPrice(base, sh, "日"), L = money.労務.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
+        const pl = priceOf(s, "労務", base === "（工種なし）" ? "" : base, "", "", x, sh) || commonPrice(base, sh, "日", x), L = money.労務.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
         L.数量++; if (pl) { L.金額 += +pl.単価; L.単価.add(+pl.単価); C.金額 += +pl.単価; w.金額 += +pl.単価; SK.金額 += +pl.単価; } else L.なし++; money.労務.set(k, L);
         if (o) {
-          const po = priceOf(s, "残業", base, "", "", x, sh) || commonPrice(base, sh, "残業") || priceOf(s, "残業", "残業", "", "", x, sh), O = money.残業.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
+          const po = priceOf(s, "残業", base, "", "", x, sh) || commonPrice(base, sh, "残業", x) || priceOf(s, "残業", "残業", "", "", x, sh), O = money.残業.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
           O.数量 += o; if (po) { O.金額 += o * po.単価; O.単価.add(+po.単価); C.金額 += o * po.単価; w.金額 += o * po.単価; SK.金額 += o * po.単価; } else O.なし++; money.残業.set(k, O);
           // 残業の内訳（早出・残業）。時刻から出せないとき（手で入れた残業だけ）は全部を残業に
           const pt = otParts(r[1], r[2], s, sh), eh = pt ? Math.min(o, pt.早出 / 60) : 0;
@@ -1563,11 +1638,12 @@ function renderMaster() {
     <table class="ed shoku"><tr><th></th><th>工種（職種）</th><th>昼（円/日）</th><th>夜（円/日）</th><th>残業（円/時間）</th><th></th></tr>` +
     DB.職種.map((k, i) => { const p = DB.職種単価[k] || {}; return `<tr><td class="btn"><button class="sub small" data-kup="${i}" title="上へ"${i ? "" : " disabled"}>↑</button><button class="sub small" data-kdn="${i}" title="下へ"${i < DB.職種.length - 1 ? "" : " disabled"}>↓</button></td><td><input data-kn="${i}" value="${esc(k)}" autocomplete="off"></td>` +
       ["昼", "夜", "残業"].map(f => `<td><input class="r" data-kp="${i}" data-kf="${f}" value="${esc(p[f] ?? "")}" inputmode="decimal" autocomplete="off" placeholder="${f === "夜" && p.昼 ? esc(p.昼) : ""}"></td>`).join("") +
-      `<td class="btn"><button class="sub small danger" data-kdel="${i}">消す</button></td></tr>`; }).join("") +
+      `<td class="btn"><button class="sub small" data-kper="${i}" title="何月何日〜何月何日はこの単価、を入れる">期間ごと${(p.期間 || []).length ? "（" + p.期間.length + "）" : ""}</button> <button class="sub small danger" data-kdel="${i}">消す</button></td></tr>`; }).join("") +
     `<tr><td></td><td><input id="mNewK" placeholder="工種を足す" autocomplete="off"></td><td><input class="r" id="mNewK昼" inputmode="decimal" autocomplete="off"></td><td><input class="r" id="mNewK夜" inputmode="decimal" autocomplete="off"></td><td><input class="r" id="mNewK残業" inputmode="decimal" autocomplete="off"></td><td class="btn"><button class="small" id="mAddK">追加</button></td></tr></table>
-    <p class="note">この順で集計に並びます。単価は集計の金額に使います（現場の「単価マスタ」に同じ工種の行があれば、そちらが先）。<br>夜が空なら昼の単価。全部の PC・iPad で共通です（サインインしていると共有されます）。</p>
+    <p class="note">この順で集計に並びます。表の単価は いつもの単価、「期間ごと」で 何月何日〜何月何日の単価 を入れると、その期間はそちらを使います。単価は集計の金額に使います（現場の「単価マスタ」に同じ工種の行があれば、そちらが先）。<br>夜が空なら昼の単価。全部の PC・iPad で共通です（サインインしていると共有されます）。</p>
     <div class="btns"><button class="sub small" id="mKFromDays">日報に出てくる工種を足す</button></div></div>
-    <div class="mbox"><h4>天気</h4><textarea id="mWx" rows="6" cols="16">${esc(DB.天気.join("\n"))}</textarea></div></div>`);
+    <div class="mbox"><h4>天気</h4><textarea id="mWx" rows="6" cols="16">${esc(DB.天気.join("\n"))}</textarea></div>
+    <div class="mbox"><h4>会社・所有者の一覧</h4><textarea id="mCo" rows="6" cols="22">${esc((DB.会社一覧 || []).join("\n"))}</textarea><p class="note">1行に1つ。日報の会社・所有者の選択肢に出ます<br>（自社・配置表の外注業者・リース会社はいつも出ます）。</p></div></div>`);
   h.push(`<h3 class="sh">データ</h3><div class="mbox"><p class="note">日報はこのブラウザの中に保存しています（ほかのパソコン・iPad とは自動で共有しません）。<br>上の「保存」でこの現場をファイル（.json）に出し、ほかの端末で「取込」すると移せます。「取込」は元の作業日報の Excel（.xlsx）も読めます。</p>
     <button class="sub" id="mSaveAll">全部の現場を保存（.json）</button></div>`);
   $("masterBody").innerHTML = h.join("");
@@ -1599,9 +1675,18 @@ $("masterBody").addEventListener("change", e => {
   }
   else if (dsx.kn != null) {
     const i = +dsx.kn, old = DB.職種[i], v = t.value.trim();
-    if (!v || (v !== old && DB.職種.includes(v))) { toast(v ? "同じ工種がもうあります" : "工種の名前を入れてください"); renderMaster(); return; }
-    DB.職種[i] = v; if (DB.職種単価[old]) { DB.職種単価[v] = DB.職種単価[old]; delete DB.職種単価[old]; }
-    DB.共通更新 = now(); save(); renderMaster(); return;
+    if (!v || v === old) { if (!v) toast("工種の名前を入れてください"); renderMaster(); return; }
+    // 日報の中の古い名前の数
+    let n = 0; DB.現場.forEach(x => Object.values(x.日).forEach(d => { d.下.forEach(r => { if (r && r[3] === old) n++; }); d.上.forEach(r => { if (r && r[0] === old) n++; }); }));
+    const merge = DB.職種.includes(v);
+    if (!confirm(`工種「${old}」を「${v}」${merge ? "にまとめます（「" + v + "」はもう一覧にあります）" : "に名前を変えます"}。\n全部の現場の日報の「${old}」${n} か所も「${v}」に置き換えます。\nこれから「${old}」と打ったり Excel から読んだりしても「${v}」になります。よいですか？`)) { renderMaster(); return; }
+    if (!canEdit()) { renderMaster(); return; }
+    DB.現場.forEach(x => { let ch = false; Object.values(x.日).forEach(d => { let c2 = false; d.下.forEach(r => { if (r && r[3] === old) { r[3] = v; c2 = true; } }); d.上.forEach(r => { if (r && r[0] === old) { r[0] = v; c2 = true; } }); if (c2) { d.更新 = now(); ch = true; } });
+      x.作業員.forEach(w => { if (w.職種 === old) { w.職種 = v; ch = true; } }); (x.単価 || []).forEach(p => { if (p.区分 !== "機械" && p.区分 !== "材料" && p.名前 === old) { p.名前 = v; ch = true; } }); if (ch) x.設定更新 = now(); });
+    if (merge) { DB.職種.splice(i, 1); if (!DB.職種単価[v] && DB.職種単価[old]) DB.職種単価[v] = DB.職種単価[old]; delete DB.職種単価[old]; }
+    else { DB.職種[i] = v; if (DB.職種単価[old]) { DB.職種単価[v] = DB.職種単価[old]; delete DB.職種単価[old]; } }
+    DB.職種別名[old] = v; Object.keys(DB.職種別名).forEach(k => { if (DB.職種別名[k] === old) DB.職種別名[k] = v; }); delete DB.職種別名[v];
+    DB.共通更新 = now(); UNDO = []; REDO = []; save(); renderMaster(); refreshSheet(); toast(`「${old}」を「${v}」にしました（日報 ${n} か所）`); return;
   }
   else if (dsx.kp != null) {
     const k = DB.職種[+dsx.kp]; let v = han(t.value).replace(/[,円]/g, "");
@@ -1609,6 +1694,7 @@ $("masterBody").addEventListener("change", e => {
     (DB.職種単価[k] ||= {})[dsx.kf] = v; DB.共通更新 = now(); save(); renderMaster(); return;
   }
   else if (t.id === "mWx") { DB.天気 = t.value.split(/\n/).map(x => x.trim()).filter(Boolean); DB.共通更新 = now(); }
+  else if (t.id === "mCo") { DB.会社一覧 = [...new Set(t.value.split(/\n/).map(x => x.trim()).filter(Boolean))]; DB.共通更新 = now(); }
   else return;
   if (s && (dsx.sf || dsx.wn || dsx.wk || dsx.mn || dsx.mk)) s.設定更新 = now();
   if (dsx.site) DB.現場.find(x => x.id === dsx.site).設定更新 = now();
@@ -1622,7 +1708,7 @@ $("masterBody").addEventListener("change", async e => {
     const P = s.単価 ||= []; let n = 0, u = 0;
     rows.slice(1).forEach(r => {
       const g = k => ix(k) >= 0 ? (r[ix(k)] || "").trim() : "";
-      const x = { 区分: PK.includes(g("区分")) ? g("区分") : "その他", 名前: g("名前"), 規格: g("規格"), 所有者: g("所有者"), 単位: g("単位"), 単価: g("単価").replace(/[,，円]/g, ""), 開始: g("開始").replace(/\//g, "-"), メモ: g("メモ"), 昼夜: ["昼", "夜"].includes(g("昼夜")) ? g("昼夜") : "" };
+      const x = { 区分: PK.includes(g("区分")) ? g("区分") : "その他", 名前: g("名前"), 規格: g("規格"), 所有者: g("所有者"), 単位: g("単位"), 単価: g("単価").replace(/[,，円]/g, ""), 開始: g("開始").replace(/\//g, "-"), 終了: g("終了").replace(/\//g, "-"), メモ: g("メモ"), 昼夜: ["昼", "夜"].includes(g("昼夜")) ? g("昼夜") : "" };
       if (!x.名前) return;
       const same = P.find(p => p.区分 === x.区分 && nk(p.名前) === nk(x.名前) && nk(p.規格) === nk(x.規格) && nk(p.所有者) === nk(x.所有者) && (p.開始 || "") === x.開始 && (p.昼夜 || "") === x.昼夜);
       if (same) { Object.assign(same, x); u++; } else { P.push(x); n++; }
@@ -1655,6 +1741,7 @@ $("masterBody").addEventListener("click", e => {
   if (t.id === "mReload") { loadMasters(false); return; }
   if (t.id === "mYure") { findYure(); return; }
   if (dsx.kup != null || dsx.kdn != null) { const i = +(dsx.kup ?? dsx.kdn), j = dsx.kup != null ? i - 1 : i + 1; [DB.職種[i], DB.職種[j]] = [DB.職種[j], DB.職種[i]]; DB.共通更新 = now(); save(); renderMaster(); return; }
+  if (dsx.kper != null) { openKPeriod(DB.職種[+dsx.kper]); return; }
   if (dsx.kdel != null) { const k = DB.職種[+dsx.kdel]; if (!confirm(`工種「${k}」を一覧から消しますか？（日報の中の「${k}」はそのまま残ります）`)) return; DB.職種.splice(+dsx.kdel, 1); delete DB.職種単価[k]; DB.共通更新 = now(); save(); renderMaster(); return; }
   if (t.id === "mAddK") {
     const k = $("mNewK").value.trim(); if (!k) { $("mNewK").focus(); return; }
@@ -1673,7 +1760,7 @@ $("masterBody").addEventListener("click", e => {
   if (dsx.prdel != null) { s.単価.splice(+dsx.prdel, 1); s.設定更新 = now(); save(); renderMaster(); return; }
   if (t.id === "mPrCsvOut") {
     const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v ?? "");
-    const lines = [["区分", "昼夜", "名前", "規格", "所有者", "単位", "単価", "開始", "メモ"].join(",")].concat((s.単価 || []).map(p => [p.区分, p.昼夜 || "", p.名前, p.規格, p.所有者, p.単位, p.単価, p.開始, p.メモ].map(q).join(",")));
+    const lines = [["区分", "昼夜", "名前", "規格", "所有者", "単位", "単価", "開始", "終了", "メモ"].join(",")].concat((s.単価 || []).map(p => [p.区分, p.昼夜 || "", p.名前, p.規格, p.所有者, p.単位, p.単価, p.開始, p.終了 || "", p.メモ].map(q).join(",")));
     download(`単価マスタ_${fname(s.名前)}.csv`, "\uFEFF" + lines.join("\r\n"), "text/csv"); return;
   }
   if (t.id === "mPrCsvIn") { $("mPrFile").value = ""; $("mPrFile").click(); return; }
@@ -1801,13 +1888,13 @@ function priceHTML(s) {
   const order = p => PK.indexOf(p.区分);
   const rows = P.map((p, i) => ({ p, i })).sort((a, b) => order(a.p) - order(b.p) || String(a.p.名前).localeCompare(String(b.p.名前), "ja") || (a.p.開始 || "").localeCompare(b.p.開始 || ""));
   const nNo = P.filter(p => p.単価 === "" || p.単価 == null).length;
-  return `<h3 class="sh">単価マスタ（${esc(siteLabel(s))}）</h3><div class="mbox"><p class="note">集計の金額に使う単価です（この現場だけ。共有されます）。労務＝工種ごとの1人1日（昼夜で単価がちがえば「昼夜」を昼・夜に分けた行を作る）、残業＝1時間（工種ごと、無ければ「残業」）、機械＝機械の種類（名前・規格・所有者）ごとの1台1日、材料＝品名ごと。<br>規格・所有者が空の行はどの規格・所有者にも使います。単価が変わったら行を足して「開始」に変わった日を入れます。</p>
+  return `<h3 class="sh">単価マスタ（${esc(siteLabel(s))}）</h3><div class="mbox"><p class="note">集計の金額に使う単価です（この現場だけ。共有されます）。労務＝工種ごとの1人1日（昼夜で単価がちがえば「昼夜」を昼・夜に分けた行を作る）、残業＝1時間（工種ごと、無ければ「残業」）、機械＝機械の種類（名前・規格・所有者）ごとの1台1日、材料＝品名ごと。<br>規格・所有者が空の行はどの規格・所有者にも使います。単価が期間で変わるときは、同じ項目の行を足して「開始」「終了」に期間を入れます（空ならその側は限りなし）。</p>
     <div class="btns"><button class="sub small" id="mPrAdd">＋ 行を足す</button><button class="sub small" id="mPrFill">日報から項目を足す</button><button class="sub small" id="mPrCsvOut">CSV で出す</button><button class="sub small" id="mPrCsvIn">CSV を読む</button><input type="file" id="mPrFile" accept=".csv,text/csv" hidden>${nNo ? `<span class="ng note">単価が空 ${nNo} 行</span>` : ""}</div>
-    <table class="ed price"><tr><th>区分</th><th>昼夜</th><th>名前（工種・機械・品名）</th><th>規格</th><th>所有者</th><th>単位</th><th>単価（円）</th><th>開始</th><th>メモ</th><th></th></tr>` +
+    <table class="ed price"><tr><th>区分</th><th>昼夜</th><th>名前（工種・機械・品名）</th><th>規格</th><th>所有者</th><th>単位</th><th>単価（円）</th><th>開始</th><th>終了</th><th>メモ</th><th></th></tr>` +
     rows.map(({ p, i }) => `<tr class="${p.単価 === "" || p.単価 == null ? "nocomp" : ""}"><td><select data-pi="${i}" data-pf="区分">${PK.map(k => `<option${k === p.区分 ? " selected" : ""}>${k}</option>`).join("")}</select></td>` +
       `<td><select data-pi="${i}" data-pf="昼夜">${["", "昼", "夜"].map(k => `<option value="${k}"${k === (p.昼夜 || "") ? " selected" : ""}>${k || "両方"}</option>`).join("")}</select></td>` +
       ["名前", "規格", "所有者", "単位"].map(f => `<td><input data-pi="${i}" data-pf="${f}" value="${esc(p[f] || "")}" autocomplete="off"></td>`).join("") +
-      `<td><input data-pi="${i}" data-pf="単価" value="${esc(p.単価 ?? "")}" inputmode="decimal" class="r" autocomplete="off"></td><td><input type="date" data-pi="${i}" data-pf="開始" value="${esc(p.開始 || "")}"></td><td><input data-pi="${i}" data-pf="メモ" value="${esc(p.メモ || "")}" autocomplete="off"></td>` +
+      `<td><input data-pi="${i}" data-pf="単価" value="${esc(p.単価 ?? "")}" inputmode="decimal" class="r" autocomplete="off"></td><td><input type="date" data-pi="${i}" data-pf="開始" value="${esc(p.開始 || "")}"></td><td><input type="date" data-pi="${i}" data-pf="終了" value="${esc(p.終了 || "")}"></td><td><input data-pi="${i}" data-pf="メモ" value="${esc(p.メモ || "")}" autocomplete="off"></td>` +
       `<td class="btn"><button class="sub small danger" data-prdel="${i}">消す</button></td></tr>`).join("") + `</table></div>`;
 }
 function priceFill(s) {
@@ -1825,6 +1912,36 @@ function priceFill(s) {
   if (ot && !P.some(p => p.区分 === "残業")) { P.push({ 区分: "残業", 名前: "残業", 規格: "", 所有者: "", 単位: "時間", 単価: "", 開始: "", メモ: "" }); n++; }
   return n;
 }
+// 工種ごとの期間の単価の小窓
+let KP = null;
+function openKPeriod(k) {
+  KP = k; renderKPeriod(); openDlg($("dKp"));
+}
+function renderKPeriod() {
+  const p = DB.職種単価[KP] ||= {}, L = p.期間 ||= [];
+  $("kpTtl").textContent = `「${KP}」の期間ごとの単価`;
+  $("kpBody").innerHTML = `<p class="note">期間（開始〜終了）に入る日はこの単価を使います。入らない日は いつもの単価（昼 ${p.昼 ? yen(p.昼) : "－"}・夜 ${p.夜 ? yen(p.夜) : "－"}・残業 ${p.残業 ? yen(p.残業) : "－"}）。開始・終了が空ならその側は限りなし。期間が重なったら開始の新しいほう。</p>
+    <table class="ed shoku"><tr><th>開始</th><th>終了</th><th>昼（円/日）</th><th>夜（円/日）</th><th>残業（円/時間）</th><th></th></tr>` +
+    L.map((x, j) => `<tr><td><input type="date" data-kpj="${j}" data-kpf="開始" value="${esc(x.開始 || "")}"></td><td><input type="date" data-kpj="${j}" data-kpf="終了" value="${esc(x.終了 || "")}"></td>` +
+      ["昼", "夜", "残業"].map(f => `<td><input class="r" data-kpj="${j}" data-kpf="${f}" value="${esc(x[f] ?? "")}" inputmode="decimal" autocomplete="off"></td>`).join("") +
+      `<td class="btn"><button type="button" class="sub small danger" data-kpdel="${j}">消す</button></td></tr>`).join("") +
+    `</table><div class="btns"><button type="button" class="sub small" id="kpAdd">＋ 期間を足す</button><span class="sp"></span><button type="button" data-close>閉じる</button></div>`;
+}
+$("kpBody").addEventListener("change", e => {
+  const t = e.target, j = t.dataset.kpj; if (j == null) return;
+  const L = DB.職種単価[KP].期間, f = t.dataset.kpf; let v = t.value.trim();
+  if (!["開始", "終了"].includes(f)) { v = han(v).replace(/[,円]/g, ""); if (v !== "" && isNaN(Number(v))) { toast("単価は数字で入れてください"); renderKPeriod(); return; } }
+  L[+j][f] = v;
+  if (L[+j].開始 && L[+j].終了 && L[+j].終了 < L[+j].開始) { toast("終了が開始より前です"); }
+  DB.共通更新 = now(); save();
+});
+$("kpBody").addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t) return;
+  const L = DB.職種単価[KP].期間;
+  if (t.id === "kpAdd") { const last = L[L.length - 1]; L.push({ 開始: last && last.終了 ? addD(last.終了, 1) : "", 終了: "", 昼: "", 夜: "", 残業: "" }); DB.共通更新 = now(); save(); renderKPeriod(); return; }
+  if (t.dataset.kpdel != null) { L.splice(+t.dataset.kpdel, 1); DB.共通更新 = now(); save(); renderKPeriod(); return; }
+});
+$("dKp").addEventListener("close", () => { if (UI.tab === "master") renderMaster(); if (UI.tab === "sum") renderSum(); });
 function compApplyToDays(s, onlyEmpty) {
   let n = 0;
   for (const d of Object.values(s.日)) {
@@ -1994,7 +2111,9 @@ $("xlsOk").onclick = () => {
 };
 // 名簿・工種・機材に足す（名前は名簿の書き方にそろえる）
 function learn(s, d) {
+  d.上.forEach(r => { if (r && DB.職種別名[r[0]]) r[0] = DB.職種別名[r[0]]; });
   d.下.forEach(r => {
+    if (r && DB.職種別名[r[3]]) r[3] = DB.職種別名[r[3]];
     if (r[5]) { fixKizaiRow(r, s); rememberKizai(s, r); }
     if (!r[0]) return;
     r[0] = masterName(r[0]);
