@@ -43,7 +43,7 @@ function fixDB(d) {
   const b = blankDB();
   for (const k in b) if (d[k] == null) d[k] = b[k];
   d.職種単価 ||= {}; d.共通更新 ||= ""; d.会社一覧 ||= [];
-  d.職種別名 ||= {};   // まとめた工種の古い名前 → 新しい名前（2026-10-31：土工 → 普通作業員）。打った・読んだ古い名前は新しい名前にする   // 会社・所有者の共通の一覧（2026-10-31）
+  d.職種別名 ||= {}; d.単価たたき台 ||= null;   // 単価のたたき台 { 元: 現場名, 行: [単価マスタの行] }（2026-10-31：ほかの現場はこれを写して見直す）   // まとめた工種の古い名前 → 新しい名前（2026-10-31：土工 → 普通作業員）。打った・読んだ古い名前は新しい名前にする   // 会社・所有者の共通の一覧（2026-10-31）
   d.現場.forEach(fixSite);
   return d;
 }
@@ -1128,12 +1128,12 @@ async function sync() {
     if (commonIt && (!SY.common || SY.common.eTag !== commonIt.eTag)) {
       const r = await store.get("共通.json");
       if (r && r.data) {
-        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.会社一覧 = r.data.会社一覧 || DB.会社一覧; DB.職種別名 = r.data.職種別名 || DB.職種別名; DB.共通更新 = r.data.更新; changed = true; }
+        if ((r.data.更新 || "") > (DB.共通更新 || "")) { DB.職種 = r.data.職種 || DB.職種; DB.職種単価 = r.data.職種単価 || {}; DB.天気 = r.data.天気 || DB.天気; DB.会社一覧 = r.data.会社一覧 || DB.会社一覧; DB.職種別名 = r.data.職種別名 || DB.職種別名; DB.単価たたき台 = r.data.単価たたき台 || DB.単価たたき台; DB.共通更新 = r.data.更新; changed = true; }
         SY.common = { eTag: r.eTag, sent: JSON.stringify(r.data) };
       }
     }
     if (DB.共通更新) {
-      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 会社一覧: DB.会社一覧, 職種別名: DB.職種別名, 更新: DB.共通更新 });
+      const text = JSON.stringify({ 形式: "常用日報の共通", 版: 1, 職種: DB.職種, 職種単価: DB.職種単価, 天気: DB.天気, 会社一覧: DB.会社一覧, 職種別名: DB.職種別名, 単価たたき台: DB.単価たたき台, 更新: DB.共通更新 });
       if (!SY.common || SY.common.sent !== text) {
         try { const r = await store.put("共通.json", text, SY.common && SY.common.eTag); SY.common = { eTag: r.eTag, sent: text }; }
         catch (e) { if (e.status !== 412 && e.status !== 409) throw e; SY.common = null; SY.again = true; }   // ほかの人が先に書いた → 次の回に読み直して合わせる
@@ -1301,7 +1301,14 @@ function renderPickers() {
   saveUI();
 }
 $("inGen").onchange = () => { UI.gen = $("inGen").value; UI.site = null; UNDO = []; REDO = []; renderAll(); };
-$("inSite").onchange = () => { UI.site = $("inSite").value; UNDO = []; REDO = []; renderAll(); };
+function priceRemind() {
+  const s = site(); if (!s || !Object.keys(s.日).length) return;
+  UI.pr ||= {}; const k = s.id + ":" + ((s.単価 || []).length ? (s.単価確認 === false ? "未見直し" : "ok") : "なし");
+  if (k.endsWith("ok") || UI.pr[k]) return;
+  UI.pr[k] = 1; saveUI();
+  toast((s.単価 || []).length ? "この現場の単価はたたき台のまま（見直し前）です。現場・名簿 → 単価マスタで見直してください" : "この現場の単価がまだありません。現場・名簿 → 単価マスタで たたき台 を写して見直してください", 6000);
+}
+$("inSite").onchange = () => { UI.site = $("inSite").value; UNDO = []; REDO = []; renderAll(); priceRemind(); };
 /* ---------- 期間を選ぶ（2026-10-31 ユーザー：始まり・終わりの二つのカレンダー。終わりは始まりより前にできない） ---------- */
 let RG = null;   // { a, b, ya, yb, done }
 const fmtD = d => d ? `${d.slice(0, 4)}/${+d.slice(5, 7)}/${+d.slice(8)}（${WD[wd(d)]}）` : "";
@@ -1559,6 +1566,8 @@ function moneyHTML(S) {
   const M = S.money, h = [];
   const s = site();
   h.push(`<h3 class="sh">金額（単価マスタから。期間 ${S.dates.length}日）</h3>`);
+  if (s.単価確認 === false) h.push(`<p class="note ng">※ この現場の単価は たたき台 から写したまま（見直し前）です。「現場・名簿」の単価マスタで見直してください。</p>`);
+  if (!(s.単価 || []).length && DB.単価たたき台) h.push(`<p class="note ng">※ この現場の単価がまだありません。「現場・名簿」の単価マスタで、たたき台を写して見直してください。</p>`);
   if (!(s.単価 || []).length && !Object.values(DB.職種単価).some(p => p.昼 || p.夜 || p.残業)) { h.push(`<p class="note ng">単価がまだありません。「現場・名簿」の「工種（職種）の一覧」か「単価マスタ」で単価を入れると金額が出ます。</p>`); return h.join(""); }
   const tb = (ttl, m, unit, lab) => {
     if (!m.size) return;
@@ -1755,6 +1764,18 @@ $("masterBody").addEventListener("click", e => {
   }
   if (["mCompHint", "mCompApply", "mCompCsvIn", "mKzFix", "mKzApply"].includes(t.id) && !canEdit()) return;
   if (["mPrAdd", "mPrFill", "mPrCsvIn"].includes(t.id) || dsx.prdel != null) { if (!canEdit()) return; }
+  if (["mPrTpl", "mPrOk", "mPrSetTpl"].includes(t.id) && !canEdit()) return;
+  if (t.id === "mPrTpl") {
+    const T = DB.単価たたき台; if (!T) return;
+    s.単価 = T.行.map(p => ({ ...p, メモ: (p.メモ ? p.メモ + "・" : "") + "たたき台から（要見直し）" }));
+    s.単価確認 = false; s.設定更新 = now(); save(); renderMaster(); toast("たたき台を写しました。この現場の単価に合わせて直してください"); return;
+  }
+  if (t.id === "mPrOk") { if (!confirm("この現場の単価を見直しましたか？（「たたき台から」の案内を消します）")) return; s.単価確認 = true; s.単価 = (s.単価 || []).map(p => ({ ...p, メモ: String(p.メモ || "").replace(/・?たたき台から（要見直し）/, "") })); s.設定更新 = now(); save(); renderMaster(); return; }
+  if (t.id === "mPrSetTpl") {
+    if (!(s.単価 || []).length) { toast("この現場に単価がありません"); return; }
+    if (!confirm(`この現場（${siteLabel(s)}）の単価 ${s.単価.length} 行を、ほかの現場のたたき台にします（今のたたき台と入れ替え）。よいですか？`)) return;
+    DB.単価たたき台 = { 元: siteLabel(s), 行: s.単価.map(p => ({ ...p })), 更新: now() }; DB.共通更新 = now(); save(); renderMaster(); toast("たたき台にしました"); return;
+  }
   if (t.id === "mPrAdd") { (s.単価 ||= []).push({ 区分: "労務", 名前: "", 規格: "", 所有者: "", 単位: "人工", 単価: "", 開始: "", メモ: "" }); s.設定更新 = now(); save(); renderMaster(); return; }
   if (t.id === "mPrFill") { const n = priceFill(s); if (n) s.設定更新 = now(); save(); renderMaster(); toast(n ? `日報に出てくる項目を ${n} 行足しました（単価を入れてください）` : "足りない項目はありません"); return; }
   if (dsx.prdel != null) { s.単価.splice(+dsx.prdel, 1); s.設定更新 = now(); save(); renderMaster(); return; }
@@ -1883,13 +1904,21 @@ function rosterHTML(s) {
     `<tr><td><input id="mNewW" placeholder="名前を足す"></td><td></td><td><input id="mNewWk" list="dlShoku" placeholder="工種" autocomplete="off"></td><td></td><td></td><td class="btn"><button class="small" id="mAddW">追加</button></td></tr></table>
     <datalist id="dlShoku">${DB.職種.map(k => `<option value="${esc(k)}">`).join("")}</datalist></div>`;
 }
+// 単価の見直しの案内：単価が無い現場は「たたき台を写す」、たたき台から写したまま（単価確認＝false）なら「見直して確認した」を押すまで出す
+function priceNotice(s) {
+  const T = DB.単価たたき台, P = s.単価 || [];
+  if (!P.length && T && T.行 && T.行.length) return `<div class="pnote">この現場の単価がまだありません。<b>${esc(T.元 || "ほかの現場")}</b>の単価（${T.行.length} 行）を<b>たたき台</b>として写し、この現場の単価に合わせて直してください。<button class="small" id="mPrTpl">たたき台を写す</button></div>`;
+  if (!P.length) return `<div class="pnote">この現場の単価がまだありません。行を足すか、CSV を読んでください。</div>`;
+  if (s.単価確認 === false) return `<div class="pnote">この単価は<b>たたき台</b>から写したものです。この現場（元請との取り決め）の単価に合わせて見直し、直し終わったら押してください。<button class="small" id="mPrOk">見直した（この現場の単価にする）</button></div>`;
+  return "";
+}
 function priceHTML(s) {
   const P = s.単価 || [];
   const order = p => PK.indexOf(p.区分);
   const rows = P.map((p, i) => ({ p, i })).sort((a, b) => order(a.p) - order(b.p) || String(a.p.名前).localeCompare(String(b.p.名前), "ja") || (a.p.開始 || "").localeCompare(b.p.開始 || ""));
   const nNo = P.filter(p => p.単価 === "" || p.単価 == null).length;
-  return `<h3 class="sh">単価マスタ（${esc(siteLabel(s))}）</h3><div class="mbox"><p class="note">集計の金額に使う単価です（この現場だけ。共有されます）。労務＝工種ごとの1人1日（昼夜で単価がちがえば「昼夜」を昼・夜に分けた行を作る）、残業＝1時間（工種ごと、無ければ「残業」）、機械＝機械の種類（名前・規格・所有者）ごとの1台1日、材料＝品名ごと。<br>規格・所有者が空の行はどの規格・所有者にも使います。単価が期間で変わるときは、同じ項目の行を足して「開始」「終了」に期間を入れます（空ならその側は限りなし）。</p>
-    <div class="btns"><button class="sub small" id="mPrAdd">＋ 行を足す</button><button class="sub small" id="mPrFill">日報から項目を足す</button><button class="sub small" id="mPrCsvOut">CSV で出す</button><button class="sub small" id="mPrCsvIn">CSV を読む</button><input type="file" id="mPrFile" accept=".csv,text/csv" hidden>${nNo ? `<span class="ng note">単価が空 ${nNo} 行</span>` : ""}</div>
+  return `<h3 class="sh">単価マスタ（${esc(siteLabel(s))}）</h3><div class="mbox">${priceNotice(s)}<p class="note">集計の金額に使う単価です（この現場だけ。共有されます）。労務＝工種ごとの1人1日（昼夜で単価がちがえば「昼夜」を昼・夜に分けた行を作る）、残業＝1時間（工種ごと、無ければ「残業」）、機械＝機械の種類（名前・規格・所有者）ごとの1台1日、材料＝品名ごと。<br>規格・所有者が空の行はどの規格・所有者にも使います。単価が期間で変わるときは、同じ項目の行を足して「開始」「終了」に期間を入れます（空ならその側は限りなし）。</p>
+    <div class="btns"><button class="sub small" id="mPrAdd">＋ 行を足す</button><button class="sub small" id="mPrFill">日報から項目を足す</button><button class="sub small" id="mPrCsvOut">CSV で出す</button><button class="sub small" id="mPrCsvIn">CSV を読む</button><input type="file" id="mPrFile" accept=".csv,text/csv" hidden><button class="sub small" id="mPrSetTpl" title="この現場の単価を、ほかの現場のたたき台にする（全部の現場で共通）">この単価をたたき台にする</button>${nNo ? `<span class="ng note">単価が空 ${nNo} 行</span>` : ""}</div>
     <table class="ed price"><tr><th>区分</th><th>昼夜</th><th>名前（工種・機械・品名）</th><th>規格</th><th>所有者</th><th>単位</th><th>単価（円）</th><th>開始</th><th>終了</th><th>メモ</th><th></th></tr>` +
     rows.map(({ p, i }) => `<tr class="${p.単価 === "" || p.単価 == null ? "nocomp" : ""}"><td><select data-pi="${i}" data-pf="区分">${PK.map(k => `<option${k === p.区分 ? " selected" : ""}>${k}</option>`).join("")}</select></td>` +
       `<td><select data-pi="${i}" data-pf="昼夜">${["", "昼", "夜"].map(k => `<option value="${k}"${k === (p.昼夜 || "") ? " selected" : ""}>${k || "両方"}</option>`).join("")}</select></td>` +
