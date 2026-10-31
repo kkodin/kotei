@@ -943,6 +943,10 @@ const STALE = 3 * 60 * 1000;
 const LOCK = { site: null, mine: false, eTag: null, busy: false };
 let RO = null;   // null＝直せる／{ by:{名前,開始,いつ} }＝ほかの人が使用中／{ self:true }＝自分で見るだけにした／{ gone:true, by }＝使っていた人が終わった
 const lockName = id => "使用中_" + id + ".json";
+// 同じ人か：サインインしたアカウントで見る（PC と iPad の両方で同じ人が開いても、別の人とみなさない。2026-10-31 ユーザー）。
+// 前の版の印（人 が無い）は名前で見る
+const myKey = () => { const a = msalApp && msalApp.getActiveAccount(); return a ? String(a.username || a.homeAccountId || "").toLowerCase() : "名前:" + nk(ME.名前); };
+const samePerson = by => !!by && (by.端末 === ME.端末 || (by.人 ? by.人 === myKey() : nk(by.名前) === nk(ME.名前)));
 const hm = t => { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
 function canEdit() {
   if (!RO) return true;
@@ -978,9 +982,9 @@ async function takeLock(force, fromSelf) {
   try {
     for (let n = 0; n < 2; n++) {
       const r = await store.get(lockName(id)), by = r && r.data;
-      const other = by && by.端末 !== ME.端末 && Date.now() - by.いつ < STALE;
+      const other = by && !samePerson(by) && Date.now() - by.いつ < STALE;
       if (other && !force) { setRO({ by }); if (!fromSelf) toast(`${by.名前}さんが使っています。見るだけ（閲覧のみ）で開きました`, 5000); return; }
-      const doc = { 名前: ME.名前, 端末: ME.端末, 開始: by && by.端末 === ME.端末 ? by.開始 : Date.now(), いつ: Date.now() };
+      const doc = { 名前: ME.名前, 人: myKey(), 端末: ME.端末, 開始: samePerson(by) ? by.開始 : Date.now(), いつ: Date.now() };
       try { const w = await store.put(lockName(id), JSON.stringify(doc), r && r.eTag); if (UI.site !== id) return; LOCK.mine = true; LOCK.eTag = w.eTag; setRO(null); return; }
       catch (e) { if (e.status !== 412 && e.status !== 409) throw e; }   // ちょうどほかの人が印を置いた → 読み直す
     }
@@ -992,11 +996,12 @@ async function beatLock() {
   try {
     const r = await store.get(lockName(id)), by = r && r.data;
     if (LOCK.mine) {
-      if (by && by.端末 !== ME.端末) { LOCK.mine = false; setRO({ by }); toast(`${by.名前}さんが編集を始めたので、見るだけにしました`, 6000); return; }
-      const w = await store.put(lockName(id), JSON.stringify({ ...(by || {}), 名前: ME.名前, 端末: ME.端末, 開始: by ? by.開始 : Date.now(), いつ: Date.now() }), r && r.eTag);
+      if (by && !samePerson(by)) { LOCK.mine = false; setRO({ by }); toast(`${by.名前}さんが編集を始めたので、見るだけにしました`, 6000); return; }
+      const w = await store.put(lockName(id), JSON.stringify({ 名前: ME.名前, 人: myKey(), 端末: ME.端末, 開始: by ? by.開始 : Date.now(), いつ: Date.now() }), r && r.eTag);
       LOCK.eTag = w.eTag;
     } else if (RO && RO.by && !RO.gone) {
       if (!by || Date.now() - by.いつ >= STALE) setRO({ gone: true, by: RO.by });
+      else if (samePerson(by)) setRO({ gone: true, by: RO.by });
       else if (by.端末 !== RO.by.端末 || by.いつ !== RO.by.いつ) setRO({ by });
     }
   } catch (e) { console.warn(e); }
