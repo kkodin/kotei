@@ -489,7 +489,7 @@ function buildSheet() {
 function refreshSheet() {
   const s = site(), d = day();
   $("hGen").textContent = gen() ? gen().名前 : "（元請業者を選ぶ）";
-  $("hSite").textContent = s ? s.名前 : "（現場を選ぶ）";
+  $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
   const w = wd(UI.day);
   $("hWd").textContent = WD[w]; $("hWd").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
@@ -778,6 +778,7 @@ async function startAuth() {
   if (!acc) { $("bSignIn").hidden = false; toast("ほかの PC・iPad と日報を共有するには「サインイン」してください"); return; }
   msalApp.setActiveAccount(acc);
   $("who").textContent = acc.name || acc.username;
+  renderPickers(); refreshSheet();   // 「サインインすると出ます」を消す
   await loadMasters(true);
   setInterval(() => loadMasters(true), 30 * 60 * 1000);
   startSync();
@@ -1044,11 +1045,11 @@ function renderPickers() {
   const has = new Set(DB.現場.map(s => s.元請id));
   const gs = DB.元請.filter(g => has.has(g.id)).sort((a, b) => nk(a.名前).localeCompare(nk(b.名前), "ja"));
   if (!gen() && gs.length) UI.gen = (DB.現場.find(s => Object.keys(s.日).length) || {}).元請id || gs[0].id;
-  $("inGen").innerHTML = gs.length ? gs.map(g => `<option value="${g.id}"${g.id === UI.gen ? " selected" : ""}>${esc(g.名前)}</option>`).join("") : `<option value="">（元請業者なし）</option>`;
+  $("inGen").innerHTML = gs.length ? gs.map(g => `<option value="${g.id}"${g.id === UI.gen ? " selected" : ""}>${esc(g.名前)}</option>`).join("") : `<option value="">${signedIn() ? "（元請業者なし）" : "（サインインすると出ます）"}</option>`;
   const nDays = s => Object.keys(s.日).length;
   const ss = DB.現場.filter(s => s.元請id === UI.gen).sort((a, b) => (nDays(b) > 0) - (nDays(a) > 0) || String(b.コード || "").localeCompare(String(a.コード || "")));
   if (!ss.some(s => s.id === UI.site)) UI.site = ss.length ? ss[0].id : null;
-  $("inSite").innerHTML = ss.length ? ss.map(s => `<option value="${s.id}"${s.id === UI.site ? " selected" : ""} title="${esc(s.名前)}">${esc(siteLabel(s))}</option>`).join("") : `<option value="">（現場なし）</option>`;
+  $("inSite").innerHTML = ss.length ? ss.map(s => `<option value="${s.id}"${s.id === UI.site ? " selected" : ""} title="${esc(s.名前)}">${esc(siteLabel(s))}</option>`).join("") : `<option value="">${signedIn() ? "（現場なし）" : "（サインインすると出ます）"}</option>`;
   saveUI();
 }
 $("inGen").onchange = () => { UI.gen = $("inGen").value; UI.site = null; UNDO = []; REDO = []; renderAll(); };
