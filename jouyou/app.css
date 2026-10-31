@@ -203,6 +203,16 @@ h4.mh { margin: 10px 0 4px; font-size: 13px; }
 table.sm tr.shk td { background: #f4f7fb; }
 table.sm td.kshort { font-size: 11px; white-space: nowrap; }
 table.sm td.kshort .ot { margin-left: 1px; font-size: 10px; }
+.xlt td.night, table.sm td.night { background: #e8eaf6; color: #283593; }
+.otcards { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.otcards div { border: 1px solid #ccd; border-radius: 6px; padding: 6px 12px; background: #fff; min-width: 110px; }
+.otcards b { font-size: 20px; color: #c62828; margin-right: 2px; }
+.otcards span { display: block; font-size: 11px; color: #666; }
+table.ed.shoku input { width: 100%; min-width: 70px; }
+table.ed.shoku input.r { text-align: right; width: 90px; }
+table.ed.shoku td.btn button { padding: 0 5px; }
+/* 左端の番号の列を出さない（幅0。選ぶ・動く仕組みはそのまま） */
+#sheet .xlt th.xlrh { width: 0; min-width: 0; max-width: 0; padding: 0; border: none; font-size: 0; overflow: hidden; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */

@@ -48,7 +48,7 @@ function createGrid(opt) {
   function render() {
     nRows = opt.rows();
     const h = [];
-    h.push(`<table class="xlt" style="width:${(opt.rowHeadW || 34) + cols.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:${opt.rowHeadW || 34}px">` + cols.map(c => `<col style="width:${c.w}px">`).join("") + `</colgroup>`);
+    h.push(`<table class="xlt" style="width:${(opt.rowHeadW ?? 34) + cols.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:${opt.rowHeadW ?? 34}px">` + cols.map(c => `<col style="width:${c.w}px">`).join("") + `</colgroup>`);
     // 列の文字（A B C …）
     if (!opt.noLetters) h.push(`<thead><tr class="xlch"><th class="xlcorner" data-all="1"></th>` + cols.map((c, i) => `<th data-col="${i}" class="${c.pb ? "pb" : ""}">${c.letter}</th>`).join("") + `</tr></thead>`);
     h.push(`<tbody>`);
@@ -125,7 +125,7 @@ function createGrid(opt) {
     if (!A || !sc) return;
     const s = sc.getBoundingClientRect(), a = A.getBoundingClientRect();
     const top = s.top + (opt.stickyTop ? opt.stickyTop() : 0) + (opt.noLetters ? 0 : table.tHead.offsetHeight + headH());
-    const left = s.left + (opt.rowHeadW || 34);
+    const left = s.left + (opt.rowHeadW ?? 34);
     if (a.top < top) sc.scrollTop -= top - a.top + (st.r === 0 ? headH() + 24 : 0);
     else if (a.bottom > s.top + sc.clientHeight) sc.scrollTop += a.bottom - (s.top + sc.clientHeight) + 2;
     if (a.left < left) sc.scrollLeft -= left - a.left;
