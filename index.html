@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr001 10/31 12:11">
+<link rel="stylesheet" href="app.css?v=Vr001 10/31 12:17">
 </head>
 <body>
 <header id="top">
@@ -54,7 +54,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/31 12:11</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/31 12:17</span>
   </span>
 </header>
 
@@ -193,7 +193,7 @@
         <div class="pquick fmt-chart"><button type="button" id="pView" class="sub small">画面と同じ</button>
           <button type="button" class="sub small" data-pm="1">開始から1か月</button><button type="button" class="sub small" data-pm="2">2か月</button><button type="button" class="sub small" data-pm="3">3か月</button></div></div>
       <label>現場</label>
-      <div><div class="pquick"><button type="button" id="pAll" class="sub small">全部</button> <button type="button" id="pNone" class="sub small">全部外す</button></div>
+      <div><div class="pquick"><button type="button" id="pAll" class="sub small">全部</button> <button type="button" id="pNone" class="sub small">全部外す</button> <button type="button" id="pWork" class="sub small" title="上の期間に工程がある現場だけにチェックを付ける（ほかは外す）">期間に作業がある現場だけ</button></div>
         <div id="pSites"></div></div>
       <label for="pColor" class="fmt-week">色</label>
       <div class="fmt-week"><select id="pColor"><option value="color">カラー（全体工程の線の色）</option><option value="mono">白黒（線はどれも黒）</option></select></div>
@@ -276,9 +276,9 @@
 <div id="updBar" class="updbar" hidden>新しい版（<span id="updVer"></span>）が出ています。<button type="button" id="bUpd">更新する</button></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/31 12:11"></script>
-<script src="app.js?v=Vr001 10/31 12:11"></script>
-<script src="weekxlsx.js?v=Vr001 10/31 12:11"></script>
-<script src="chartxlsx.js?v=Vr001 10/31 12:11"></script>
+<script src="config.js?v=Vr001 10/31 12:17"></script>
+<script src="app.js?v=Vr001 10/31 12:17"></script>
+<script src="weekxlsx.js?v=Vr001 10/31 12:17"></script>
+<script src="chartxlsx.js?v=Vr001 10/31 12:17"></script>
 </body>
 </html>

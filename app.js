@@ -2216,6 +2216,16 @@ function printCount() {
 $("pSites").addEventListener("change", printCount);
 $("pAll").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = true; }); printCount(); };
 $("pNone").onclick = () => { $("pSites").querySelectorAll("input").forEach(c => { c.checked = false; }); printCount(); };
+// 期間に作業がある現場だけ（2026-10-31 ユーザー指定）：小窓の期間（週間工程表は月曜から3週間）に工程（バー）が掛かる現場だけチェック。完了の工種のバーも数える
+$("pWork").onclick = () => {
+  let a = $("pFrom").value, z = isWeek() ? (a ? dayAdd(monday(a), 20) : "") : $("pTo").value;
+  if (isWeek() && a) a = monday(a);
+  if (!a || !z || z < a) { toast("期間を入れてください"); return; }
+  const has = new Set(sites().filter(s => s.バー.some(b => b.開始 <= z && b.終了 >= a)).map(s => s.id));
+  $("pSites").querySelectorAll("input").forEach(c => { c.checked = has.has(c.value); });
+  printCount();
+  toast(`${md(a)}〜${md(z)} に作業がある現場 ${$("pSites").querySelectorAll("input:checked").length} 件にチェックしました`);
+};
 $("pView").onclick = () => { const v = fromKey(S.view.from); $("pFrom").value = v; $("pTo").value = dayAdd(addMonths(v, S.view.months), -1); printCount(); };
 document.querySelectorAll("#dPrint [data-pm]").forEach(b => b.onclick = () => {
   const a = $("pFrom").value || fromKey(S.view.from);
