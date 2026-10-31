@@ -102,7 +102,7 @@ const gen = () => DB.元請.find(g => g.id === UI.gen) || null;
 const day = () => { const s = site(); return s ? s.日[UI.day] || null : null; };
 function ensureDay() {
   const s = site(); if (!s) return null;
-  if (!s.日[UI.day]) s.日[UI.day] = { 天気: "", 気温: "", 担当者: s.担当者 || "", 上: [], 下: [], 車: [], 備考: "", サイン: "", サイン日時: "", 人員手: false, 更新: "" };
+  if (!s.日[UI.day]) s.日[UI.day] = { 天気: "", 気温: "", 担当者: "", 上: [], 下: [], 車: [], 備考: "", サイン: "", サイン日時: "", 人員手: false, 更新: "" };
   return s.日[UI.day];
 }
 // 中身のある日か（空の日は保存しない）
@@ -932,7 +932,7 @@ function refreshSheet() {
   $("hWx").value = wx;
   if (document.activeElement !== $("hTmp")) $("hTmp").value = d ? d.気温 : "";
   if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : "";
-  $("hTan").placeholder = s ? s.担当者 : "";
+  $("hTan").placeholder = s && s.担当者 ? "前回 " + s.担当者 : "";   // 記入者は日によって替わる（2026-10-31 ユーザー）。前回の人は薄い字で見せるだけ
   { const n = pageCount(d); if ((UI.pg || 0) > n - 1) UI.pg = n - 1;
     $("pgNo").textContent = n > 1 ? `（${(UI.pg || 0) + 1}／${n}ページ）` : "";
     $("pgBar").innerHTML = `<button class="sub" data-pg="-1" title="前のページ"${UI.pg ? "" : " disabled"}>◀</button><span class="pgn">${(UI.pg || 0) + 1}／${n}ページ</span><button class="sub" data-pg="1" title="次のページ"${(UI.pg || 0) < n - 1 ? "" : " disabled"}>▶</button><button class="sub" id="pgAdd" title="作業内容・人員・機械が1ページに収まらないとき、この日の入力ページを足す">＋ ページを足す</button>${n > 1 && UI.pg ? `<button class="sub danger" id="pgDel" title="このページの行を消す">このページを消す</button>` : ""}`; }
@@ -1928,7 +1928,6 @@ function renderMaster() {
   }
   if (s) {
     h.push(`<h3 class="sh">${esc(s.名前)} の決まり</h3><div class="mrow"><div class="mbox"><table class="ed">
-      <tr><th>記入者（いつもの）</th><td><input data-sf="担当者" value="${esc(s.担当者)}"></td></tr>
       <tr><th>定時の始業</th><td><input data-sf="始業" value="${esc(s.始業)}" inputmode="numeric"></td></tr>
       <tr><th>定時の終業</th><td><input data-sf="終業" value="${esc(s.終業)}" inputmode="numeric"></td></tr>
       <tr><th>勤務（昼・夜）</th><td><select data-sf="勤務">${["昼", "夜", "昼夜"].map(k => `<option${k === s.勤務 ? " selected" : ""}>${k}</option>`).join("")}</select></td></tr>
@@ -2085,10 +2084,15 @@ $("masterBody").addEventListener("click", e => {
 });
 // 現場を追加（2026-10-31 ユーザー：正式・社内の名称、現場コード、工期、担当者）。足りない・おかしいときは入れた値のまま開き直す
 function addSiteDlg(p) {
-  editDlg("現場を追加（" + gen().名前 + "）", [["現場名称（正式）", "name", p.name || ""], ["現場名称（社内）", "abbr", p.abbr || ""], ["現場コード", "code", p.code || ""], ["工期 始まり", "from", p.from || "", null, "date"], ["工期 終わり", "to", p.to || "", null, "date"], ["担当者", "boss", p.boss || ""], ["記入者（いつもの）", "tan", p.tan || ""], ["締め日", "shime", p.shime ?? "20"]], v => {
+  // 元請は一覧から選ぶ（2026-10-31 ユーザー：元請の名前の欄）。記入者は日によって替わるので、ここでは決めない
+  const gs = DB.元請.map(g => g.名前), g0 = p.gen || (gen() ? gen().名前 : gs[0] || "");
+  if (!gs.length) { toast("先に「＋ 元請業者を追加」で元請を入れてください"); return; }
+  editDlg("現場を追加", [["元請業者", "gen", g0, gs], ["現場名称（正式）", "name", p.name || ""], ["現場名称（社内）", "abbr", p.abbr || ""], ["現場コード", "code", p.code || ""], ["工期 始まり", "from", p.from || "", null, "date"], ["工期 終わり", "to", p.to || "", null, "date"], ["担当者", "boss", p.boss || ""], ["締め日", "shime", p.shime ?? "20"]], v => {
     if (!v.name) { toast("現場名称（正式）を入れてください"); addSiteDlg(v); return; }
     if (v.from && v.to && v.to < v.from) { toast("工期の終わりが始まりより前です。直してください"); addSiteDlg(v); return; }
-    const x = fixSite({ id: uid(), 元請id: UI.gen, 名前: v.name, 略称: v.abbr, コード: han(v.code), 工期開始: v.from, 工期終了: v.to, 現場担当者: v.boss, 担当者: v.tan, 締め日: Number(han(v.shime)) || 0, 設定更新: now() });
+    const g = DB.元請.find(x => x.名前 === v.gen) || gen();
+    const x = fixSite({ id: uid(), 元請id: g.id, 名前: v.name, 略称: v.abbr, コード: han(v.code), 工期開始: v.from, 工期終了: v.to, 現場担当者: v.boss, 締め日: Number(han(v.shime)) || 0, 設定更新: now() });
+    UI.gen = g.id;
     DB.現場.push(x); UI.site = x.id; save(); renderAll();
   });
 }
@@ -2650,7 +2654,7 @@ function daySheetPage(wb, s, x, d, full, pi, pn) {
   put("A3", "元請業者"); put("B3", gen() ? gen().名前 : "", "B3:D3");
   put("E3", "日　　付", "E3:F3"); put("G3", dt, "G3:H3").numFmt = 'yyyy"年"m"月"d"日"';
   put("I3", WD[dt.getDay()]); put("J3", "天気"); put("K3", "気温");
-  put("L3", "記入者", "L3:L4"); put("M3", d.担当者 || s.担当者 || "", "M3:P4");
+  put("L3", "記入者", "L3:L4"); put("M3", d.担当者 || "", "M3:P4");
   put("A4", "現場名"); put("B4", s.名前, "B4:I4"); put("J4", d.天気 || ""); put("K4", d.気温 !== "" && d.気温 != null ? d.気温 + "℃" : "℃");
   ws.getCell("K4").alignment = { vertical: "middle", horizontal: "right" };
   // 左：作業内容 5段（2行ずつ）／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
@@ -2803,7 +2807,7 @@ function dayPageHTML(s, x, d, full, pi, pn) {
   const h = [];
   h.push(`<div class="pg"><table class="pt"><colgroup>${[...Array(16)].map((_, i) => `<col style="width:${i === 12 ? 9.2 : 17.86}mm">`).join("")}</colgroup>`);
   h.push(`<tr><td class="t" colspan="16">作　業　日　報${pn > 1 ? `（${pi + 1}／${pn}）` : ""}</td></tr><tr class="b"><td class="nb" colspan="16"></td></tr>`);
-  h.push(`<tr class="a">${c("元請業者")}${c(gen() ? gen().名前 : "", "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("記入者", "", sp(1, 2))}${c(d.担当者 || s.担当者 || "", "", sp(4, 2))}</tr>`);
+  h.push(`<tr class="a">${c("元請業者")}${c(gen() ? gen().名前 : "", "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("記入者", "", sp(1, 2))}${c(d.担当者 || "", "", sp(4, 2))}</tr>`);
   h.push(`<tr class="a">${c("現場名")}${c(s.名前, "", sp(8))}${c(d.天気 || "")}${c((d.気温 ?? "") + "℃")}</tr>`);
   // 上の5段（Excel は2行ずつ）。空の行は高さがつぶれるので、1段＝高い1行で組む
   // 左：作業内容 5段／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
