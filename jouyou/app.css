@@ -219,6 +219,28 @@ button.tg.on { background: var(--head); color: #fff; }
 .xldd:hover { background: #d2e7da; color: var(--xlg); }
 .pnote { margin: 0 0 8px; padding: 8px 10px; border: 1px solid #e0b85a; border-radius: 4px; background: #fff8e1; color: #5d4300; font-size: 13px; }
 .pnote button { margin-left: 8px; }
+.pgrp { border: 1px solid #ccd; border-radius: 6px; padding: 6px 10px 10px; margin: 10px 0; background: #fff; }
+.pgh { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--head); border-bottom: 1px solid #dde; padding-bottom: 4px; }
+.pgh .sp { flex: 1; }
+.pgrp table.price { width: 100%; }
+.pgrp .mh { margin: 10px 0 4px; }
+#kouSum { flex: 1; overflow: auto; }
+#kouSum .ksE { margin: 8px; }
+table.ksum { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.ksum th { background: #f4f6f8; font-weight: normal; border-bottom: 1px solid #999; padding: 3px 6px; }
+table.ksum td { border-bottom: 1px solid #ddd; padding: 3px 8px; }
+table.ksum td.r { text-align: right; }
+table.ksum td.night { color: #3a3a9a; }
+table.ksum tfoot td { border-top: 1px solid #999; border-bottom: none; font-weight: bold; }
+.fbar input[type=search] { flex: 1; min-width: 260px; font-size: 15px; padding: 4px 8px; }
+#dFind { width: min(900px, 96vw); }
+#fRes { max-height: 60vh; overflow: auto; }
+table.find tr[data-fx] { cursor: pointer; }
+table.find tr[data-fx]:hover td { background: #eef5ff; }
+table.find tr.on td { background: #e3f0e3; }
+.fchip { display: inline-block; margin: 1px 4px 1px 0; padding: 0 6px; border: 1px solid #c9d3e0; border-radius: 10px; background: #f6f9fc; font-size: 12px; white-space: nowrap; }
+.fchip i { font-style: normal; color: #678; margin-right: 4px; }
+.fchip small { color: #888; margin-left: 2px; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */
@@ -265,6 +287,11 @@ table.ed tr.on td { background: #e8f5e9; }
   table.pt tr.a td { height: 6.2mm; }
   table.pt tr.b td { height: 4.1mm; }
   table.pt tr.a2 td { height: 8.2mm; }
+  table.pt td.wk { text-align: left; padding-left: 2mm; }
+  table.pt td.ks { vertical-align: top; padding: 0; white-space: normal; }
+  table.pt td.ks table.ksum { font-size: 9.5pt; }
+  table.pt td.ks table.ksum td, table.pt td.ks table.ksum th { border: none; border-bottom: 0.4pt solid #999; height: auto; padding: 0.4mm 2mm; }
+  table.pt td.ks .ksE { display: none; }
   table.pt tr.b2 td { height: 5mm; font-size: 9pt; }
   table.pt td.bk { text-align: left; vertical-align: top; white-space: pre-wrap; font-size: 9pt; }
   table.pt td.s img { max-height: 11.5mm; max-width: 100%; }
