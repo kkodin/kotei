@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>常用日報</title>
+<link rel="stylesheet" href="app.css?v=202610311241">
+</head>
+<body>
+<header id="top">
+  <span class="ttl">常用日報</span>
+  <nav id="views">
+    <button data-tab="sheet" class="on" title="1日1枚の作業日報">日報</button>
+    <button data-tab="sum" title="締め期間の集計（日別・作業員別・機材別）">集計</button>
+    <button data-tab="master" title="元請・現場・作業員名簿・職種・機材">現場・名簿</button>
+  </nav>
+  <span class="grp">
+    <select id="inGen" title="元請業者"></select>
+    <select id="inSite" title="現場（元請業者ごと）"></select>
+    <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
+    <input type="date" id="inDay" title="日">
+    <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
+    <button id="bToday" class="sub">今日</button>
+  </span>
+  <span class="grp right">
+    <span id="mstat" class="mstat" title="マスタ（現場一覧・名簿・自社機械）を読んだ時刻"></span>
+    <button id="bSignIn" class="sub" title="会社の Microsoft アカウントでサインインして、現場・名簿・機械のマスタを読む" hidden>サインイン</button>
+    <span id="who" class="ver"></span>
+    <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
+    <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
+    <input type="file" id="fileIn" accept=".json,application/json" hidden>
+    <span id="ver" class="ver">Vr000 10/31 12:41</span>
+  </span>
+</header>
+
+<main id="app">
+  <!-- 日報 -->
+  <section id="pSheet">
+    <div class="ribbon">
+      <button id="bCopyPrev" class="sub" title="前に書いた日の作業員・工種・機材をこの日に写す（天気・サインは写さない）">前の日と同じ</button>
+      <button id="bCount" class="sub" title="下の作業員の工種（職種）ごとの人数を、上の「人員」に入れる">人員を数える</button>
+      <span class="rsep"></span>
+      <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
+      <button id="bDelRow" class="sub" title="選んだ行を消す（Ctrl+－）">行の削除</button>
+      <button id="bUndo" class="sub" title="元に戻す（Ctrl+Z）">↶</button>
+      <button id="bRedo" class="sub" title="やり直す（Ctrl+Y）">↷</button>
+      <span class="rsep"></span>
+      <button id="bXlsDay" class="sub" title="この日を Excel（1シート）で出す">Excel（この日）</button>
+      <button id="bPdfDay" class="sub" title="この日を印刷・PDF（A4 横 1枚）">PDF（この日）</button>
+      <button id="bOut" class="sub" title="期間をまとめて Excel・PDF で出す（1シート1日＋集計）">期間で出力…</button>
+      <button id="bClearDay" class="sub danger" title="この日の日報を消す">この日を消す</button>
+      <span id="status" class="rstatus"></span>
+    </div>
+    <div class="fbar">
+      <input id="nameBox" class="namebox" readonly>
+      <span class="fxl">fx</span>
+      <input id="fx" class="fx" autocomplete="off" title="数式バー（選んだセルの中身。ここでも直せる）">
+    </div>
+    <div id="sheetWrap">
+      <div id="sheet"></div>
+    </div>
+    <div class="tabbar">
+      <button class="tnav" id="tPrev" title="前の締め期間">◀</button>
+      <div id="tabs"></div>
+      <button class="tnav" id="tNext" title="次の締め期間">▶</button>
+    </div>
+    <div class="statusbar"><span id="mode">準備完了</span><span id="stat"></span><span id="saved"></span><span class="keys">矢印・Enter・Tab で移動／打てば上書き／F2・ダブルクリック（iPad は選んだセルをもう一度タップ）で直す</span></div>
+  </section>
+
+  <!-- 集計 -->
+  <section id="pSum" hidden>
+    <div class="ribbon">
+      <span>期間</span>
+      <input type="date" id="sumFrom"> 〜 <input type="date" id="sumTo">
+      <button id="sumPrev" class="sub" title="前の締め期間">◀</button>
+      <button id="sumNext" class="sub" title="次の締め期間">▶</button>
+      <span class="rsep"></span>
+      <button id="bSumXls" class="sub" title="この期間を Excel に（1シート1日＋集計シート）">Excel（日報＋集計）</button>
+      <button id="bSumPdf" class="sub" title="集計を印刷・PDF">PDF（集計）</button>
+    </div>
+    <div class="scroll" id="sumBody"></div>
+  </section>
+
+  <!-- 現場・名簿 -->
+  <section id="pMaster" hidden>
+    <div class="scroll" id="masterBody"></div>
+  </section>
+</main>
+
+<!-- 小窓（見出しの ⠿ で動かせる・外を押しても閉じない） -->
+<dialog id="dSign">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>元請サイン</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="signNote">枠の中に指・ペンでサインしてください。</p>
+    <canvas id="signPad" width="600" height="220"></canvas>
+    <div class="btns"><button type="button" class="sub" id="signClear">書き直す</button><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="signOk">決定</button></div>
+  </div>
+</dialog>
+
+<dialog id="dOut">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>期間で出力</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="grid">
+      <label>期間</label><span><input type="date" id="outFrom"> 〜 <input type="date" id="outTo"></span>
+      <label>入れる日</label><span><label><input type="checkbox" id="outOnlyData" checked> 書いた日だけ</label></span>
+      <label>集計</label><span><label><input type="checkbox" id="outSum" checked> 集計シートも付ける</label></span>
+    </div>
+    <p class="note" id="outInfo"></p>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="outPdf" class="sub">PDF（印刷）</button><button type="button" id="outXls">Excel</button></div>
+  </div>
+</dialog>
+
+<dialog id="dEdit">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody" id="eBody"></div>
+</dialog>
+
+<div id="printArea"></div>
+<div id="toast" class="toast"></div>
+
+<script src="config.js?v=202610311241"></script>
+<script src="lib/msal-browser.min.js"></script>
+<script src="lib/exceljs.min.js"></script>
+<script src="grid.js?v=202610311241"></script>
+<script src="app.js?v=202610311241"></script>
+</body>
+</html>

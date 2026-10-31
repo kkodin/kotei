@@ -1,0 +1,200 @@
+:root {
+  --head: #1f4e79;
+  --xlg: #217346;          /* Excel の緑 */
+  --grid: #d4d4d4;
+  --hdbg: #f3f3f3;
+  --rh: 25px;
+  --font: "ＭＳ Ｐゴシック", "MS PGothic", "Yu Gothic UI", Meiryo, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { font-family: "Yu Gothic UI", Meiryo, sans-serif; font-size: 14px; color: #222; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+button { font: inherit; font-size: 13px; padding: 3px 10px; border: 1px solid var(--head); background: var(--head); color: #fff; border-radius: 3px; cursor: pointer; touch-action: manipulation; }
+button.sub { background: #fff; color: var(--head); }
+button.danger { color: #c62828; border-color: #c62828; }
+button:disabled { opacity: .45; cursor: default; }
+input, select, textarea { font: inherit; font-size: 14px; padding: 2px 5px; border: 1px solid #b8bec7; border-radius: 3px; }
+.note { color: #666; font-size: 12px; }
+.ng { color: #c62828; }
+
+header { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 5px 10px; background: var(--head); color: #fff; flex: none; }
+header .ttl { font-size: 17px; font-weight: bold; }
+header .grp { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+header .right { margin-left: auto; }
+header select { max-width: 280px; font-weight: bold; }
+#views { display: flex; gap: 2px; }
+#views button { background: transparent; border-color: rgba(255,255,255,.5); }
+#views button.on { background: #fff; color: var(--head); font-weight: bold; }
+.ver { font-size: 11px; opacity: .7; }
+.mstat { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,.15); }
+.mstat.ok { background: #2e7d32; } .mstat.old { background: #f9a825; color: #222; }
+table.ed td.m { color: #1f4e79; font-size: 12px; }
+
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main > section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ribbon { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 5px 8px; background: #f8f9fa; border-bottom: 1px solid #ddd; flex: none; }
+.rsep { width: 1px; height: 22px; background: #ccc; margin: 0 4px; }
+.rstatus { margin-left: 8px; font-size: 13px; color: #555; }
+.fbar { display: flex; align-items: center; border-bottom: 1px solid #ccc; padding: 3px 6px; background: #fff; flex: none; }
+.namebox { width: 170px; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
+.fxl { width: 34px; text-align: center; font-style: italic; color: #777; font-family: serif; }
+.fx { flex: 1; border: 1px solid #c6c6c6; border-radius: 0; font-family: var(--font); font-size: 13px; }
+#sheetWrap { flex: 1; min-height: 0; overflow: auto; background: #e9ebee; -webkit-overflow-scrolling: touch; }
+
+/* ---------- 日報の紙（元の Excel：A4 横・A〜P 列） ---------- */
+#sheet { width: 1010px; margin: 10px auto 40px; background: #fff; padding: 12px 16px 18px; box-shadow: 0 1px 6px rgba(0,0,0,.2); font-family: var(--font); }
+.ttlRow { text-align: center; font-size: 22px; letter-spacing: 6px; margin: 0 0 8px; font-weight: bold; }
+table.hd { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 13px; }
+table.hd td { border: 1px solid #555; height: 30px; padding: 0 4px; text-align: center; }
+table.hd td.l { background: #f4f6f8; color: #333; }
+table.hd input { width: 100%; border: none; background: transparent; text-align: center; font-family: var(--font); font-size: 14px; padding: 0; }
+table.hd input:focus { outline: 2px solid var(--xlg); background: #fff; }
+table.hd .v { font-size: 14px; font-weight: bold; }
+table.hd .sun { color: #c62828; } table.hd .sat { color: #1565c0; }
+table.hd .tmp { display: flex; align-items: center; } table.hd .tmp input { text-align: right; }
+.mid { display: flex; gap: 0; margin-top: 6px; align-items: stretch; }
+.mid .left { flex: none; }
+.mid .right { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #555; border-left: none; margin-left: 8px; border-left: 1px solid #555; }
+.rhd { display: flex; border-bottom: 1px solid #555; }
+.rhd .l { width: 70px; flex: none; display: flex; align-items: center; justify-content: center; background: #f4f6f8; border-right: 1px solid #555; font-size: 13px; }
+#signBox { flex: 1; height: 86px; position: relative; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+#signBox img { max-width: 100%; max-height: 100%; }
+#signBox .del { position: absolute; right: 2px; top: 2px; padding: 0 6px; font-size: 12px; }
+#signBox .when { position: absolute; left: 4px; bottom: 1px; font-size: 10px; color: #888; }
+.bikouL { padding: 2px 6px; background: #f4f6f8; border-bottom: 1px solid #ccc; font-size: 13px; }
+#hBikou { flex: 1; min-height: 80px; border: none; border-radius: 0; resize: none; font-family: var(--font); font-size: 13px; padding: 4px 6px; }
+#hBikou:focus { outline: 2px solid var(--xlg); }
+.akamaru { padding: 2px 6px; font-size: 11px; color: #555; border-top: 1px solid #ccc; text-align: center; }
+.low { margin-top: 6px; }
+.secT { display: flex; align-items: baseline; gap: 12px; padding: 2px 6px; font-size: 12px; color: #555; }
+.secT b { color: #222; }
+.secT .cnt { color: #1f4e79; }
+.secT .warn { color: #c62828; }
+.g1 { --rh: 32px; }
+.sec.cur .secT { color: var(--xlg); }
+
+/* ---------- Excel のように動く表（日報 Vr002 と同じ） ---------- */
+.xl { position: relative; display: inline-block; outline: none; font-family: var(--font); font-size: 13px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.xlt { border-collapse: collapse; table-layout: fixed; }
+.xlt td { height: var(--rh); border: 1px solid #9a9a9a; padding: 0 3px; white-space: nowrap; overflow: hidden; position: relative; background: #fff; cursor: cell; }
+.xlt td.flow { overflow: visible; z-index: 1; }
+.xlt td .xc { overflow: hidden; text-overflow: clip; line-height: calc(var(--rh) - 2px); }
+.xlt td.flow .xc { position: relative; background: transparent; }
+.xlt td.r { text-align: right; } .xlt td.c { text-align: center; }
+.xlt td.ro { background: #f6f7f9; color: #1f4e79; }
+.xlt td.sepL, .xlt th.sepL { border-left: 2px solid #555; }
+.xlt td.auto { color: #1f4e79; }
+.xlt td.ot { color: #c62828; }
+.xlt th.xlrh { background: var(--hdbg); border: 1px solid #c6c6c6; font-weight: normal; color: #666; font-size: 11px; font-family: "Segoe UI", sans-serif; cursor: default; }
+.xlt th.xlrh.on { background: #d2e7da; color: var(--xlg); border-right: 2px solid var(--xlg); }
+.xlt tr.sh th { height: 24px; background: #f4f6f8; border: 1px solid #555; font-weight: normal; font-size: 12px; color: #333; }
+.xlt tr.sh th.on { background: #d2e7da; color: var(--xlg); border-bottom: 2px solid var(--xlg); }
+.sec:not(.cur) .xlsel, .sec:not(.cur) .xlact, .sec:not(.cur) .xlfill { display: none; }
+.sec:not(.cur) .xlrh.on, .sec:not(.cur) tr.sh th.on { background: #f3f3f3; color: #444; border-color: #c6c6c6; }
+.xlsel { position: absolute; pointer-events: none; z-index: 8; }
+.xlsel.multi { background: rgba(33,115,70,.12); border: 1px solid var(--xlg); }
+.xlact { position: absolute; pointer-events: none; z-index: 9; border: 2px solid var(--xlg); }
+.xlfill { position: absolute; width: 7px; height: 7px; background: var(--xlg); border: 1px solid #fff; z-index: 11; cursor: crosshair; }
+.xlfillbox { position: absolute; pointer-events: none; z-index: 10; border: 1px dashed #555; }
+.xlant { position: absolute; pointer-events: none; z-index: 10; display: none; border: 2px dashed var(--xlg); animation: ant 1s linear infinite; }
+@keyframes ant { 50% { border-color: #9ccc65; } }
+.xled { position: absolute; z-index: 12; border: none; outline: none; padding: 0 3px; margin: 0; font-family: var(--font); font-size: 13px; background: transparent; color: transparent; caret-color: transparent; border-radius: 0; }
+.xled.on { background: #fff; color: #000; caret-color: #000; box-shadow: 0 0 0 2px var(--xlg); }
+.xled.r { text-align: right; }
+.xllist { position: absolute; z-index: 20; background: #fff; border: 1px solid #888; max-height: 240px; overflow: auto; box-shadow: 2px 2px 6px rgba(0,0,0,.25); font-family: var(--font); font-size: 13px; }
+.xllist div { padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+.xllist div.on, .xllist div:hover { background: #cce8d6; }
+
+/* 下の日の見出し（Excel のシート見出し） */
+.tabbar { display: flex; align-items: stretch; background: #f0f0f0; border-top: 1px solid #c6c6c6; flex: none; height: 30px; }
+.tnav { background: transparent; color: #555; border: none; padding: 0 10px; font-size: 12px; }
+#tabs { display: flex; overflow-x: auto; scrollbar-width: thin; flex: 1; }
+#tabs button { flex: none; background: transparent; color: #999; border: none; border-right: 1px solid #ccc; border-radius: 0; padding: 0 8px; font-size: 12px; font-family: var(--font); }
+#tabs button.has { color: #222; background: #fff; }
+#tabs button.signed::after { content: "✍"; font-size: 10px; margin-left: 2px; color: #2e7d32; }
+#tabs button.on { background: #fff; color: var(--xlg); font-weight: bold; border-bottom: 3px solid var(--xlg); }
+#tabs button.sun { color: #e57373; } #tabs button.sat { color: #64b5f6; }
+#tabs button.has.sun { color: #c62828; } #tabs button.has.sat { color: #1565c0; }
+#tabs .per { flex: none; padding: 0 8px; font-size: 11px; color: #666; display: flex; align-items: center; background: #e4e4e4; }
+.statusbar { display: flex; gap: 20px; align-items: center; height: 22px; padding: 0 10px; background: var(--xlg); color: #fff; font-size: 12px; flex: none; overflow: hidden; white-space: nowrap; }
+.statusbar .keys { margin-left: auto; opacity: .8; }
+
+/* 右クリックのメニュー */
+.ctx { position: fixed; z-index: 40; background: #fff; border: 1px solid #bbb; box-shadow: 2px 2px 8px rgba(0,0,0,.25); padding: 3px 0; min-width: 220px; font-size: 13px; }
+.ctx div { display: flex; justify-content: space-between; padding: 5px 14px; cursor: pointer; }
+.ctx div:hover { background: #e5f1e9; }
+.ctx kbd { color: #888; font-family: inherit; font-size: 11px; }
+.ctx hr { border: none; border-top: 1px solid #ddd; margin: 3px 0; }
+
+/* ---------- 小窓：見出しの ⠿ で動かす・外を押しても閉じない・後ろは動かさない ---------- */
+dialog { border: 1px solid #889; border-radius: 6px; padding: 0; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: hidden; overscroll-behavior: contain; box-shadow: 0 6px 30px rgba(0,0,0,.3); }
+dialog[open] { display: flex; flex-direction: column; }
+dialog.moved { margin: 0; }
+dialog::backdrop { background: rgba(0,0,0,.25); touch-action: none; }
+dialog .dhead { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px; background: var(--head); color: #fff; cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+dialog .dhead h3 { margin: 0 auto 0 0; font-size: 15px; }
+dialog .grip { font-size: 18px; padding: 0 6px; opacity: .85; }
+dialog .dhead .x { padding: 0 8px; }
+dialog .dbody { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 12px 16px 14px; }
+dialog .btns { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+dialog .sp { flex: 1; }
+dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+dialog .grid > label { color: #555; font-size: 13px; text-align: right; }
+body.modal #sheetWrap, body.modal .scroll { overflow: hidden; }
+#signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
+
+/* ---------- 集計・現場名簿 ---------- */
+.scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 40px; -webkit-overflow-scrolling: touch; }
+h3.sh { margin: 16px 0 6px; font-size: 15px; color: var(--head); border-left: 4px solid var(--head); padding-left: 6px; }
+h3.sh:first-child { margin-top: 0; }
+table.sm { border-collapse: collapse; font-size: 12px; font-family: var(--font); }
+table.sm th, table.sm td { border: 1px solid #bbb; padding: 3px 6px; white-space: nowrap; }
+table.sm thead th { background: #eef3f8; position: sticky; top: 0; z-index: 1; }
+table.sm td.r { text-align: right; } table.sm td.c { text-align: center; }
+table.sm tr.sun td:first-child { color: #c62828; } table.sm tr.sat td:first-child { color: #1565c0; }
+table.sm th.sun { color: #c62828; } table.sm th.sat { color: #1565c0; }
+table.sm tfoot td, table.sm tfoot th { background: #f5f5f5; font-weight: bold; }
+table.sm a { color: var(--head); cursor: pointer; text-decoration: underline; }
+table.sm td.ot { color: #c62828; font-size: 11px; }
+.mrow { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.mbox { border: 1px solid #ccd; border-radius: 6px; padding: 10px 12px; background: #fbfcfd; }
+.mbox h4 { margin: 0 0 8px; font-size: 14px; }
+table.ed { border-collapse: collapse; font-size: 13px; }
+table.ed th, table.ed td { border: 1px solid #ccc; padding: 2px 4px; }
+table.ed th { background: #eef3f8; font-weight: normal; }
+table.ed input, table.ed select { border: none; width: 100%; padding: 2px; }
+table.ed input:focus { outline: 2px solid var(--xlg); }
+table.ed td.btn { border: none; }
+table.ed tr.on td { background: #e8f5e9; }
+.small { font-size: 12px; padding: 1px 6px; }
+
+.toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 60; font-size: 14px; }
+.toast.on { opacity: .95; }
+
+/* ---------- 印刷・PDF：A4 横、1日1ページ（元の Excel と同じ並び） ---------- */
+#printArea { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 9mm 10mm 8mm 10mm; }
+  body { display: block; overflow: visible; height: auto; }
+  header, main, .toast, dialog, .ctx { display: none !important; }
+  #printArea { display: block; }
+  .pg { page-break-after: always; break-after: page; font-family: var(--font); }
+  .pg:last-child { page-break-after: auto; break-after: auto; }
+  table.pt { width: 277mm; border-collapse: collapse; table-layout: fixed; font-size: 10pt; }
+  table.pt td { border: 0.6pt solid #222; padding: 0 1mm; text-align: center; white-space: nowrap; overflow: hidden; }
+  table.pt td.nb { border: none; }
+  table.pt td.t { font-size: 18pt; letter-spacing: 3mm; border: none; height: 9mm; }
+  table.pt tr.a td { height: 6.2mm; }
+  table.pt tr.b td { height: 4.1mm; }
+  table.pt tr.a2 td { height: 8.2mm; }
+  table.pt tr.b2 td { height: 5mm; font-size: 9pt; }
+  table.pt td.bk { text-align: left; vertical-align: top; white-space: pre-wrap; font-size: 9pt; }
+  table.pt td.s img { max-height: 11.5mm; max-width: 100%; }
+  table.pt td.ot { color: #c62828; }
+  table.pt td.sm { font-size: 8pt; }
+  .pg .ft { font-size: 7pt; color: #777; text-align: right; margin-top: 1mm; }
+  .pg.sum h3 { font-size: 11pt; margin: 3mm 0 1mm; }
+  .pg.sum table { border-collapse: collapse; font-size: 8pt; }
+  .pg.sum th, .pg.sum td { border: 0.5pt solid #444; padding: 0.3mm 1mm; white-space: nowrap; }
+}
