@@ -20,11 +20,12 @@ const addD = (s, n) => { const d = pd(s); d.setDate(d.getDate() + n); return ymd
 const wd = s => pd(s).getDay();
 const jpDate = s => { const d = pd(s); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const now = () => { const d = new Date(); return ymd(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+const now = () => { const d = new Date(); return ymd(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
 
 /* ================= データ ================= */
 // DB = { 形式, 版, 元請:[{id,名前}], 現場:[現場], 職種:[], 天気:[] }
-// 現場 = { id, 元請id, 名前, 担当者, 始業, 終業, 締め日, 累計:"期間"|"全体", 作業員:[{名前,職種}], 機材:[{名前,規格}], 日:{ "YYYY-MM-DD": 日 } }
+// 現場 = { id, 元請id, 名前, 担当者, 始業, 終業, 締め日, 累計:"期間"|"全体", 作業員:[{名前,職種}], 機材:[{名前,規格}], 日:{ "YYYY-MM-DD": 日 },
+//         消した日:{ "YYYY-MM-DD": 消した時刻 }（ほかの端末から消したのを伝える）, 設定更新（決まり・名簿を直した時刻） }
 // 日 = { 天気, 気温, 担当者, 上:[[工種,作業内容,人員,資機材]×5], 下:[[12列]], 備考, サイン(dataURL), サイン日時, 人員手(true＝人員を手で直した), 更新 }
 function blankDB() {
   return { 形式: "常用日報", 版: 1, 元請: [], 現場: [], 職種: ["職長", "重機OP", "土工", "普通作業員", "管理"], 天気: ["晴", "曇", "雨", "雪", "晴/曇", "曇/晴", "曇/雨", "雨/曇", "晴/雨"] };
@@ -32,7 +33,7 @@ function blankDB() {
 function fixSite(s) {
   s.id ||= uid(); s.名前 ||= ""; s.担当者 ||= ""; s.始業 ||= "8:00"; s.終業 ||= "17:00";
   if (s.締め日 == null) s.締め日 = 20;
-  s.累計 ||= "期間"; s.作業員 ||= []; s.機材 ||= []; s.日 ||= {};
+  s.累計 ||= "期間"; s.作業員 ||= []; s.機材 ||= []; s.日 ||= {}; s.消した日 ||= {}; s.設定更新 ||= "";
   return s;
 }
 function fixDB(d) {
@@ -47,10 +48,13 @@ let saveT = null;
 function save() {
   clearTimeout(saveT);
   saveT = setTimeout(() => {
-    try { localStorage.setItem(KEY, JSON.stringify(DB)); $("saved").textContent = "ブラウザに保存 " + now().slice(11); }
+    try { localStorage.setItem(KEY, JSON.stringify(DB)); $("saved").textContent = "ブラウザに保存 " + now().slice(11, 16); }
     catch (e) { toast("ブラウザに保存できません（容量がいっぱいかも）。「保存」でファイルに出してください"); }
+    if (typeof syncSoon === "function") syncSoon();
   }, 250);
 }
+// 日を消す（ほかの端末にも消したことが伝わるように時刻を残す）
+function dropDay(s, d) { delete s.日[d]; s.消した日[d] = now(); }
 function saveUI() { try { localStorage.setItem(UIKEY, JSON.stringify(UI)); } catch (e) {} }
 
 const site = () => DB.現場.find(s => s.id === UI.site) || null;
@@ -204,7 +208,7 @@ function snap() { const d = day(); return { site: UI.site, day: UI.day, v: d ? J
 function pushUndo() { UNDO.push(snap()); if (UNDO.length > 100) UNDO.shift(); REDO = []; }
 function restore(sn) {
   const s = DB.現場.find(x => x.id === sn.site); if (!s) return;
-  if (sn.v) s.日[sn.day] = JSON.parse(sn.v); else delete s.日[sn.day];
+  if (sn.v) { s.日[sn.day] = JSON.parse(sn.v); s.日[sn.day].更新 = now(); } else dropDay(s, sn.day);   // 戻したものがいちばん新しい
   if (UI.site !== sn.site || UI.day !== sn.day) { UI.site = sn.site; UI.day = sn.day; }
   save(); renderAll();
 }
@@ -247,7 +251,7 @@ function applyCells(key, ch) {
     fillNinzu(d, false);
   }
   tidy(d); d.更新 = now();
-  if (!hasData(d)) delete s.日[UI.day];
+  if (!hasData(d)) dropDay(s, UI.day);
   save(); refreshSheet();
 }
 function rowOp(key, op, r, n) {
@@ -257,7 +261,7 @@ function rowOp(key, op, r, n) {
   if (op === "insert") { while (arr.length < r) arr.push(Array(NC).fill("")); arr.splice(r, 0, ...Array.from({ length: n }, () => Array(NC).fill(""))); if (key === "up") arr.length = Math.min(arr.length, UP_ROWS); }
   else arr.splice(r, n);
   if (key === "dn") fillNinzu(d, false);
-  tidy(d); if (!hasData(d)) delete s.日[UI.day];
+  tidy(d); if (!hasData(d)) dropDay(s, UI.day);
   save(); refreshSheet();
 }
 
@@ -395,7 +399,7 @@ function buildSheet() {
     const d = ensureDay(), v = norm ? norm($(id).value) : $(id).value.trim();
     $(id).value = v; d[f] = v; d.更新 = now();
     if (f === "担当者" && v) s.担当者 = v;
-    if (!hasData(d)) delete s.日[UI.day];
+    if (!hasData(d)) dropDay(s, UI.day);
     save(); renderTabs();
   });
   hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim())); hv("hBikou", "備考");
@@ -502,7 +506,7 @@ $("bUndo").onclick = undo; $("bRedo").onclick = redo;
 $("bClearDay").onclick = () => {
   const s = site(); if (!s || !s.日[UI.day]) { toast("この日は書いていません"); return; }
   if (!confirm(jpDate(UI.day) + " の日報を消しますか？（↶ で戻せます）")) return;
-  pushUndo(); delete s.日[UI.day]; save(); refreshSheet();
+  pushUndo(); dropDay(s, UI.day); save(); refreshSheet();
 };
 $("bXlsDay").onclick = () => exportXlsx([UI.day], false);
 $("bPdfDay").onclick = () => printDays([UI.day]);
@@ -680,6 +684,8 @@ async function loadMasters(quiet) {
 }
 async function startAuth() {
   showMstat();
+  if (DEMO) { $("who").textContent = "試し（共有はこのブラウザの中）"; startSync(); return; }
+  syncMark("", "このブラウザだけ"); $("sync").title = "サインインすると、ほかの PC・iPad と日報を共有します";
   if (location.protocol === "file:" || !window.msal || !CFG.clientId) return;
   msalApp = new msal.PublicClientApplication({
     auth: { clientId: CFG.clientId, authority: "https://login.microsoftonline.com/" + CFG.tenantId, redirectUri: new URL("./", location.href).href },
@@ -690,13 +696,159 @@ async function startAuth() {
     const r = await msalApp.handleRedirectPromise(); if (r) msalApp.setActiveAccount(r.account);
   } catch (e) { console.warn(e); }
   const acc = msalApp.getActiveAccount() || msalApp.getAllAccounts()[0];
-  if (!acc) { $("bSignIn").hidden = false; return; }
+  if (!acc) { $("bSignIn").hidden = false; toast("ほかの PC・iPad と日報を共有するには「サインイン」してください"); return; }
   msalApp.setActiveAccount(acc);
   $("who").textContent = acc.name || acc.username;
   await loadMasters(true);
   setInterval(() => loadMasters(true), 30 * 60 * 1000);
+  startSync();
 }
+function startSync() { sync(); setInterval(() => syncSoon(0), 60 * 1000); }
 $("bSignIn").onclick = () => msalApp && msalApp.loginRedirect({ scopes: SCOPES });
+
+/* ================= 日報の共有（2026-10-31 ユーザー：Excel から取り込んだものがほかの PC で見られない） =================
+   工事日報と同じく、全体工程表の 工程データ フォルダの中の「常用日報」フォルダに、現場ごとに 現場_<現場id>.json を置く。
+   { 形式:"常用日報の現場", 版:1, 元請名, 現場:{ …現場（日・消した日・設定更新 も）… } }
+   ・開いたとき・1分ごと・画面に戻ったときに読み、このブラウザの分と合わせる（日ごとに 更新 の新しいほう。消した日は 消した時刻 が新しければ消す。
+     名簿・機材は足し算、決まり（定時・締め日 など）は 設定更新 の新しいほう）
+   ・直したら数秒後に書く。同時にほかの人が書いていたら（eTag がちがう）読み直して合わせてから書き直す。
+   ・サインインしていないとき・電波の無いときはこのブラウザの中だけ。つながったら書く。 */
+const SDIR = "常用日報";
+const DEMO = new URLSearchParams(location.search).has("demo");
+const SY = { files: {}, busy: false, timer: null, again: false, err: "", last: "" };   // files: 現場id → { eTag, sent }
+const signedIn = () => DEMO || !!(msalApp && msalApp.getActiveAccount());
+const enc = p => p.split("/").map(encodeURIComponent).join("/");
+// 試し（?demo）：OneDrive の代わりにこのブラウザの別の場所（2台目は localStorage を分けて試す）
+const DSTORE = "jouyou_demo_store";
+const dAll = () => { try { return JSON.parse(localStorage.getItem(DSTORE)) || {}; } catch (e) { return {}; } };
+const store = {
+  async list() {
+    if (DEMO) return Object.entries(dAll()).map(([name, x]) => ({ name, eTag: x.eTag }));
+    const F = CFG.kotei, out = [];
+    let url = `${GRAPH}/drives/${F.driveId}/items/${F.itemId}:/${enc(SDIR)}:/children?$top=999&$select=name,eTag,file`;
+    while (url) {
+      const res = await fetch(url, { headers: { Authorization: "Bearer " + await token() } });
+      if (res.status === 404) return out;
+      if (!res.ok) throw httpErr(res, "一覧");
+      const j = await res.json();
+      j.value.forEach(x => { if (x.file) out.push({ name: x.name, eTag: x.eTag }); });
+      url = j["@odata.nextLink"] || null;
+    }
+    return out;
+  },
+  async get(name) {
+    if (DEMO) { const x = dAll()[name]; return x ? { data: JSON.parse(x.data), eTag: x.eTag } : null; }
+    const F = CFG.kotei, h = { Authorization: "Bearer " + await token() };
+    const res = await fetch(`${GRAPH}/drives/${F.driveId}/items/${F.itemId}:/${enc(SDIR + "/" + name)}`, { headers: h });
+    if (res.status === 404) return null;
+    if (!res.ok) throw httpErr(res, "読み込み");
+    const meta = await res.json();
+    const body = await fetch(meta["@microsoft.graph.downloadUrl"], { cache: "no-store" });
+    if (!body.ok) throw httpErr(body, "中身の読み込み");
+    return { data: await body.json(), eTag: meta.eTag };
+  },
+  async put(name, text, eTag) {
+    if (DEMO) {
+      const a = dAll(), cur = a[name];
+      if (eTag ? (!cur || cur.eTag !== eTag) : cur) throw Object.assign(new Error("保存 " + (eTag ? 412 : 409)), { status: eTag ? 412 : 409 });
+      const t = "d" + Date.now() + Math.random().toString(36).slice(2, 6); a[name] = { data: text, eTag: t };
+      localStorage.setItem(DSTORE, JSON.stringify(a)); return { eTag: t };
+    }
+    const F = CFG.kotei, base = `${GRAPH}/drives/${F.driveId}/items/${F.itemId}`;
+    const url = `${base}:/${enc(SDIR + "/" + name)}:/content` + (eTag ? "" : "?@microsoft.graph.conflictBehavior=fail");
+    const send = async () => fetch(url, { method: "PUT", headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json", ...(eTag ? { "If-Match": eTag } : {}) }, body: text });
+    let res = await send();
+    if (res.status === 404 && !eTag) {
+      // 常用日報 フォルダがまだ無い → 作ってからもう一度
+      await fetch(base + "/children", { method: "POST", headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, body: JSON.stringify({ name: SDIR, folder: {}, "@microsoft.graph.conflictBehavior": "replace" }) });
+      res = await send();
+    }
+    if (!res.ok) throw httpErr(res, "保存");
+    return { eTag: (await res.json()).eTag };
+  },
+  async del(name) {
+    if (DEMO) { const a = dAll(); delete a[name]; localStorage.setItem(DSTORE, JSON.stringify(a)); return; }
+    const F = CFG.kotei;
+    await fetch(`${GRAPH}/drives/${F.driveId}/items/${F.itemId}:/${enc(SDIR + "/" + name)}`, { method: "DELETE", headers: { Authorization: "Bearer " + await token() } });
+  }
+};
+function httpErr(res, what) { return Object.assign(new Error(what + " " + res.status), { status: res.status }); }
+const fileOf = id => "現場_" + id + ".json";
+const docOf = s => JSON.stringify({ 形式: "常用日報の現場", 版: 1, 元請名: (DB.元請.find(g => g.id === s.元請id) || {}).名前 || "", 現場: s });
+// 共有に出す現場：日報か、消した日か、直した決まりがあるもの（マスタから作っただけの空の現場は出さない）
+const shareable = s => Object.keys(s.日).length || Object.keys(s.消した日).length || s.設定更新;
+// このブラウザの現場（a）と共有の現場（b）を合わせる
+function mergeSite(a, b) {
+  fixSite(b);
+  const out = b.設定更新 > a.設定更新 ? { ...a, ...b } : { ...b, ...a };
+  out.作業員 = [...a.作業員]; b.作業員.forEach(w => { if (!out.作業員.some(x => nk(x.名前) === nk(w.名前))) out.作業員.push(w); });
+  out.機材 = [...a.機材]; b.機材.forEach(m => { if (!out.機材.some(x => x.名前 === m.名前 && (x.規格 || "") === (m.規格 || ""))) out.機材.push(m); });
+  out.消した日 = { ...a.消した日 }; for (const [d, t] of Object.entries(b.消した日)) if (!out.消した日[d] || t > out.消した日[d]) out.消した日[d] = t;
+  out.日 = {};
+  for (const d of new Set([...Object.keys(a.日), ...Object.keys(b.日)])) {
+    const x = a.日[d], y = b.日[d], v = !x ? y : !y ? x : ((y.更新 || "") > (x.更新 || "") ? y : x);
+    if (v && !(out.消した日[d] && out.消した日[d] >= (v.更新 || ""))) out.日[d] = v;
+  }
+  return out;
+}
+function syncMark(cls, text) { const el = $("sync"); el.className = "sync " + cls; el.textContent = text; }
+function syncSoon(ms = 2500) { if (!signedIn()) return; clearTimeout(SY.timer); SY.timer = setTimeout(sync, ms); }
+const busyEditing = () => (grids.up && grids.up.editing()) || (grids.dn && grids.dn.editing()) || ["hTan", "hTmp", "hBikou"].includes((document.activeElement || {}).id);
+async function sync() {
+  if (!signedIn()) return;
+  if (SY.busy) { SY.again = true; return; }
+  SY.busy = true; syncMark("busy", "共有 …");
+  let changed = false;
+  try {
+    // 1) 読む：ほかの端末が書いたもの（eTag が変わったもの）を合わせる
+    for (const it of await store.list()) {
+      const m = it.name.match(/^現場_(.+)\.json$/); if (!m) continue;
+      const id = m[1], f = SY.files[id];
+      if (f && f.eTag === it.eTag) continue;
+      const r = await store.get(it.name); if (!r || !r.data || !r.data.現場) continue;
+      const rs = r.data.現場;
+      let g = DB.元請.find(x => nk(x.名前) === nk(r.data.元請名));
+      if (!g) { g = { id: "g_" + (nk(r.data.元請名) || "（元請なし）"), 名前: r.data.元請名 || "（元請なし）" }; DB.元請.push(g); }
+      const i = DB.現場.findIndex(x => x.id === id);
+      const merged = i < 0 ? fixSite(rs) : mergeSite(DB.現場[i], rs);
+      if (!DB.元請.some(x => x.id === merged.元請id)) merged.元請id = g.id;   // ほかの端末の元請 id はこの端末に無いことがある → 名前で合わせる
+      if (i < 0) DB.現場.push(merged); else DB.現場[i] = merged;
+      SY.files[id] = { eTag: r.eTag, sent: JSON.stringify(r.data) };
+      changed = true;
+    }
+    // 2) 書く：このブラウザで直した現場
+    for (const s0 of DB.現場) {
+      if (!shareable(s0)) continue;
+      for (let n = 0; n < 3; n++) {
+        const s = DB.現場.find(x => x.id === s0.id), text = docOf(s), f = SY.files[s.id];
+        if (f && f.sent === text) break;
+        try { const r = await store.put(fileOf(s.id), text, f && f.eTag); SY.files[s.id] = { eTag: r.eTag, sent: text }; break; }
+        catch (e) {
+          if (e.status !== 412 && e.status !== 409) throw e;
+          // ほかの人が先に書いた → 読み直して合わせてから書き直す
+          const r = await store.get(fileOf(s.id));
+          if (r && r.data && r.data.現場) { const i = DB.現場.findIndex(x => x.id === s.id); DB.現場[i] = mergeSite(DB.現場[i], r.data.現場); SY.files[s.id] = { eTag: r.eTag, sent: JSON.stringify(r.data) }; changed = true; }
+          else delete SY.files[s.id];
+        }
+      }
+    }
+    SY.err = ""; SY.last = now();
+    syncMark("ok", "共有 ✓ " + SY.last.slice(11, 16));
+  } catch (e) {
+    console.warn(e); SY.err = e.message;
+    syncMark("err", "共有できません");
+    $("sync").title = (e.status === 403 || e.status === 404 ? "工程データ フォルダに書けません。北澤さんに共有（編集可）を頼んでください。" : "電波・サインインを確かめてください。") + "（" + e.message + "）このブラウザの中には残っています。";
+  } finally {
+    SY.busy = false;
+    if (changed) {
+      try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {}
+      if (!busyEditing()) { renderPickers(); refreshSheet(); if (UI.tab === "sum") renderSum(); if (UI.tab === "master") renderMaster(); }
+    }
+    if (SY.again) { SY.again = false; syncSoon(500); }
+  }
+}
+async function removeShared(id) { if (signedIn() && SY.files[id]) { try { await store.del(fileOf(id)); } catch (e) { console.warn(e); } delete SY.files[id]; } }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncSoon(300); });
 
 /* ================= 上の選ぶ欄（元請 → 現場） ================= */
 const siteLabel = s => s.略称 ? s.略称 + (s.コード ? "（" + s.コード + "）" : "") : s.名前;
@@ -853,6 +1005,8 @@ $("masterBody").addEventListener("change", e => {
   else if (t.id === "mShoku") DB.職種 = t.value.split(/\n/).map(x => x.trim()).filter(Boolean);
   else if (t.id === "mWx") DB.天気 = t.value.split(/\n/).map(x => x.trim()).filter(Boolean);
   else return;
+  if (s && (dsx.sf || dsx.wn || dsx.wk || dsx.mn || dsx.mk)) s.設定更新 = now();
+  if (dsx.site) DB.現場.find(x => x.id === dsx.site).設定更新 = now();
   save(); renderPickers();
 });
 $("masterBody").addEventListener("click", e => {
@@ -863,11 +1017,11 @@ $("masterBody").addEventListener("click", e => {
   if (dsx.pickgen) { UI.gen = dsx.pickgen; UI.site = null; renderAll(); return; }
   if (dsx.picksite) { UI.site = dsx.picksite; renderAll(); return; }
   if (dsx.delgen) { if (DB.現場.some(x => x.元請id === dsx.delgen)) { toast("現場がある元請業者は消せません（先に現場を消す）"); return; } if (!confirm("この元請業者を消しますか？")) return; DB.元請 = DB.元請.filter(x => x.id !== dsx.delgen); save(); renderAll(); return; }
-  if (dsx.delsite) { const x = DB.現場.find(y => y.id === dsx.delsite); if (!confirm(`「${x.名前}」と日報 ${Object.keys(x.日).length} 日分を消しますか？\n（消す前に「保存」でファイルに出しておくと安心です）`)) return; DB.現場 = DB.現場.filter(y => y.id !== dsx.delsite); save(); renderAll(); return; }
-  if (dsx.delw != null) { s.作業員.splice(+dsx.delw, 1); save(); renderMaster(); return; }
-  if (dsx.delm != null) { s.機材.splice(+dsx.delm, 1); save(); renderMaster(); return; }
-  if (t.id === "mAddW") { const n = $("mNewW").value.trim(); if (!n) return; s.作業員.push({ 名前: n, 職種: $("mNewWk").value.trim() }); save(); renderMaster(); $("mNewW").focus(); return; }
-  if (t.id === "mAddM") { const n = $("mNewM").value.trim(); if (!n) return; s.機材.push({ 名前: n, 規格: $("mNewMk").value.trim() }); save(); renderMaster(); $("mNewM").focus(); return; }
+  if (dsx.delsite) { const x = DB.現場.find(y => y.id === dsx.delsite); if (!confirm(`「${x.名前}」と日報 ${Object.keys(x.日).length} 日分を消しますか？\n共有している日報（OneDrive）も消えます（OneDrive のごみ箱から戻せます）。\n（消す前に「保存」でファイルに出しておくと安心です）`)) return; DB.現場 = DB.現場.filter(y => y.id !== dsx.delsite); removeShared(x.id); save(); renderAll(); return; }
+  if (dsx.delw != null) { s.作業員.splice(+dsx.delw, 1); s.設定更新 = now(); save(); renderMaster(); return; }
+  if (dsx.delm != null) { s.機材.splice(+dsx.delm, 1); s.設定更新 = now(); save(); renderMaster(); return; }
+  if (t.id === "mAddW") { const n = $("mNewW").value.trim(); if (!n) return; s.作業員.push({ 名前: n, 職種: $("mNewWk").value.trim() }); s.設定更新 = now(); save(); renderMaster(); $("mNewW").focus(); return; }
+  if (t.id === "mAddM") { const n = $("mNewM").value.trim(); if (!n) return; s.機材.push({ 名前: n, 規格: $("mNewMk").value.trim() }); s.設定更新 = now(); save(); renderMaster(); $("mNewM").focus(); return; }
   if (t.id === "mReload") { loadMasters(false); return; }
   if (t.id === "mSaveAll") { download(`常用日報_全部_${ymd(new Date()).replace(/-/g, "")}.json`, JSON.stringify({ ...DB, 保存日時: now() }, null, 1), "application/json"); }
 });

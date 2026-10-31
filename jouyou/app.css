@@ -27,6 +27,8 @@ header select { max-width: 280px; font-weight: bold; }
 #views button { background: transparent; border-color: rgba(255,255,255,.5); }
 #views button.on { background: #fff; color: var(--head); font-weight: bold; }
 .ver { font-size: 11px; opacity: .7; }
+.sync { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,.15); cursor: default; }
+.sync.ok { background: #2e7d32; } .sync.busy { background: #f9a825; color: #222; } .sync.err { background: #c62828; }
 .mstat { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,.15); }
 .mstat.ok { background: #2e7d32; } .mstat.old { background: #f9a825; color: #222; }
 table.ed td.m { color: #1f4e79; font-size: 12px; }

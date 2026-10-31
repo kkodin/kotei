@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311248">
+<link rel="stylesheet" href="app.css?v=202610311256">
 </head>
 <body>
 <header id="top">
@@ -23,13 +23,14 @@
     <button id="bToday" class="sub">今日</button>
   </span>
   <span class="grp right">
+    <span id="sync" class="sync"></span>
     <span id="mstat" class="mstat" title="マスタ（現場一覧・名簿・自社機械）を読んだ時刻"></span>
     <button id="bSignIn" class="sub" title="会社の Microsoft アカウントでサインインして、現場・名簿・機械のマスタを読む" hidden>サインイン</button>
     <span id="who" class="ver"></span>
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json" hidden>
-    <span id="ver" class="ver">Vr000 10/31 12:48</span>
+    <span id="ver" class="ver">Vr000 10/31 12:56</span>
   </span>
 </header>
 
@@ -134,10 +135,10 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311248"></script>
+<script src="config.js?v=202610311256"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
-<script src="grid.js?v=202610311248"></script>
-<script src="app.js?v=202610311248"></script>
+<script src="grid.js?v=202610311256"></script>
+<script src="app.js?v=202610311256"></script>
 </body>
 </html>
