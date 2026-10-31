@@ -83,6 +83,7 @@ table.hd .tmp { display: flex; align-items: center; } table.hd .tmp input { text
 .secT { display: flex; align-items: baseline; gap: 12px; padding: 2px 6px; font-size: 12px; color: #555; }
 .secT b { color: #222; }
 .secT .cnt { color: #1f4e79; }
+.secT .note { font-size: 11px; color: #888; }
 .secT .warn { color: #c62828; }
 .g1 { --rh: 32px; }
 .sec.cur .secT { color: var(--xlg); }
@@ -243,6 +244,8 @@ table.find tr.on td { background: #e3f0e3; }
 .fchip { display: inline-block; margin: 1px 4px 1px 0; padding: 0 6px; border: 1px solid #c9d3e0; border-radius: 10px; background: #f6f9fc; font-size: 12px; white-space: nowrap; }
 .fchip i { font-style: normal; color: #678; margin-right: 4px; }
 .fchip small { color: #888; margin-left: 2px; }
+table.sites tr.done td { background: #f1f1f1; color: #888; }
+table.sites tr.done input { color: #888; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */
@@ -286,9 +289,9 @@ table.ed tr.on td { background: #e8f5e9; }
   table.pt td { border: 0.6pt solid #222; padding: 0 1mm; text-align: center; white-space: nowrap; overflow: hidden; }
   table.pt td.nb { border: none; }
   table.pt td.t { font-size: 18pt; letter-spacing: 3mm; border: none; height: 9mm; }
-  table.pt tr.a td { height: 6.2mm; }
+  table.pt tr.a td { height: 5.6mm; }
   table.pt tr.b td { height: 4.1mm; }
-  table.pt tr.a2 td { height: 8.2mm; }
+  table.pt tr.a2 td { height: 7.4mm; }
   table.pt td.wk { text-align: left; padding-left: 2mm; }
   table.pt td.ks { vertical-align: top; padding: 0; white-space: normal; }
   table.pt td.ks table.ksum { font-size: 9.5pt; }
