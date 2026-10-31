@@ -52,6 +52,15 @@ table.hd input { width: 100%; border: none; background: transparent; text-align:
 table.hd input:focus { outline: 2px solid var(--xlg); background: #fff; }
 table.hd .v { font-size: 14px; font-weight: bold; }
 table.hd .sun { color: #c62828; } table.hd .sat { color: #1565c0; }
+table.hd select { width: 100%; border: none; background: transparent; text-align: center; text-align-last: center; font-family: var(--font); font-size: 14px; padding: 0; cursor: pointer; }
+table.hd select:focus { outline: 2px solid var(--xlg); background: #fff; }
+.combo { display: flex; align-items: center; }
+.combo input { flex: 1; min-width: 0; }
+.combo .cbtn { flex: none; padding: 0 6px; background: transparent; color: #555; border: none; font-size: 12px; }
+.combo .cbtn:hover { background: #eef6f0; }
+.clist { position: fixed; z-index: 35; background: #fff; border: 1px solid #888; box-shadow: 2px 2px 6px rgba(0,0,0,.25); max-height: 260px; overflow: auto; overscroll-behavior: contain; font-family: var(--font); font-size: 14px; }
+.clist div { padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+.clist div:hover { background: #cce8d6; }
 table.hd .tmp { display: flex; align-items: center; } table.hd .tmp input { text-align: right; }
 .mid { display: flex; gap: 0; margin-top: 6px; align-items: stretch; }
 .mid .left { flex: none; }
@@ -142,6 +151,10 @@ dialog .sp { flex: 1; }
 dialog .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
 dialog .grid > label { color: #555; font-size: 13px; text-align: right; }
 body.modal #sheetWrap, body.modal .scroll { overflow: hidden; }
+.xlsMode { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 13px; }
+.xlsList { max-height: 46vh; overflow: auto; overscroll-behavior: contain; margin-top: 6px; }
+.xlsList tbody tr { cursor: pointer; }
+.xlsList td { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311241">
+<link rel="stylesheet" href="app.css?v=202610311248">
 </head>
 <body>
 <header id="top">
@@ -29,7 +29,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json" hidden>
-    <span id="ver" class="ver">Vr000 10/31 12:41</span>
+    <span id="ver" class="ver">Vr000 10/31 12:48</span>
   </span>
 </header>
 
@@ -38,6 +38,8 @@
   <section id="pSheet">
     <div class="ribbon">
       <button id="bCopyPrev" class="sub" title="前に書いた日の作業員・工種・機材をこの日に写す（天気・サインは写さない）">前の日と同じ</button>
+      <button id="bXlsIn" class="sub" title="元の作業日報の Excel から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
+      <input type="file" id="xlsFile" accept=".xlsx" hidden>
       <button id="bCount" class="sub" title="下の作業員の工種（職種）ごとの人数を、上の「人員」に入れる">人員を数える</button>
       <span class="rsep"></span>
       <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
@@ -110,6 +112,20 @@
   </div>
 </dialog>
 
+<dialog id="dXls">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>Excel から読む</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="xlsInfo"></p>
+    <div class="xlsMode">
+      <label><input type="radio" name="xlsMode" id="xlsModeSame" checked> Excel の日付のまま入れる（選んだ日をその日に）</label>
+      <label><input type="radio" name="xlsMode" id="xlsModeCur"> いま開いている日へ写す：<b id="xlsCurDay"></b>（1日を選ぶ。天気・気温・備考・サインは写さない）</label>
+    </div>
+    <div id="xlsRange" class="btns"><span>日</span><input type="date" id="xlsFrom"> 〜 <input type="date" id="xlsTo"><button type="button" class="sub small" id="xlsAll">全部</button><button type="button" class="sub small" id="xlsNone">外す</button></div>
+    <div id="xlsList" class="xlsList"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="xlsOk">読む</button></div>
+  </div>
+</dialog>
+
 <dialog id="dEdit">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody" id="eBody"></div>
@@ -118,10 +134,10 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311241"></script>
+<script src="config.js?v=202610311248"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
-<script src="grid.js?v=202610311241"></script>
-<script src="app.js?v=202610311241"></script>
+<script src="grid.js?v=202610311248"></script>
+<script src="app.js?v=202610311248"></script>
 </body>
 </html>

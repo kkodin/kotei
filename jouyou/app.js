@@ -1,7 +1,7 @@
 /* 常用日報 Vr000（2026-10-31 たたき台）
    元の Excel：元請の「作業日報」（1日1シート・A4 横・A〜P 列）
    ・元請業者 → 現場 を選ぶ。現場ごとに日報・作業員名簿・機材を持つ
-   ・日報：日付（曜日は自動）・天気・気温・担当者・元請サイン（iPad・スマホだけ書ける）
+   ・日報：日付（曜日は自動）・天気・気温・記入者・元請サイン（iPad・スマホだけ書ける）
            上の表＝工種・作業内容・人員（作業員の工種ごとの人数を自動）・使用資機材
            下の表＝作業員名・始業・終業・工種・残業（終業から自動）｜使用機材・規格・数量・累計（自動）｜品名・数量・累計数量（自動）
    ・表のセルの動きは Excel と同じ（grid.js＝日報 Vr002 と同じもの）
@@ -292,12 +292,12 @@ function buildSheet() {
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v" id="hDate"></td><td class="v" id="hWd"></td>
-          <td class="l">天気</td><td class="l">気温</td><td class="l" rowspan="2">担当者</td><td rowspan="2"><input id="hTan" list="dlNames" title="記入者（担当者）"></td></tr>
+          <td class="l">天気</td><td class="l">気温</td><td class="l" rowspan="2">記入者</td><td rowspan="2"><span class="combo"><input id="hTan" autocomplete="off" title="記入者（▾ で一覧から選ぶか、そのまま打つ）"><button type="button" class="cbtn" id="hTanBtn" tabindex="-1" title="一覧から選ぶ">▾</button></span></td></tr>
       <tr><td class="l">現場名</td><td class="v" id="hSite" colspan="4"></td>
-          <td><input id="hWx" list="dlWx" title="天気（一覧から選ぶか打つ）"></td>
-          <td><span class="tmp"><input id="hTmp" inputmode="decimal" title="気温（数字）">℃</span></td></tr>
+          <td><select id="hWx" title="天気（一覧は「現場・名簿」で直せる）"></select></td>
+          <td><span class="tmp"><input id="hTmp" type="text" inputmode="decimal" autocomplete="off" title="気温（数字だけ。マイナスと小数点も可）">℃</span></td></tr>
     </table>
-    <datalist id="dlWx"></datalist><datalist id="dlNames"></datalist>
+    <div id="tanList" class="clist" hidden></div>
     <div class="mid">
       <div class="left sec" data-key="up">
         <div class="secT"><b>工種・作業内容・人員</b><span class="cnt" id="cntUp"></span></div>
@@ -357,7 +357,38 @@ function buildSheet() {
     });
   }
   setCur("dn");
-  // 上の欄（天気・気温・担当者・備考）
+  // 記入者：一覧から選ぶ＋自由に打てる（2026-10-31 ユーザー）。ブラウザの候補（datalist）は自動入力が混ざる・iPad で出にくいので自前の一覧
+  const tanWords = () => { const s = site(); return [...new Set([s && s.担当者, ...(s ? Object.values(s.日).map(d => d.担当者) : []), ...MS.社員, ...(s ? s.作業員.map(x => masterName(x.名前)) : [])].filter(Boolean))]; };
+  const showTan = all => {
+    const q = nk($("hTan").value), ws = tanWords().filter(x => all || !q || nk(x).includes(q));
+    if (!ws.length) { $("tanList").hidden = true; return; }
+    $("tanList").innerHTML = ws.map(x => `<div data-v="${esc(x)}">${esc(x)}</div>`).join("");
+    const r = $("hTan").closest("td").getBoundingClientRect();
+    Object.assign($("tanList").style, { left: r.left + "px", top: r.bottom + "px", minWidth: r.width + "px" });
+    $("tanList").hidden = false;
+  };
+  $("hTanBtn").addEventListener("pointerdown", e => { e.preventDefault(); if ($("tanList").hidden) { showTan(true); $("hTan").focus(); } else $("tanList").hidden = true; });
+  $("hTan").addEventListener("input", () => showTan(false));
+  $("hTan").addEventListener("keydown", e => {
+    if (e.isComposing) return;
+    if (e.key === "ArrowDown" && (e.altKey || $("tanList").hidden)) { e.preventDefault(); showTan(true); }
+    else if (e.key === "Escape") $("tanList").hidden = true;
+    else if (e.key === "Enter") { $("tanList").hidden = true; $("hTan").blur(); }
+  });
+  $("hTan").addEventListener("blur", () => setTimeout(() => { $("tanList").hidden = true; }, 150));
+  $("tanList").addEventListener("pointerdown", e => {
+    const d = e.target.closest("[data-v]"); if (!d) return;
+    e.preventDefault(); $("hTan").value = d.dataset.v; $("tanList").hidden = true;
+    $("hTan").dispatchEvent(new Event("change"));
+  });
+  $("sheetWrap").addEventListener("scroll", () => { $("tanList").hidden = true; });
+  // 気温は数字だけ：打つたびに数字・小数点・マイナス以外を外す（日本語入力中は確定してから）
+  const tmpOnly = v => { v = han(v).replace(/[ー−‐―]/g, "-").replace(/[^\d.\-]/g, ""); return v.replace(/(?!^)-/g, "").replace(/(\..*)\./g, "$1"); };
+  let tmpIme = false;
+  $("hTmp").addEventListener("compositionstart", () => { tmpIme = true; });
+  $("hTmp").addEventListener("compositionend", () => { tmpIme = false; $("hTmp").value = tmpOnly($("hTmp").value); });
+  $("hTmp").addEventListener("input", () => { if (!tmpIme) { const v = tmpOnly($("hTmp").value); if (v !== $("hTmp").value) $("hTmp").value = v; } });
+  // 上の欄（天気・気温・記入者・備考）
   const hv = (id, f, norm) => $(id).addEventListener("change", () => {
     const s = site(); if (!s) return;
     pushUndo();
@@ -367,7 +398,7 @@ function buildSheet() {
     if (!hasData(d)) delete s.日[UI.day];
     save(); renderTabs();
   });
-  hv("hWx", "天気"); hv("hTmp", "気温", v => normNum(v)); hv("hTan", "担当者"); hv("hBikou", "備考");
+  hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim())); hv("hBikou", "備考");
   $("signBox").addEventListener("pointerup", e => {
     if (e.target.closest(".del")) return;
     if (!site()) return;
@@ -383,13 +414,14 @@ function refreshSheet() {
   const w = wd(UI.day);
   $("hWd").textContent = WD[w]; $("hWd").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
   $("hDate").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
-  if (document.activeElement !== $("hWx")) $("hWx").value = d ? d.天気 : "";
+  // 天気の一覧（いまの値が一覧に無いとき＝前に打ったもの・Excel から読んだものは、その値も出す）
+  const wx = d ? d.天気 : "", wxs = DB.天気.includes(wx) || !wx ? DB.天気 : [...DB.天気, wx];
+  $("hWx").innerHTML = `<option value="">　</option>` + wxs.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  $("hWx").value = wx;
   if (document.activeElement !== $("hTmp")) $("hTmp").value = d ? d.気温 : "";
   if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : "";
   $("hTan").placeholder = s ? s.担当者 : "";
   if (document.activeElement !== $("hBikou")) $("hBikou").value = d ? d.備考 : "";
-  $("dlWx").innerHTML = DB.天気.map(x => `<option value="${esc(x)}">`).join("");
-  $("dlNames").innerHTML = s ? s.作業員.map(x => `<option value="${esc(x.名前)}">`).join("") : "";
   // サイン
   const sb = $("signBox");
   sb.innerHTML = d && d.サイン ? `<img src="${d.サイン}" alt="サイン"><span class="when">${esc(d.サイン日時)}</span><button class="sub del" title="サインを消す">×</button>` : "（iPad・スマホで押してサイン）";
@@ -788,7 +820,7 @@ function renderMaster() {
   }
   if (s) {
     h.push(`<h3 class="sh">${esc(s.名前)} の決まり</h3><div class="mrow"><div class="mbox"><table class="ed">
-      <tr><th>担当者（記入者）</th><td><input data-sf="担当者" value="${esc(s.担当者)}"></td></tr>
+      <tr><th>記入者（いつもの）</th><td><input data-sf="担当者" value="${esc(s.担当者)}"></td></tr>
       <tr><th>定時の始業</th><td><input data-sf="始業" value="${esc(s.始業)}" inputmode="numeric"></td></tr>
       <tr><th>定時の終業</th><td><input data-sf="終業" value="${esc(s.終業)}" inputmode="numeric"></td></tr>
       <tr><th>締め日</th><td><input data-sf="締め日" value="${esc(s.締め日)}" inputmode="numeric" title="20 → 21日〜翌月20日。0 か 31 → 月末締め"></td></tr>
@@ -827,7 +859,7 @@ $("masterBody").addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
   const s = site(), dsx = t.dataset;
   if (t.id === "mAddGen") return editDlg("元請業者を追加", [["元請業者名", "name", ""]], v => { if (!v.name) return; const g = { id: uid(), 名前: v.name }; DB.元請.push(g); UI.gen = g.id; UI.site = null; save(); renderAll(); });
-  if (t.id === "mAddSite") return editDlg("現場を追加（" + gen().名前 + "）", [["現場名", "name", ""], ["担当者（記入者）", "tan", ""], ["締め日", "shime", "20"]], v => { if (!v.name) return; const x = fixSite({ id: uid(), 元請id: UI.gen, 名前: v.name, 担当者: v.tan, 締め日: Number(han(v.shime)) || 0 }); DB.現場.push(x); UI.site = x.id; save(); renderAll(); });
+  if (t.id === "mAddSite") return editDlg("現場を追加（" + gen().名前 + "）", [["現場名", "name", ""], ["記入者", "tan", ""], ["締め日", "shime", "20"]], v => { if (!v.name) return; const x = fixSite({ id: uid(), 元請id: UI.gen, 名前: v.name, 担当者: v.tan, 締め日: Number(han(v.shime)) || 0 }); DB.現場.push(x); UI.site = x.id; save(); renderAll(); });
   if (dsx.pickgen) { UI.gen = dsx.pickgen; UI.site = null; renderAll(); return; }
   if (dsx.picksite) { UI.site = dsx.picksite; renderAll(); return; }
   if (dsx.delgen) { if (DB.現場.some(x => x.元請id === dsx.delgen)) { toast("現場がある元請業者は消せません（先に現場を消す）"); return; } if (!confirm("この元請業者を消しますか？")) return; DB.元請 = DB.元請.filter(x => x.id !== dsx.delgen); save(); renderAll(); return; }
@@ -920,33 +952,108 @@ async function importXlsx(buf) {
     got.push({ date: ymd(dt), gen: g("B3"), site: g("B4"), d });
   });
   if (!got.length) { toast("作業日報のシートが見つかりませんでした"); return; }
-  const gName = got[0].gen || "（元請業者）", sName = got[0].site || "（現場）";
-  // 現場一覧（マスタ）にある現場ならそれに入れる。無ければ元請・現場を作る
+  got.sort((p, q) => p.date.localeCompare(q.date));
+  openXlsDlg(got);
+}
+/* ---------- Excel の日を選んで読む（2026-10-31 ユーザー：Excel の特定の日から内容を読み込める） ----------
+   読み先：「Excel の日付のまま」＝選んだ日をその日に入れる（現場は Excel の現場名から）
+           「いま開いている日へ」＝選んだ1日の内容を、いま開いている現場・日に写す（天気・気温・備考・サインは写さない） */
+let XLS = null;
+function openXlsDlg(got) {
+  XLS = got;
+  const a = got[0].date, b = got[got.length - 1].date;
+  $("xlsInfo").textContent = `Excel の中に ${got.length} 日分（${jpDate(a)}〜${jpDate(b)}）。現場名：${got[0].site || "（なし）"}`;
+  $("xlsFrom").value = a; $("xlsTo").value = b;
+  $("xlsCurDay").textContent = site() ? `${siteLabel(site())}　${jpDate(UI.day)}（${WD[wd(UI.day)]}）` : "（現場を選んでいません）";
+  $("xlsModeCur").disabled = !site();
+  $("xlsModeSame").checked = true; $("xlsRange").hidden = false;
+  renderXlsList(true);
+  openDlg($("dXls"));
+}
+function xlsTarget() {
+  // Excel の日付のままのとき、入れる先の現場（マスタの現場一覧 → 元請と名前 → 無ければ読むときに作る）
+  const sName = XLS[0].site || "（現場）";
   const mm = MS.現場.find(m => siteMatch(sName, m));
   let s = mm && (DB.現場.find(x => x.コード === mm.コード) || (syncMasterSites(), DB.現場.find(x => x.コード === mm.コード)));
-  let g = s ? DB.元請.find(x => x.id === s.元請id) : DB.元請.find(x => nk(x.名前) === nk(gName));
-  if (!g) { g = { id: uid(), 名前: gName }; DB.元請.push(g); }
-  if (!s) s = DB.現場.find(x => x.元請id === g.id && nk(x.名前) === nk(sName));
-  const isNew = !s;
-  if (!s) { s = fixSite({ id: uid(), 元請id: g.id, 名前: sName, 担当者: got[0].d.担当者 }); DB.現場.push(s); }
-  if (!s.担当者) s.担当者 = masterName(got[0].d.担当者);
-  const over = got.filter(x => hasData(s.日[x.date])).length;
-  if (over && !confirm(`${sName} に、もう書いてある日が ${over} 日あります。Excel の内容で上書きしますか？`)) { if (isNew) DB.現場.pop(); return; }
-  // 始業・終業が空なら、定時を入れて残業を出す（元の Excel は時刻が空のことが多い）
-  for (const x of got) {
-    x.d.下.forEach(r => {
-      if (!r[0]) return;
-      r[0] = masterName(r[0]);
-      if (!s.作業員.some(w => nk(w.名前) === nk(r[0]))) s.作業員.push({ 名前: r[0], 職種: r[3] });
-      if (r[3] && !DB.職種.includes(r[3])) DB.職種.push(r[3]);
-      if (r[5] && !s.機材.some(m => m.名前 === r[5] && m.規格 === r[6])) s.機材.push({ 名前: r[5], 規格: r[6] });
-    });
-    s.日[x.date] = x.d;
-  }
-  const last = got.map(x => x.date).sort().pop();
-  UI.gen = g.id; UI.site = s.id; UI.day = last;
-  save(); renderAll(); toast(`Excel から ${got.length} 日分を取り込みました（${sName}）`);
+  if (!s) { const g = DB.元請.find(x => nk(x.名前) === nk(XLS[0].gen)); s = g && DB.現場.find(x => x.元請id === g.id && nk(x.名前) === nk(sName)); }
+  return s || null;
 }
+function renderXlsList(reset) {
+  const cur = $("xlsModeCur").checked, s = cur ? site() : xlsTarget();
+  const a = $("xlsFrom").value, b = $("xlsTo").value;
+  const keep = reset ? null : new Set([...document.querySelectorAll("#xlsList input:checked")].map(i => i.value));
+  $("xlsList").innerHTML = `<table class="sm"><thead><tr><th></th><th>日付</th><th>曜</th><th>作業員</th><th>工種・作業内容</th><th>${cur ? "" : "このブラウザ"}</th></tr></thead><tbody>` +
+    XLS.map((x, i) => {
+      const n = x.d.下.filter(r => r && r[0]).length, w = wd(x.date);
+      const on = keep ? keep.has(String(i)) : (cur ? false : x.date >= a && x.date <= b);
+      const has = !cur && s && hasData(s.日[x.date]);
+      return `<tr class="${w === 0 ? "sun" : w === 6 ? "sat" : ""}"><td><input type="${cur ? "radio" : "checkbox"}" name="xlsPick" value="${i}"${on ? " checked" : ""}></td><td>${+x.date.slice(5, 7)}/${+x.date.slice(8)}</td><td class="c">${WD[w]}</td><td class="r">${n}名</td>` +
+        `<td>${esc(x.d.上.filter(r => r && (r[0] || r[1])).map(r => [r[0], r[1], r[2]].filter(Boolean).join(" ")).join("／").slice(0, 60))}</td><td class="c">${has ? '<span class="ng">書いてある（上書き）</span>' : ""}</td></tr>`;
+    }).join("") + `</tbody></table>`;
+  xlsCount();
+}
+function xlsCount() {
+  const n = document.querySelectorAll("#xlsList input:checked").length;
+  $("xlsOk").textContent = $("xlsModeCur").checked ? "この日に写す" : `${n} 日分を読む`;
+  $("xlsOk").disabled = !n;
+}
+$("xlsList").addEventListener("change", xlsCount);
+// 行のどこを押しても選べる（iPad で小さい四角を押さなくてよいように）
+$("xlsList").addEventListener("click", e => {
+  const tr = e.target.closest("tbody tr"); if (!tr || e.target.tagName === "INPUT") return;
+  const i = tr.querySelector("input"); i.checked = i.type === "radio" ? true : !i.checked; xlsCount();
+});
+["xlsFrom", "xlsTo"].forEach(id => $(id).addEventListener("change", () => { if (!$("xlsModeCur").checked) renderXlsList(true); }));
+["xlsModeSame", "xlsModeCur"].forEach(id => $(id).addEventListener("change", () => { $("xlsRange").hidden = $("xlsModeCur").checked; renderXlsList(true); }));
+$("xlsAll").onclick = () => { document.querySelectorAll("#xlsList input[type=checkbox]").forEach(i => i.checked = true); xlsCount(); };
+$("xlsNone").onclick = () => { document.querySelectorAll("#xlsList input[type=checkbox]").forEach(i => i.checked = false); xlsCount(); };
+$("xlsOk").onclick = () => {
+  const pick = [...document.querySelectorAll("#xlsList input:checked")].map(i => XLS[+i.value]);
+  if (!pick.length) return;
+  if ($("xlsModeCur").checked) xlsToCurrent(pick[0]); else xlsSameDays(pick);
+};
+// 名簿・工種・機材に足す（名前は名簿の書き方にそろえる）
+function learn(s, d) {
+  d.下.forEach(r => {
+    if (!r[0]) return;
+    r[0] = masterName(r[0]);
+    if (!s.作業員.some(w => nk(w.名前) === nk(r[0]))) s.作業員.push({ 名前: r[0], 職種: r[3] });
+    if (r[3] && !DB.職種.includes(r[3])) DB.職種.push(r[3]);
+    if (r[5] && !s.機材.some(m => m.名前 === r[5] && m.規格 === r[6])) s.機材.push({ 名前: r[5], 規格: r[6] });
+  });
+}
+function xlsToCurrent(x) {
+  const s = site(); if (!s) return;
+  if (hasData(day()) && !confirm(`${jpDate(UI.day)} の内容を、Excel の ${jpDate(x.date)} の内容で置き換えますか？（↶ で戻せます）`)) return;
+  pushUndo();
+  const src = JSON.parse(JSON.stringify(x.d)), d = ensureDay();
+  learn(s, src);
+  d.上 = src.上; d.下 = src.下; d.人員手 = src.人員手; if (src.担当者) d.担当者 = src.担当者; d.更新 = now();
+  closeDlg($("dXls")); save(); refreshSheet();
+  toast(`Excel の ${jpDate(x.date)} の内容を ${jpDate(UI.day)} に写しました（天気・気温・備考・サインは写していません）`);
+}
+function xlsSameDays(pick) {
+  const sName = XLS[0].site || "（現場）", gName = XLS[0].gen || "（元請業者）";
+  let s = xlsTarget();
+  if (!s) {
+    let g = DB.元請.find(x => nk(x.名前) === nk(gName));
+    if (!g) { g = { id: uid(), 名前: gName }; DB.元請.push(g); }
+    s = fixSite({ id: uid(), 元請id: g.id, 名前: sName, 担当者: XLS[0].d.担当者 }); DB.現場.push(s);
+  }
+  if (!s.担当者) s.担当者 = masterName(XLS[0].d.担当者);
+  const over = pick.filter(x => hasData(s.日[x.date])).length;
+  if (over && !confirm(`${s.名前} に、もう書いてある日が ${over} 日あります。Excel の内容で上書きしますか？`)) return;
+  for (const x of pick) { const d = JSON.parse(JSON.stringify(x.d)); learn(s, d); s.日[x.date] = d; }
+  UI.gen = s.元請id; UI.site = s.id; UI.day = pick[pick.length - 1].date;
+  UNDO = []; REDO = [];
+  closeDlg($("dXls")); save(); renderAll();
+  toast(`Excel から ${pick.length} 日分を読みました（${siteLabel(s)}）`);
+}
+$("bXlsIn").onclick = () => { $("xlsFile").value = ""; $("xlsFile").click(); };
+$("xlsFile").onchange = async () => {
+  const f = $("xlsFile").files[0]; if (!f) return;
+  try { await importXlsx(await f.arrayBuffer()); } catch (e) { console.error(e); toast("読めませんでした：" + e.message); }
+};
 
 /* ================= Excel 出力（元の作業日報と同じ番地・A4 横・1シート1日） ================= */
 const B_THIN = { style: "thin", color: { argb: "FF000000" } };
@@ -983,7 +1090,7 @@ function daySheet(wb, s, x, d) {
   put("A3", "元請業者"); put("B3", gen() ? gen().名前 : "", "B3:D3");
   put("E3", "日　　付", "E3:F3"); put("G3", dt, "G3:H3").numFmt = 'yyyy"年"m"月"d"日"';
   put("I3", WD[dt.getDay()]); put("J3", "天気"); put("K3", "気温");
-  put("L3", "担当者", "L3:L4"); put("M3", d.担当者 || s.担当者 || "", "M3:P4");
+  put("L3", "記入者", "L3:L4"); put("M3", d.担当者 || s.担当者 || "", "M3:P4");
   put("A4", "現場名"); put("B4", s.名前, "B4:I4"); put("J4", d.天気 || ""); put("K4", d.気温 !== "" && d.気温 != null ? d.気温 + "℃" : "℃");
   ws.getCell("K4").alignment = { vertical: "middle", horizontal: "right" };
   put("A5", "工種", "A5:A6"); put("B5", "作業内容", "B5:C6"); put("D5", "人員", "D5:D6");
@@ -1072,7 +1179,7 @@ function dayHTML(s, x, d) {
   const h = [];
   h.push(`<div class="pg"><table class="pt"><colgroup>${[...Array(16)].map((_, i) => `<col style="width:${i === 12 ? 9.2 : 17.86}mm">`).join("")}</colgroup>`);
   h.push(`<tr><td class="t" colspan="16">作　業　日　報</td></tr><tr class="b"><td class="nb" colspan="16"></td></tr>`);
-  h.push(`<tr class="a">${c("元請業者")}${c(gen() ? gen().名前 : "", "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("担当者", "", sp(1, 2))}${c(d.担当者 || s.担当者 || "", "", sp(4, 2))}</tr>`);
+  h.push(`<tr class="a">${c("元請業者")}${c(gen() ? gen().名前 : "", "", sp(3))}${c("日　　付", "", sp(2))}${c(jpDate(x), "", sp(2))}${c(WD[dt.getDay()])}${c("天気")}${c("気温")}${c("記入者", "", sp(1, 2))}${c(d.担当者 || s.担当者 || "", "", sp(4, 2))}</tr>`);
   h.push(`<tr class="a">${c("現場名")}${c(s.名前, "", sp(8))}${c(d.天気 || "")}${c((d.気温 ?? "") + "℃")}</tr>`);
   // 上の5段（Excel は2行ずつ）。空の行は高さがつぶれるので、1段＝高い1行で組む
   h.push(`<tr class="a2">${c("工種")}${c("作業内容", "", sp(2))}${c("人員")}${c("使　用　資　機　材　・　重　機", "", sp(7))}${c("元請サイン")}<td class="s"${sp(4)}>${d.サイン ? `<img src="${d.サイン}">` : ""}</td></tr>`);
