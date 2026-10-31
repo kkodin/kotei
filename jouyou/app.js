@@ -178,21 +178,23 @@ const UPC = [
 // di＝データの何列目か（2026-10-31 会社の欄を足した。データは後ろ（12）に足し、画面では作業員名の右に出す）
 // 幅は紙（#sheet）に収まるように詰めた（2026-10-31 ユーザー：用紙からはみ出た）
 const DNC = [
-  { t: "作業員名", w: 114, k: "txt", stopFlow: true },
-  { t: "会社", w: 104, k: "txt", di: 12, stopFlow: true },
+  { t: "作業員名", w: 106, k: "txt", stopFlow: true },
+  { t: "会社", w: 96, k: "txt", di: 12, stopFlow: true },
   { t: "昼夜", w: 36, k: "shift", cls: "c", align: "c", di: 14 },
   { t: "始業時間", w: 54, k: "time", cls: "c", align: "c" },
   { t: "終業時間", w: 54, k: "time", cls: "c", align: "c" },
   { t: "工種", w: 78, k: "txt", cls: "c", align: "c" },
   { t: "残", w: 44, k: "hrs", cls: "r", align: "r" },
-  { t: "使用機材", w: 118, k: "txt", cls: "sepL" },
-  { t: "規格・形式", w: 96, k: "txt" },
-  { t: "所有者", w: 104, k: "txt", di: 13, stopFlow: true },
+  { t: "使用機材", w: 110, k: "txt", cls: "sepL" },
+  { t: "規格・形式", w: 88, k: "txt" },
+  { t: "所有者", w: 96, k: "txt", di: 13, stopFlow: true },
   { t: "数量", w: 42, k: "num", cls: "r", align: "r" },
-  { t: "累計", w: 46, k: "num", cls: "r ro", align: "r", ro: true },
-  { t: "品名", w: 106, k: "txt", cls: "sepL" },
+  { t: "累計", w: 44, k: "num", cls: "r ro", align: "r", ro: true },
+  { t: "品名", w: 98, k: "txt", cls: "sepL" },
   { t: "数量", w: 42, k: "num", cls: "r", align: "r" },
-  { t: "累計数量", w: 56, k: "num", cls: "r ro", align: "r", ro: true }
+  // 実費（円）：高速代（ルートで変わる）・領収書精算など、その日の実際の金額。入れると単価×数量の代わりにこの金額（2026-10-31 ユーザー）
+  { t: "実費", w: 56, k: "num", cls: "r", align: "r", di: 15 },
+  { t: "累計数量", w: 50, k: "num", cls: "r ro", align: "r", ro: true }
 ];
 UPC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
 // 画面の順のうち、di の無い列はデータの 0〜11 を順に当てる（会社＝12・所有者＝13 は後ろに足した列）
@@ -338,8 +340,8 @@ const PT = [
   { 区分: "機械", 分類: "小型機械", 題: "機械（小型機械）", cols: PT_K },
   { 区分: "機械", 分類: "電動工具", 題: "機械（電動工具）", cols: PT_K },
   { 区分: "材料", 分類: "固定単価", 題: "材料（固定単価）", cols: [["名前", "品名"], ["規格", "規格"], ["単位", "単位"], ["単価", "単価（円）", "n"], ["開始", "開始", "d"], ["終了", "終了", "d"], ["メモ", "メモ"]] },
-  { 区分: "材料", 分類: "領収書精算", 題: "材料（領収書精算）", note: "単価は決めません。日報の品名にこの名前を書き、数量の欄に領収書の金額（円）を入れると、その金額をそのまま足します。", cols: [["名前", "品名"], ["メモ", "メモ"]] },
-  { 区分: "通勤費", 分類: "高速代", 題: "通勤費（高速代・区間ごと）", note: "日報の品名に「高速代（区間）」か区間を書き、数量に回数を入れます。区間が空の行は、区間を書かなかったときに使います。", cols: [["名前", "区間"], ["単価", "単価（円/回）", "n"], ["開始", "開始", "d"], ["終了", "終了", "d"], ["メモ", "メモ"]] },
+  { 区分: "材料", 分類: "領収書精算", 題: "材料（領収書精算）", note: "単価は決めません。日報の品名にこの名前を書き、「実費」の欄に領収書の金額（円）を入れると、その金額をそのまま足します（同じ品でも日によって金額が違ってよい）。実費が空なら数量の欄を金額とみます（前の書き方）。", cols: [["名前", "品名"], ["メモ", "メモ"]] },
+  { 区分: "通勤費", 分類: "高速代", 題: "通勤費（高速代・区間ごと）", note: "日報の品名に「高速代（区間）」か区間を書き、数量に回数を入れます。区間が空の行は、区間を書かなかったときに使います。ルートで金額が違う日は、日報の「実費」の欄に実際の金額（円）を入れると、単価×回数の代わりにそちらを使います。", cols: [["名前", "区間"], ["単価", "単価（円/回）", "n"], ["開始", "開始", "d"], ["終了", "終了", "d"], ["メモ", "メモ"]] },
   { 区分: "通勤費", 分類: "通勤車", 題: "通勤費（通勤車）", note: "日報の使用機材に書いた通勤車を、所有者ごとに 台数×単価。", cols: [["名前", "名前"], ["規格", "規格"], ["所有者", "所有者"], ["単価", "単価（円/台日）", "n"], ["開始", "開始", "d"], ["終了", "終了", "d"], ["メモ", "メモ"]] }
 ];
 const PK = ["労務", "機械", "材料", "通勤費"];
@@ -1567,9 +1569,13 @@ function summarize(s, a, b) {
         const m = hin.get(r[9]) || { 日: {}, 計: 0 }; const q = Number(r[10]) || 0; m.日[x] = (m.日[x] || 0) + q; m.計 += q; hin.set(r[9], m);
         const pz = itemPrice(s, ["材料", "通勤費"], r[9], "", "", x);
         const ZZ = pz && pz.区分 === "通勤費" ? money.通勤費 : money.材料, Z = ZZ.get(r[9]) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: pz ? pz.分類 : (/高速/.test(r[9]) ? "高速代" : "（単価なし）") };
-        // 領収書精算：数量の欄の金額をそのまま
-        if (pz && pz.精算) { Z.数量 += 1; Z.金額 += q; Z.精算 = true; Z.分類 = pz.分類; }
-        else { Z.数量 += q; if (pz) { Z.金額 += q * pz.単価; Z.単価.add(+pz.単価); Z.分類 = pz.分類; } else Z.なし++; }
+        // 実費の欄に金額があれば、それを使う（高速代のルート違い・領収書の金額）。
+        // 領収書精算で実費が空なら、前の書き方どおり数量の欄を金額とみる
+        const jv = han(String(r[15] ?? "")).replace(/[,，円\s]/g, ""), jh = jv !== "" && !isNaN(Number(jv)) ? Number(jv) : null;
+        if (pz) Z.分類 = pz.分類;
+        if (jh != null) { Z.数量 += pz && pz.精算 ? 1 : (q || 1); Z.金額 += jh; Z.実費 = (Z.実費 || 0) + 1; if (pz && pz.精算) Z.精算 = true; }
+        else if (pz && pz.精算) { Z.数量 += 1; Z.金額 += q; Z.精算 = true; }
+        else { Z.数量 += q; if (pz) { Z.金額 += q * pz.単価; Z.単価.add(+pz.単価); } else Z.なし++; }
         ZZ.set(r[9], Z);
       }
     });
@@ -1695,7 +1701,7 @@ function moneyHTML(S) {
     h.push(`<h4 class="mh">${ttl}</h4><table class="sm"><thead><tr>${withCls ? "<th>分類</th>" : ""}<th>${lab}</th><th>数量</th><th>単価</th><th>金額</th></tr></thead><tbody>`);
     for (const [k, v] of ent) {
       const [nm, own] = k.split("\t");
-      h.push(`<tr class="${v.なし ? "nocomp" : ""}">${withCls ? `<td>${esc(v.分類 || "")}</td>` : ""}<td>${esc(nm)}${own ? `<span class="note">　${esc(own)}</span>` : ""}</td><td class="r">${v.精算 ? v.数量 + "回" : r2(v.数量) + unit}</td><td class="r">${v.精算 ? "領収書精算" : v.単価.size ? [...v.単価].map(yen).join("・") : '<span class="ng">単価なし</span>'}</td><td class="r"><b>${yen(v.金額)}</b>${v.なし && v.単価.size ? `<span class="ng note">（${v.なし}件 単価なし）</span>` : ""}</td></tr>`);
+      h.push(`<tr class="${v.なし ? "nocomp" : ""}">${withCls ? `<td>${esc(v.分類 || "")}</td>` : ""}<td>${esc(nm)}${own ? `<span class="note">　${esc(own)}</span>` : ""}</td><td class="r">${v.精算 ? v.数量 + "回" : r2(v.数量) + unit}</td><td class="r">${v.精算 && !v.単価.size ? "領収書精算" : v.単価.size ? [...v.単価].map(yen).join("・") : v.実費 && !v.なし ? "実費" : '<span class="ng">単価なし</span>'}${v.実費 && (v.単価.size || v.精算) ? `<span class="note">（実費 ${v.実費}件）</span>` : ""}</td><td class="r"><b>${yen(v.金額)}</b>${v.なし && v.単価.size ? `<span class="ng note">（${v.なし}件 単価なし）</span>` : ""}</td></tr>`);
     }
     h.push(`</tbody><tfoot><tr><td colspan="${withCls ? 4 : 3}">計</td><td class="r">${yen([...m.values()].reduce((a, v) => a + v.金額, 0))}</td></tr></tfoot></table>`);
   };
@@ -2431,7 +2437,7 @@ function daySheet(wb, s, x, d) {
   put("L7", "工種", "L7:N7"); put("O7", "人員", "O7:P7");
   for (let j = 0; j < 8; j++) { const r = 8 + j, x = KR[j]; put("L" + r, x ? x.k : "", `L${r}:N${r}`); put("O" + r, x ? ninTxt(x) : "", `O${r}:P${r}`).alignment = { vertical: "middle", horizontal: "right" }; }
   put("L16", "計", "L16:N16"); put("O16", KS.計 ? ninTxt({ n: KS.計, 夜: KS.rows.reduce((a, x) => a + x.夜, 0) }) : "", "O16:P16").alignment = { vertical: "middle", horizontal: "right" };
-  const H = [["A17", "作業員名", "A17:B17"], ["C17", "始業時間"], ["D17", "終業時間"], ["E17", "工種"], ["F17", "残業時間"], ["G17", "使用機材", "G17:H17"], ["I17", "規格・形式"], ["J17", "数量"], ["K17", "累計"], ["L17", "品名"], ["M17", "数量", "M17:N17"], ["O17", "累計数量", "O17:P17"]];
+  const H = [["A17", "作業員名", "A17:B17"], ["C17", "始業時間"], ["D17", "終業時間"], ["E17", "工種"], ["F17", "残業時間"], ["G17", "使用機材", "G17:H17"], ["I17", "規格・形式"], ["J17", "数量"], ["K17", "累計"], ["L17", "品名"], ["M17", "数量"], ["N17", "実費"], ["O17", "累計数量", "O17:P17"]];
   H.forEach(([a, v, m]) => put(a, v, m));
   // 累計は画面と同じ計算（この日の現場・日を一時的に当てる）
   const keep = UI.day; UI.day = x;
@@ -2441,7 +2447,7 @@ function daySheet(wb, s, x, d) {
     put("A" + r, row[0] || "", `A${r}:B${r}`); put("C" + r, row[0] ? row[1] || "" : ""); put("D" + r, row[0] ? row[2] || "" : "");
     put("E" + r, row[3] || ""); const ot = put("F" + r, num(row[4])); if (row[4]) ot.font = { ...font, color: { argb: "FFC00000" } };
     put("G" + r, row[5] ? (row[13] ? "（" + abbrOf(row[13]) + "）" : "") + row[5] : "", `G${r}:H${r}`); put("I" + r, row[6] || ""); put("J" + r, num(row[7])); put("K" + r, num(row[5] ? getCellFor(d, i, 8) : ""));
-    put("L" + r, row[9] || ""); put("M" + r, num(row[10]), `M${r}:N${r}`); put("O" + r, num(row[9] ? getCellFor(d, i, 11) : ""), `O${r}:P${r}`);
+    put("L" + r, row[9] || ""); put("M" + r, num(row[10])); const jc = put("N" + r, num(row[15])); if (row[15] !== "" && row[15] != null) jc.numFmt = "#,##0"; put("O" + r, num(row[9] ? getCellFor(d, i, 11) : ""), `O${r}:P${r}`);
   }
   UI.day = keep;
   for (let r = 3; r <= last; r++) for (let c = 1; c <= 16; c++) {
@@ -2521,7 +2527,7 @@ function sumSheet(wb, s, a, b) {
       if (!m.size) return;
       ["", ttl, "数量", "単位", "単価", "金額"].slice(1).forEach((t, i) => cellAt(r, i + 1, t, { fill: "FFEEF3F8" })); r++;
       const top2 = r;
-      for (const [k, v] of m) { const [nm, own] = k.split("\t"); cellAt(r, 1, (v.分類 ? "［" + v.分類 + "］" : "") + nm + (own ? "　" + own : ""), { h: "left" }); cellAt(r, 2, Math.round(v.数量 * 100) / 100, { h: "right" }); cellAt(r, 3, v.精算 ? "回" : unit); cellAt(r, 4, v.精算 ? "領収書精算" : v.単価.size === 1 ? [...v.単価][0] : v.単価.size ? [...v.単価].join("・") : "単価なし", { h: "right" }).numFmt = "#,##0"; cellAt(r, 5, Math.round(v.金額), { h: "right" }).numFmt = "#,##0"; r++; }
+      for (const [k, v] of m) { const [nm, own] = k.split("\t"); cellAt(r, 1, (v.分類 ? "［" + v.分類 + "］" : "") + nm + (own ? "　" + own : ""), { h: "left" }); cellAt(r, 2, Math.round(v.数量 * 100) / 100, { h: "right" }); cellAt(r, 3, v.精算 ? "回" : unit); cellAt(r, 4, v.精算 && !v.単価.size ? "領収書精算" : !v.単価.size && v.実費 && !v.なし ? "実費" : v.単価.size === 1 ? [...v.単価][0] : v.単価.size ? [...v.単価].join("・") : "単価なし", { h: "right" }).numFmt = "#,##0"; cellAt(r, 5, Math.round(v.金額), { h: "right" }).numFmt = "#,##0"; r++; }
       cellAt(r, 1, "計", { fill: "FFF5F5F5" }); [2, 3, 4].forEach(c => cellAt(r, c, "", { fill: "FFF5F5F5" })); cellAt(r, 5, { formula: `SUM(E${top2}:E${r - 1})` }, { h: "right", fill: "FFF5F5F5", font: { bold: true } }).numFmt = "#,##0"; r += 2;
     };
     tbx("労務（工種別・昼夜）", M.労務, "人工"); tbx("残業（工種別）", M.残業, "時間"); tbx("機械（車両・重機・小型機械・電動工具）", M.機械, "台日"); tbx("材料（固定単価・領収書精算）", M.材料, ""); tbx("通勤費（高速代・通勤車）", M.通勤費, "");
@@ -2547,11 +2553,11 @@ function dayHTML(s, x, d) {
   // 左：作業内容 5段／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
   h.push(`<tr class="a2">${c("作　業　内　容", "", sp(7))}${c("備　考", "", sp(4))}${c("工種別の集計", "", sp(5))}</tr>`);
   for (let i = 0; i < UP_ROWS; i++) h.push(`<tr class="a2"><td class="wk"${sp(7)}>${esc(up(i)[1] || "")}</td><td class="wk"${sp(4)}>${esc(up(i)[4] || "")}</td>${i === 0 ? `<td class="ks"${sp(5, UP_ROWS)}>${kouSumHTML(d)}</td>` : ""}</tr>`);
-  h.push(`<tr class="b2">${c("作業員名", "", sp(2))}${c("始業時間")}${c("終業時間")}${c("工種")}${c("残業時間")}${c("使用機材", "", sp(2))}${c("規格・形式")}${c("数量")}${c("累計")}${c("品名")}${c("数量", "", sp(2))}${c("累計数量", "", sp(2))}</tr>`);
+  h.push(`<tr class="b2">${c("作業員名", "", sp(2))}${c("始業時間")}${c("終業時間")}${c("工種")}${c("残業時間")}${c("使用機材", "", sp(2))}${c("規格・形式")}${c("数量")}${c("累計")}${c("品名")}${c("数量")}${c("実費")}${c("累計数量", "", sp(2))}</tr>`);
   const n = Math.max(DN_ROWS, d.下.length);
   for (let i = 0; i < n; i++) {
     const r = d.下[i] || [];
-    h.push(`<tr class="a">${c(r[0] || "", "", sp(2))}${c(r[0] ? r[1] || "" : "")}${c(r[0] ? r[2] || "" : "")}${c(r[3] || "")}${c(r[4] || "", "ot")}${c(r[5] ? (r[13] ? "（" + abbrOf(r[13]) + "）" : "") + r[5] : "", "", sp(2))}${c(r[6] || "")}${c(r[7] || "")}${c(r[5] ? cumul("kizai", i) : "")}${c(r[9] || "")}${c(r[10] || "", "", sp(2))}${c(r[9] ? cumul("hin", i) : "", "", sp(2))}</tr>`);
+    h.push(`<tr class="a">${c(r[0] || "", "", sp(2))}${c(r[0] ? r[1] || "" : "")}${c(r[0] ? r[2] || "" : "")}${c(r[3] || "")}${c(r[4] || "", "ot")}${c(r[5] ? (r[13] ? "（" + abbrOf(r[13]) + "）" : "") + r[5] : "", "", sp(2))}${c(r[6] || "")}${c(r[7] || "")}${c(r[5] ? cumul("kizai", i) : "")}${c(r[9] || "")}${c(r[10] || "")}${c(r[15] !== "" && r[15] != null && !isNaN(Number(r[15])) ? yen(Number(r[15])) : r[15] || "")}${c(r[9] ? cumul("hin", i) : "", "", sp(2))}</tr>`);
   }
   h.push(`</table></div>`);
   UI.day = keep;
