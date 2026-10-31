@@ -259,6 +259,15 @@ table.shk3 .d3 { min-width: 18px; padding: 1px 2px; font-size: 11px; }
 table.shk3 td.d3.night, table.shk3 th.d3.night { color: #3a3a9a; background: #f6f6fd; }
 table.shk3 td.ot3 { border-right: 2px solid #ccd; }
 table.shk3 td.b { font-weight: bold; }
+td.wsum { text-align: left; max-width: 420px; min-width: 200px; white-space: normal; font-size: 11px; line-height: 1.3; }
+#sumShow .hm.on { background: #fff3cd; border-color: #e0b85a; color: #5d4300; }
+.stabs { display: inline-flex; gap: 0; border-bottom: 2px solid var(--head, #1f4e79); }
+.stab { border: 1px solid #c9d3e0; border-bottom: none; background: #eef2f7; padding: 4px 12px; font-size: 13px; cursor: pointer; border-radius: 6px 6px 0 0; margin-right: 2px; color: #345; }
+.stab.on { background: var(--head, #1f4e79); color: #fff; border-color: var(--head, #1f4e79); font-weight: bold; }
+table.shk3 tr.pfirst td { border-top: 1.5px solid #999; }
+table.shk3 td.zl { color: #777; font-size: 11px; width: 22px; }
+table.shk3 tr.z夜 td { background: #f6f6fd; }
+table.shk3 tr.z夜 td.zl { color: #3a3a9a; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */
