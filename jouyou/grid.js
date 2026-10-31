@@ -75,16 +75,16 @@ function createGrid(opt) {
     place();
   }
   const escH = s => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-  // Excel と同じく、右のセルが空なら字をはみ出して見せる
+  // セルからはみ出る字は横に縮めてセルの中に収める（2026-10-31 ユーザー：はみ出さない）
   function overflowText() {
     for (let r = 0; r < nRows; r++) {
       const tr = table.rows[r + opt.headRows];
       for (let c = 0; c < NC; c++) {
-        const td = tr.cells[c + 1], div = td.firstChild;
-        if (!div.textContent || cols[c].align === "r" || cols[c].align === "c") continue;
-        let w = td.offsetWidth, k = c + 1;
-        while (k < NC && !opt.get(r, k) && !cols[k].stopFlow) { w += tr.cells[k + 1].offsetWidth; k++; }
-        if (k > c + 1) { div.style.width = (w - 4) + "px"; td.classList.add("flow"); }
+        const div = tr.cells[c + 1].firstChild;
+        if (!div || !div.textContent) continue;
+        const room = div.clientWidth - 3, need = div.scrollWidth;
+        if (room <= 0 || need <= room + 1) continue;
+        div.innerHTML = `<span class="sq" style="width:${need}px;margin-right:${room - need}px;transform:scaleX(${(room / need).toFixed(3)})">${escH(div.textContent)}</span>`;
       }
     }
   }
@@ -147,6 +147,19 @@ function createGrid(opt) {
     st.r = clampR(r); st.c = clampC(c);
     if (!extend) { st.ar = st.r; st.ac = st.c; }
     place(); scrollIntoView();
+  }
+  // Tab：右へ。表の右端（opt.tabBlocks なら区切り sepL ごとのまとまりの右端）まで行ったら、1行下のそのまとまりの左端へ。Shift+Tab は逆（2026-10-31 ユーザー）
+  function tabMove(dir) {
+    if (top() !== bot() || lef() !== rig()) { moveIn(0, dir); return; }
+    let b0 = 0, b1 = NC - 1;
+    if (opt.tabBlocks) { for (let i = st.c; i > 0; i--) if ((cols[i].cls || "").includes("sepL")) { b0 = i; break; } for (let i = st.c + 1; i < NC; i++) if ((cols[i].cls || "").includes("sepL")) { b1 = i - 1; break; } }
+    let r = st.r, c = st.c;
+    do {
+      c += dir;
+      if (c > b1) { c = b0; r++; }
+      if (c < b0) { if (r === 0) { c = b0; break; } c = b1; r--; }
+    } while (cols[c].ro && c !== st.c);
+    go(r, c);
   }
   function moveIn(dr, dc) {
     // 範囲を選んでいるときの Enter／Tab は範囲の中を回る（Excel と同じ）
@@ -414,7 +427,7 @@ function createGrid(opt) {
     }
     if (st.edit) {
       if (k === "Enter") { e.preventDefault(); if (e.altKey) return; commit(ctrl); if (!ctrl) moveIn(sh ? -1 : 1, 0); else place(); return; }
-      if (k === "Tab") { e.preventDefault(); commit(); moveIn(0, sh ? -1 : 1); return; }
+      if (k === "Tab") { e.preventDefault(); commit(); tabMove(sh ? -1 : 1); return; }
       if (k === "Escape") { e.preventDefault(); cancel(); return; }
       if (k === "F2") { e.preventDefault(); st.edit.mode = st.edit.mode === "enter" ? "edit" : "enter"; if (opt.onMode) opt.onMode(st.edit.mode); return; }
       if (k === "ArrowDown" && e.altKey) { e.preventDefault(); showList(); return; }
@@ -436,7 +449,7 @@ function createGrid(opt) {
       return;
     }
     if (k === "Enter") { e.preventDefault(); moveIn(sh ? -1 : 1, 0); return; }
-    if (k === "Tab") { e.preventDefault(); moveIn(0, sh ? -1 : 1); return; }
+    if (k === "Tab") { e.preventDefault(); tabMove(sh ? -1 : 1); return; }
     if (k === "Home") { e.preventDefault(); go(ctrl ? 0 : st.r, 0, sh); return; }
     if (k === "End" && ctrl) { e.preventDefault(); let lr = 0, lc = 0; for (let r = 0; r < nRows; r++) for (let c = 0; c < NC; c++) if (opt.get(r, c) !== "") { lr = Math.max(lr, r); lc = Math.max(lc, c); } go(lr, lc, sh); return; }
     if (k === "PageDown" || k === "PageUp") {
@@ -503,7 +516,7 @@ function createGrid(opt) {
       if (!mine() || e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") { e.preventDefault(); ed.value = fb.value; commit(); moveIn(e.shiftKey ? -1 : 1, 0); ed.focus(); }
       if (e.key === "Escape") { e.preventDefault(); cancel(); ed.focus(); }
-      if (e.key === "Tab") { e.preventDefault(); ed.value = fb.value; commit(); moveIn(0, e.shiftKey ? -1 : 1); ed.focus(); }
+      if (e.key === "Tab") { e.preventDefault(); ed.value = fb.value; commit(); tabMove(e.shiftKey ? -1 : 1); ed.focus(); }
     });
   }
 

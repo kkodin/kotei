@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311520">
+<link rel="stylesheet" href="app.css?v=202610311531">
 </head>
 <body>
 <header id="top">
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 10/31 15:20</span>
+    <span id="ver" class="ver">Vr000 10/31 15:31</span>
   </span>
 </header>
 
@@ -44,6 +44,8 @@
       <button id="bXlsIn" class="sub" title="元の作業日報の Excel（.xlsx・.xls）から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
       <input type="file" id="xlsFile" accept=".xlsx,.xls" hidden>
       <button id="bFind" class="sub" title="名前・会社・作業内容・工種などで日報を探し、当てはまる日の一覧からその日の日報を出す">🔍 日報を探す</button>
+      <span class="rsep"></span>
+      <span id="pgBar" class="pgbar"></span>
       <span class="rsep"></span>
       <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
       <button id="bDelRow" class="sub" title="選んだ行を消す（Ctrl+－）">行の削除</button>
@@ -197,11 +199,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311520"></script>
+<script src="config.js?v=202610311531"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202610311520"></script>
-<script src="app.js?v=202610311520"></script>
+<script src="grid.js?v=202610311531"></script>
+<script src="app.js?v=202610311531"></script>
 </body>
 </html>

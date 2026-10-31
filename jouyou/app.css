@@ -246,6 +246,10 @@ table.find tr.on td { background: #e3f0e3; }
 .fchip small { color: #888; margin-left: 2px; }
 table.sites tr.done td { background: #f1f1f1; color: #888; }
 table.sites tr.done input { color: #888; }
+.sq { display: inline-block; white-space: nowrap; transform-origin: left center; vertical-align: top; }
+.pgbar { display: inline-flex; align-items: center; gap: 4px; }
+.pgbar .pgn { font-size: 12px; min-width: 64px; text-align: center; }
+#pgNo { font-size: 14px; letter-spacing: 0; margin-left: 10px; color: #555; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */
