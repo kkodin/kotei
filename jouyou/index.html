@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311256">
+<link rel="stylesheet" href="app.css?v=202610311304">
 </head>
 <body>
 <header id="top">
@@ -18,7 +18,7 @@
     <select id="inGen" title="元請業者"></select>
     <select id="inSite" title="現場（元請業者ごと）"></select>
     <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
-    <input type="date" id="inDay" title="日">
+    <button id="inDay" class="sub daybtn" title="押すとカレンダー（記入済みの日に印）から日を選べます"></button>
     <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
     <button id="bToday" class="sub">今日</button>
   </span>
@@ -26,11 +26,13 @@
     <span id="sync" class="sync"></span>
     <span id="mstat" class="mstat" title="マスタ（現場一覧・名簿・自社機械）を読んだ時刻"></span>
     <button id="bSignIn" class="sub" title="会社の Microsoft アカウントでサインインして、現場・名簿・機械のマスタを読む" hidden>サインイン</button>
+    <button id="bRo" class="sub rotg" title="見るだけ／編集">✏ 編集中</button>
+    <button id="bMe" class="sub" title="この端末で使う人の名前（押すと直せる）">👤</button>
     <span id="who" class="ver"></span>
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
-    <input type="file" id="fileIn" accept=".json,application/json" hidden>
-    <span id="ver" class="ver">Vr000 10/31 12:56</span>
+    <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
+    <span id="ver" class="ver">Vr000 10/31 13:04</span>
   </span>
 </header>
 
@@ -39,8 +41,8 @@
   <section id="pSheet">
     <div class="ribbon">
       <button id="bCopyPrev" class="sub" title="前に書いた日の作業員・工種・機材をこの日に写す（天気・サインは写さない）">前の日と同じ</button>
-      <button id="bXlsIn" class="sub" title="元の作業日報の Excel から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
-      <input type="file" id="xlsFile" accept=".xlsx" hidden>
+      <button id="bXlsIn" class="sub" title="元の作業日報の Excel（.xlsx・.xls）から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
+      <input type="file" id="xlsFile" accept=".xlsx,.xls" hidden>
       <button id="bCount" class="sub" title="下の作業員の工種（職種）ごとの人数を、上の「人員」に入れる">人員を数える</button>
       <span class="rsep"></span>
       <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
@@ -54,6 +56,7 @@
       <button id="bClearDay" class="sub danger" title="この日の日報を消す">この日を消す</button>
       <span id="status" class="rstatus"></span>
     </div>
+    <div id="roBar" class="robar" hidden></div>
     <div class="fbar">
       <input id="nameBox" class="namebox" readonly>
       <span class="fxl">fx</span>
@@ -127,6 +130,34 @@
   </div>
 </dialog>
 
+<dialog id="dCal">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>日を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="calnav"><button type="button" class="sub" id="calPrev" title="前の月">◀</button><b id="calTtl"></b><button type="button" class="sub" id="calNext" title="次の月">▶</button></div>
+    <p class="note" id="calInfo"></p>
+    <div class="calgrid" id="calGrid"></div>
+    <p class="note callg"><span class="lg has">●</span> 記入済み　<span class="lg has">✍</span> サインあり　<span class="lg today"></span> 今日　<span class="lg on"></span> 開いている日　<span class="lg inper"></span> 締め期間</p>
+    <div class="btns"><button type="button" class="sub" id="calPrevHas">◀ 前の記入済み</button><button type="button" class="sub" id="calNextHas">次の記入済み ▶</button><span class="sp"></span><button type="button" class="sub" id="calToday">今日</button></div>
+  </div>
+</dialog>
+
+<dialog id="dName">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>使う人の名前</h3><button type="button" class="sub x" id="nmX" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note">この端末で日報を書く人の名前を入れてください（ほかの人が同じ現場を開いたとき「○○さんが使っています」と出ます）。<br>名簿から選ぶか、打ってください。</p>
+    <div class="nmList" id="nmList"></div>
+    <div class="btns"><input id="nmIn" autocomplete="off" placeholder="名前" style="flex:1"><button type="button" id="nmOk">決める</button></div>
+  </div>
+</dialog>
+
+<dialog id="dYure">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>似た書き方があります</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div id="yrBody"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>このままにする</button><button type="button" id="yrOk">決める</button></div>
+  </div>
+</dialog>
+
 <dialog id="dEdit">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody" id="eBody"></div>
@@ -135,10 +166,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311256"></script>
+<script src="config.js?v=202610311304"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
-<script src="grid.js?v=202610311256"></script>
-<script src="app.js?v=202610311256"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="grid.js?v=202610311304"></script>
+<script src="app.js?v=202610311304"></script>
 </body>
 </html>

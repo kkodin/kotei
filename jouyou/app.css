@@ -157,6 +157,34 @@ body.modal #sheetWrap, body.modal .scroll { overflow: hidden; }
 .xlsList { max-height: 46vh; overflow: auto; overscroll-behavior: contain; margin-top: 6px; }
 .xlsList tbody tr { cursor: pointer; }
 .xlsList td { max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.daybtn { min-width: 132px; font-weight: bold; }
+.daybtn.sun { color: #c62828; } .daybtn.sat { color: #1565c0; }
+table.hd td.dpick { cursor: pointer; } table.hd td.dpick:hover { background: #eef6f0; }
+.calnav { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 16px; }
+.calgrid { display: grid; grid-template-columns: repeat(7, 52px); gap: 4px; margin-top: 6px; }
+.calgrid b { text-align: center; font-size: 12px; color: #666; font-weight: normal; }
+.calgrid b.sun, .calgrid button.sun .dn { color: #c62828; } .calgrid b.sat, .calgrid button.sat .dn { color: #1565c0; }
+.calgrid button { height: 48px; padding: 2px 0; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; line-height: 1.15; }
+.calgrid button .dn { font-size: 14px; }
+.calgrid button .mk { font-size: 11px; color: #2e7d32; }
+.calgrid button .pp { font-size: 10px; color: #555; }
+.calgrid button.inper { background: #f6faf7; }
+.calgrid button.has { background: #e8f5e9; border-color: #66bb6a; }
+.calgrid button.today { box-shadow: inset 0 0 0 2px #1565c0; }
+.calgrid button.on { background: #fff59d; border-color: #f9a825; }
+.calgrid button:hover { border-color: var(--xlg); }
+.callg .lg { display: inline-block; min-width: 14px; height: 14px; vertical-align: middle; border: 1px solid #ccc; border-radius: 3px; font-size: 10px; text-align: center; line-height: 12px; color: #2e7d32; }
+.callg .lg.has { background: #e8f5e9; border-color: #66bb6a; } .callg .lg.today { box-shadow: inset 0 0 0 2px #1565c0; } .callg .lg.on { background: #fff59d; border-color: #f9a825; } .callg .lg.inper { background: #f6faf7; }
+.robar { flex: none; padding: 6px 12px; background: #fff3cd; border-bottom: 1px solid #e0b85a; font-size: 14px; color: #5d4300; }
+.robar button { margin-left: 8px; }
+.rotg { font-weight: bold; } .rotg.on { background: #fff3cd; color: #5d4300; border-color: #e0b85a; }
+body.ro .xlfill { display: none !important; }
+body.ro #bXlsIn, body.ro #bCount, body.ro #bCopyPrev, body.ro #bInsRow, body.ro #bDelRow, body.ro #bUndo, body.ro #bRedo, body.ro #bClearDay { opacity: .4; }
+body.ro #sheet { box-shadow: 0 0 0 3px #e0b85a; }
+table.hd input:disabled, table.hd select:disabled, #hBikou:disabled { color: #333; -webkit-text-fill-color: #333; opacity: 1; background: transparent; }
+.nmList { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; max-width: 520px; }
+.nmList button { padding: 6px 10px; font-size: 14px; }
+label.yr { display: inline-flex; align-items: center; gap: 3px; margin: 2px 10px 2px 0; white-space: nowrap; cursor: pointer; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */
