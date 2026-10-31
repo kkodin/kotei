@@ -12,7 +12,7 @@ const XL_WRITE_MAX = 200;   // 1回に Excel へ書く枠の数（多いとき�
 const XL_ALIAS = { "ランマ|": ["ランマ1", ""], "プレート|": ["プレート1", ""], "エンジンハイウォッシャー|": ["ハイウォッシャー", "エンジン"] };
 const XL_SITE_ALIAS = { "車 検": "車検", "積み置中": "積置き" };
 const XL_KIND = { "機材センター": "置場", "機材センター(仙台)": "置場", "積置き": "置場", "車両ヤード": "置場", "資材置き場": "置場",
-  "故障又は修理中": "修理", "整備(リコール)": "修理", "特定自主検査": "検査", "車検": "検査", "クレーン検査": "検査", "名義変更": "検査" };
+  "故障又は修理中": "整備", "整備(リコール)": "整備", "特定自主検査": "整備", "車検": "整備", "クレーン検査": "整備", "名義変更": "整備", "点検": "整備", "整備": "整備" };   // 2026-10-31 修理・検査 → 整備
 const nfkc = v => String(v ?? "").normalize("NFKC").trim();
 const colName = c => { let s = ""; for (; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + (c - 1) % 26) + s; return s; };
 const colNum = s => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
@@ -138,7 +138,7 @@ function xlRebuild(d, mid, kb, from, to, Fm) {
       d.予約.push({ id, 機械: mid, 区分: kb, 現場: site, 開始: a, 終了: b, 土: sat, 日祝: sun, 休み, 出勤: [],
         未使用: best ? best.未使用.filter(k => inRun.has(k)) : [], 状態: best ? best.状態 : "確定", メモ: best ? best.メモ : "",
         交渉: best?.交渉 ? JSON.parse(JSON.stringify(best.交渉)) : null,   // 特別単価（交渉の結果）・台数・料金の決め方も引き継ぐ
-        ...(best?.台数 > 1 ? { 台数: best.台数 } : {}), ...(best?.料金 ? { 料金: JSON.parse(JSON.stringify(best.料金)) } : {}), ...(best?.単価品 ? { 単価品: best.単価品 } : {}),
+        ...(best?.台数 > 1 ? { 台数: best.台数 } : {}), ...(best?.料金 ? { 料金: JSON.parse(JSON.stringify(best.料金)) } : {}), ...(best?.単価品 ? { 単価品: best.単価品 } : {}), ...(best?.積置き ? { 積置き: { ...best.積置き } } : {}),
         ...(same ? (best.更新 ? { 更新: best.更新 } : {}) : { 更新: now }) });
     });
   });

@@ -57,25 +57,29 @@ const yen = v => v == null ? "" : Math.round(v).toLocaleString("ja-JP");
 /* ---------- データ ----------
    機械：{ id, 名前, 規格, 分類, 単価昼, 単価夜, メモ, 使わない, 台数(在庫。無ければ1), 単価品(単価表の品の key。無ければ自動) }
      分類・単価は単価表の品に対応していればそちらを使う（下の「単価表」）
-   現場：{ 名前, 種類(現場／置場／修理／検査), 色, コード, 完了 }  … 名前＝全体工程表の「社内工事名」（略称）でそろえる
-   予約：{ id, 機械, 区分(昼／夜), 現場(名前), 開始, 終了, 土, 日祝, 休み:[日], 出勤:[日], 状態(確定／仮), メモ, 更新, 交渉, 台数, 料金 }
+   現場：{ 名前, 種類(現場／置場／整備), 色, コード, 完了, 元請・地域・工期自・工期至 など }  … 名前＝全体工程表の「社内工事名」（略称）でそろえる
+   予約：{ id, 機械, 区分(昼／夜), 現場(名前), 積置き({ 現場, 請求 }。行き先が積置きのとき), 開始, 終了, 土, 日祝, 休み:[日], 出勤:[日], 状態(確定／仮), メモ, 更新, 交渉, 台数, 料金 }
      単価品：備考で単価が分かれるとき選んだ単価表の行の key（無ければ機械の品）。台数：その予約で使う台数（無ければ1）。料金：{ 方式(日／月／現場／基／m／枚／式), 数量, 金額(一式) }。無ければ単価表どおり
      交渉：予算の無い現場で、機材センター長と決めた特別単価（2026-10-27）。無ければ null
        { 結果(決まった／交渉中), 単価(円／日), 日, 相手, 方法(対面／電話／メール／その他), メモ, 記録(入れた時刻と人) } */
-const KINDS = ["現場", "置場", "修理", "検査"];
-const KIND_COLOR = { 置場: "#9aa3ad", 修理: "#b23b3b", 検査: "#7b5ea7" };
+/* 2026-10-31 ユーザー：点検・整備・クレーン検査・車検 などはまとめて「整備」（現場扱いしない）。前の 修理・検査 は読むときに 整備 にする。
+   予約の行き先を「整備」にすると「内容」を選ぶ（自由にも書ける）。内容がそのまま行き先の名前（Excel のセルの字）になる */
+const KINDS = ["現場", "置場", "整備"];
+const KIND_COLOR = { 置場: "#9aa3ad", 整備: "#b23b3b" };
+const SVC_CHOICES = ["点検", "整備", "修理", "故障又は修理中", "車検", "クレーン検査", "特定自主検査", "整備(リコール)", "名義変更"];
 const PALETTE = ["#3d7cc9", "#3f9a45", "#ef7d1a", "#d6457a", "#16a3a3", "#8d6e63", "#c9a400", "#5c6bc0",
   "#2e7d32", "#e65100", "#6d4c41", "#00838f", "#ad1457", "#558b2f", "#4527a0", "#f9a825"];
 
 const emptyData = () => ({ 形式: "自社機械稼働表", 版: 1, 機械: [], 現場: [
   { 名前: "機材センター", 種類: "置場", 色: KIND_COLOR.置場, コード: "", 完了: false },
-  { 名前: "故障又は修理中", 種類: "修理", 色: KIND_COLOR.修理, コード: "", 完了: false },
-  { 名前: "特定自主検査", 種類: "検査", 色: KIND_COLOR.検査, コード: "", 完了: false }], 予約: [] });
+  { 名前: "故障又は修理中", 種類: "整備", 色: KIND_COLOR.整備, コード: "", 完了: false },
+  { 名前: "特定自主検査", 種類: "整備", 色: KIND_COLOR.整備, コード: "", 完了: false }], 予約: [] });
 
 function normalize(d) {
   if (!d || d.形式 !== "自社機械稼働表") throw new Error("自社機械稼働表のデータではありません");
   d.機械 = d.機械 || []; d.現場 = d.現場 || []; d.予約 = d.予約 || [];
   d.予約.forEach(r => { r.休み = r.休み || []; r.出勤 = r.出勤 || []; r.未使用 = r.未使用 || []; r.状態 = r.状態 || "確定"; });
+  d.現場.forEach(s => { if (s.種類 === "修理" || s.種類 === "検査") { s.種類 = "整備"; s.色 = KIND_COLOR.整備; } });   // 2026-10-31 まとめて整備に
   return d;
 }
 /* ---------- 保存先 ----------
@@ -261,11 +265,63 @@ const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slic
 const machine = id => D.機械.find(m => m.id === id);
 const siteOf = name => D.現場.find(s => s.名前 === name) || { 名前: name, 種類: "現場", 色: "#8a96a3" };
 const isReal = name => siteOf(name).種類 === "現場";
+const isSvc = name => name === "整備" || siteOf(name).種類 === "整備";
+/* 積置き（2026-10-31 ユーザー）：行き先「積置き」の予約は どこの現場か と 積置き中に請求するか を持つ（予約.積置き＝{ 現場, 請求 }）。
+   請求するなら、その現場の予約と同じに稼働・金額へ数える（集計の現場ごとはその現場の下に「積置き」として出す） */
+const isTsumi = name => /積置/.test(name || "");
+const billTo = r => isReal(r.現場) ? r.現場 : r.積置き?.請求 && r.積置き.現場 && isReal(r.積置き.現場) ? r.積置き.現場 : null;
+const isBill = r => !!billTo(r);
+/* まだ無い行き先の名前から種類を決める（決まらなければ null＝現場を登録する小窓を出す） */
+const kindGuess = name => isSvc(name) || SVC_CHOICES.includes(name) ? "整備" : /積置|置き?場|ヤード|機材センター/.test(name) ? "置場" : null;
 const isLightColor = hex => { const v = parseInt(String(hex).slice(1), 16); const r = v >> 16, g = (v >> 8) & 255, b = v & 255; return (r * 299 + g * 587 + b * 114) / 1000 > 165; };
-function ensureSite(d, name) {
+function ensureSite(d, name, kind = "現場") {
   if (!name || d.現場.some(s => s.名前 === name)) return;
   const used = d.現場.filter(s => s.種類 === "現場").length;
-  d.現場.push({ 名前: name, 種類: "現場", 色: PALETTE[used % PALETTE.length], コード: "", 完了: false });
+  d.現場.push({ 名前: name, 種類: kind, 色: kind === "現場" ? PALETTE[used % PALETTE.length] : KIND_COLOR[kind], コード: "", 完了: false });
+  fillSite(d.現場[d.現場.length - 1]);
+}
+/* ---------- 受注台帳等の現場一覧（2026-10-31 ユーザー：現場に載っていない情報が多い。NAS の情報を定期的に読んでほしい） ----------
+   tools\現場一覧を読む.py が毎朝 7:30 に 工事部会資料・注文書台帳・受注台帳（NAS）・原価管理表 から genba_master.json を作り直し、
+   稼働データ フォルダの 現場一覧.json に書く。画面はそれを5分ごとに見て、登録してある現場（種類＝現場）の空いている欄だけ埋める（入っている値は変えない）。
+   合わせ方：工事コードと名前が同じ → 名前が同じ（かっこ・空白・末尾の「工事」を無視）→ 工事コードが同じ（一覧に1件だけのとき） */
+let GENBA = window.KIKAI_GENBA?.現場 || [], gnTag = null;
+const GENBA_F = ["コード", "正式名", "元請", "発注者", "地域", "工期自", "工期至", "担当", "場所"];   // 役所から直に受けた工事は 元請＝自社請け・発注者＝役所
+const gKey = s => String(s ?? "").normalize("NFKC").replace(/[\s()（）［］\[\]・]/g, "").replace(/工事$/, "");
+function genbaOf(s) {
+  const k = gKey(s.名前), byCode = s.コード ? GENBA.filter(g => g.コード === s.コード) : [];
+  return byCode.find(g => gKey(g.名前) === k) || GENBA.find(g => gKey(g.名前) === k) || (byCode.length === 1 ? byCode[0] : null);
+}
+function fillSite(s) {   // 空いている欄を埋めた数
+  if (s.種類 !== "現場") return 0;
+  const g = genbaOf(s); if (!g) return 0;
+  let n = 0; GENBA_F.forEach(f => { if (!s[f] && g[f]) { s[f] = g[f]; n++; } });
+  return n;
+}
+function fillAll() {
+  if (!ready || !GENBA.length) return;
+  if (!D.現場.some(s => fillSite(JSON.parse(JSON.stringify(s))))) return;   // 埋める所が無ければ保存しない
+  commit(d => d.現場.forEach(fillSite), { noUndo: true });
+}
+async function loadGenba() {
+  if (DEMO) { fillAll(); return; }
+  try {
+    const res = await g(folderBase + ":/" + encodeURIComponent("現場一覧.json"));
+    if (!res.ok) return;
+    const meta = await res.json();
+    if (meta.eTag === gnTag) return;
+    const body = await fetch(meta["@microsoft.graph.downloadUrl"], { cache: "no-store" });
+    if (!body.ok) return;
+    GENBA = (await body.json()).現場 || []; gnTag = meta.eTag;
+    fillAll();
+  } catch (e) { console.warn("現場一覧を読めませんでした", e); }
+}
+/* 現場を登録する小窓で入れた中身で足す（もうある名前なら何もしない） */
+function addSite(d, x) {
+  if (!x.名前 || d.現場.some(s => s.名前 === x.名前)) return;
+  ensureSite(d, x.名前);
+  const s = d.現場.find(y => y.名前 === x.名前);
+  Object.entries(x).forEach(([k, v]) => { if (v !== "" && v != null) s[k] = v; });
+  if (s.種類 !== "現場" && KIND_COLOR[s.種類]) s.色 = KIND_COLOR[s.種類];
 }
 const mLabel = m => m ? m.名前 + (m.規格 ? " " + m.規格 : "") : "（消した機械）";
 
@@ -473,8 +529,8 @@ function renderChart() {
       if (!isWeekday(k)) return;
       wd++;
       const on = mine.filter(r => works(r, k));
-      if (on.some(r => isReal(r.現場))) used++;
-      else if (!on.some(r => ["修理", "検査"].includes(siteOf(r.現場).種類))) idle.push(k);
+      if (on.some(isBill)) used++;
+      else if (!on.some(r => siteOf(r.現場).種類 === "整備")) idle.push(k);
     });
     const rate = wd ? Math.round(used / wd * 100) : 0;
     h.push(`<div class="mach${m.使わない ? " unused" : ""}" data-m="${m.id}"><div class="mh">
@@ -532,7 +588,7 @@ function barHtml(r, from, N, dw, rh, row, conf) {
   if (S.sel === r.id) cls.push("sel");
   if (S.focus && r.現場 !== S.focus) cls.push("dim");
   return `<div class="${cls.join(" ")}" data-id="${r.id}" style="left:${s * dw}px;width:${(e - s + 1) * dw}px;top:${row * rh + 2}px;background-color:${color};--c:${color}">` +
-    g.join("") + `<span class="lbl">${(r.台数 || 1) > 1 ? `<b class="tk n">${r.台数}台</b>` : ""}${r.交渉 ? `<b class="tk${special(r) ? "" : " ing"}">${special(r) ? "特" : "交渉中"}</b>` : ""}${esc(r.現場)}</span><i class="eg l"></i><i class="eg r"></i></div>`;
+    g.join("") + `<span class="lbl">${(r.台数 || 1) > 1 ? `<b class="tk n">${r.台数}台</b>` : ""}${r.交渉 ? `<b class="tk${special(r) ? "" : " ing"}">${special(r) ? "特" : "交渉中"}</b>` : ""}${esc(r.現場)}${r.積置き?.現場 ? `（${esc(r.積置き.現場)}${r.積置き.請求 ? "・請求" : ""}）` : ""}</span><i class="eg l"></i><i class="eg r"></i></div>`;
 }
 /* 線の字（2026-10-28 ユーザー）
    ①線の開始日が画面の左（機械名の列の下）に隠れているときは、字を見えている所まで右へ逃がす（スクロールのたびに labelShift）。
@@ -576,8 +632,8 @@ const ngText = x => x ? (x.結果 === "決まった" && x.単価 != null ? `特�
   `（${[x.日 ? md(x.日) : "", x.相手, x.方法].filter(Boolean).join("・")}）${x.メモ ? "　" + x.メモ : ""}` : "";
 const barTip = r => {
   const m = machine(r.機械), n = workDays(r);
-  const c = isReal(r.現場) ? costOf(r) : null;
-  return `${r.現場}（${siteOf(r.現場).種類}）${r.状態 === "仮" ? "　仮" : ""}\n${mLabel(m)}　${r.区分}${(r.台数 || 1) > 1 ? "　" + r.台数 + "台" : ""}\n${md(r.開始)}〜${md(r.終了)}　使う日 ${n}日` +
+  const c = isBill(r) ? costOf(r) : null;
+  return `${r.現場}（${siteOf(r.現場).種類}）${r.積置き?.現場 ? `\n積置き：${r.積置き.現場}（積置き中の請求 ${r.積置き.請求 ? "する" : "しない"}）` : ""}${r.状態 === "仮" ? "　仮" : ""}\n${mLabel(m)}　${r.区分}${(r.台数 || 1) > 1 ? "　" + r.台数 + "台" : ""}\n${md(r.開始)}〜${md(r.終了)}　使う日 ${n}日` +
     (c ? `\n${METHODS[c.meth]}　${costText(c)}${c.amt != null ? "＝" + yen(c.amt) + "円" : ""}${variantsOf(m).length ? "　単価表：" + noteLabel(resItem(r, m)) : ""}` : "") +
     `（平日${r.土 ? "・土" : ""}${r.日祝 ? "・日祝" : ""}）${r.休み.length ? `\n使わない日：${spanText(r.休み.slice())}` : ""}${r.未使用.length ? `\n使わなかった（申告）：${spanText(r.未使用.slice())}` : ""}${r.メモ ? "\n" + r.メモ : ""}` +
     (r.交渉 ? "\n" + ngText(r.交渉) : "");
@@ -913,7 +969,9 @@ document.querySelectorAll("input[name=rCalM]").forEach(x => x.addEventListener("
 const VV = window.visualViewport;
 const zoomed = () => VV && (VV.scale > 1.01 || Math.abs(VV.offsetTop) > 1 || Math.abs(VV.offsetLeft) > 1);
 function fitDialog() {
-  const d = document.querySelector("dialog[open]"); if (!d || !VV) return;
+  if (VV) document.querySelectorAll("dialog[open]").forEach(fitOne);
+}
+function fitOne(d) {
   d.style.maxHeight = Math.floor(VV.height - 20) + "px"; d.style.maxWidth = Math.floor(Math.min(640, VV.width - 20)) + "px";
   if (zoomed()) Object.assign(d.style, { margin: "0", right: "auto", bottom: "auto", top: VV.offsetTop + 10 + "px", left: VV.offsetLeft + Math.max(10, (VV.width - d.offsetWidth) / 2) + "px" });
   else Object.assign(d.style, { margin: "", right: "", bottom: "", top: "", left: "" });
@@ -957,7 +1015,10 @@ function openRes(r, init = {}, ng = false) {
   $("rM").value = v.機械;
   document.querySelector(`input[name=rK][value="${v.区分}"]`).checked = true;
   document.querySelector(`input[name=rSt][value="${v.状態}"]`).checked = true;
-  $("rSite").value = v.現場 || ""; $("rFrom").value = v.開始; $("rTo").value = v.終了;
+  const svc = v.現場 && isSvc(v.現場);
+  $("rSite").value = svc ? "整備" : v.現場 || ""; $("rSvc").value = svc && v.現場 !== "整備" ? v.現場 : "";
+  $("rTkS").value = v.積置き?.現場 || ""; document.querySelector(`input[name=rTkB][value="${v.積置き?.請求 ? "する" : "しない"}"]`).checked = true;
+  $("rFrom").value = v.開始; $("rTo").value = v.終了;
   $("rSat").checked = !!v.土; $("rSun").checked = !!v.日祝; $("rMemo").value = v.メモ || "";
   $("rDel").hidden = !r;
   $("dRes")._rest = { 休み: v.休み.slice(), 出勤: v.出勤.slice(), 未使用: v.未使用.slice() };
@@ -986,20 +1047,29 @@ $("rPi").addEventListener("change", () => { $("dRes")._pi = $("rPi").value; resI
 $("rNg").addEventListener("change", () => { $("rNgBox").hidden = !$("rNg").checked; if ($("rNg").checked) $("rNgP").focus(); resInfo(); });
 ["rNgP", "rNgD", "rNgW", "rNgH", "rNgM"].forEach(id => $(id).addEventListener("input", resInfo));
 document.querySelectorAll("input[name=rNgR]").forEach(x => x.addEventListener("change", resInfo));
+/* 行き先が「整備」なら内容の欄、「積置き」なら どこの現場・請求 の欄を出す。整備の予約の行き先＝内容（空なら「整備」） */
+function rModes() {
+  const n = $("rSite").value.trim();
+  $("rSvcL").hidden = $("rSvcW").hidden = !isSvc(n);
+  $("rTkL").hidden = $("rTkW").hidden = !isTsumi(n);
+}
+const rDest = () => { const n = $("rSite").value.trim(); return isSvc(n) ? $("rSvc").value.trim() || n : n; };
 function resValue() {
   const rest = $("dRes")._rest;
   const v = { id: editing || "(new)", 機械: $("rM").value, 区分: document.querySelector("input[name=rK]:checked").value,
-    現場: $("rSite").value.trim(), 開始: $("rFrom").value, 終了: $("rTo").value, 土: $("rSat").checked, 日祝: $("rSun").checked,
+    現場: rDest(), 開始: $("rFrom").value, 終了: $("rTo").value, 土: $("rSat").checked, 日祝: $("rSun").checked,
     休み: rest.休み.slice(), 出勤: rest.出勤.slice(), 未使用: rest.未使用.slice(), 状態: document.querySelector("input[name=rSt]:checked").value, メモ: $("rMemo").value.trim(),
     交渉: ngValue(), 台数: Math.max(1, Math.round(num($("rN").value) || 1)), 料金: payValue() };
   /* 単価表の行（備考）：機械の品と違う行を選んだときだけ持つ */
   const vs = variantsOf(machine(v.機械)), pi = $("dRes")._pi;
   if (pi && vs.some(i => i.key === pi) && pi !== itemKey(machine(v.機械))) v.単価品 = pi;
+  if (isTsumi(v.現場)) v.積置き = { 現場: $("rTkS").value.trim(), 請求: document.querySelector("input[name=rTkB]:checked").value === "する" };
   if (v.開始 && v.終了 && v.開始 > v.終了) [v.開始, v.終了] = [v.終了, v.開始];
   trimDays(v);
   return v;
 }
 function resInfo() {
+  rModes();
   const v = resValue();
   renderCal();
   if (!v.開始 || !v.終了) { $("rInfo").textContent = ""; $("rWarn").innerHTML = ""; return; }
@@ -1023,7 +1093,7 @@ function resInfo() {
     : m ? "単価表に無い機械（機械・現場 の単価" + (basePrice(m, v.区分) != null ? ` ${yen(basePrice(m, v.区分))}円／日` : "：未設定") + "）" : "");
   $("rNgBase").textContent = `円／${UNIT[meth]}` + (b.unit != null ? `（通常 ${yen(b.unit)}円）` : "（通常の単価なし）");
   $("rInfo").textContent = `${md(v.開始)}〜${md(v.終了)}　使う日 ${n}日` + (v.未使用.length ? `（使わなかった ${v.未使用.length}日を除く）` : "") +
-    (isReal(v.現場) ? `　金額の目安 ` + (c.amt != null ? `${yen(c.amt)}円（${special(v) ? "特別単価 " : ""}${costText(c)}` +
+    (isBill(v) ? `　金額の目安 ` + (c.amt != null ? `${yen(c.amt)}円（${special(v) ? "特別単価 " : ""}${costText(c)}` +
       (special(v) && b.amt != null ? `。通常なら ${yen(b.amt)}円、差 ${yen(b.amt - c.amt)}円` : "") + "）" : "—（単価なし）") : "");
   /* 在庫の台数を超える日（1台の機械なら、ほかの予約がある日） */
   const cf = [], over = {}, mine = D.予約.filter(o => o.id !== v.id && o.機械 === v.機械 && o.区分 === v.区分 && overlap(o, v));
@@ -1040,7 +1110,8 @@ function resInfo() {
     : `<div class="ok">✓ この期間、この機械の${esc(v.区分)}は${cap > 1 ? "在庫の台数の中に収まります" : "空いています"}</div>`) +
     (other.length ? `<div class="w" style="background:#fff7e0;color:#7a5200">参考：${esc(other.join("、"))}</div>` : "");
 }
-["rM", "rSite", "rFrom", "rTo", "rSat", "rSun"].forEach(id => $(id).addEventListener("input", resInfo));
+["rM", "rSite", "rSvc", "rTkS", "rFrom", "rTo", "rSat", "rSun"].forEach(id => $(id).addEventListener("input", resInfo));
+document.querySelectorAll("input[name=rTkB]").forEach(x => x.addEventListener("change", resInfo));
 document.querySelectorAll("input[name=rK]").forEach(x => x.addEventListener("change", resInfo));
 $("rCancel").onclick = () => $("dRes").close();
 $("rDel").onclick = () => { const id = editing; $("dRes").close(); commit(d => { d.予約 = d.予約.filter(y => y.id !== id); S.sel = null; }); };
@@ -1054,21 +1125,76 @@ $("rSave").onclick = () => {
   /* 交渉の中身が変わったときだけ、入れた時刻と人を残す */
   const old = $("dRes")._ng, strip = x => x && JSON.stringify({ ...x, 記録: undefined });
   if (v.交渉) v.交渉.記録 = old && strip(old) === strip(v.交渉) ? old.記録 : new Date().toLocaleString("ja-JP") + " " + me.name;
+  if (v.積置き?.請求 && !v.積置き.現場) { alert("積置き中に請求する現場を選んでください"); $("rTkS").focus(); return; }
+  if (v.積置き?.現場 && !isReal(v.積置き.現場)) { alert("「" + v.積置き.現場 + "」は登録してある現場ではありません。現場を選んでください（無ければ先に「機械・現場」で登録）"); $("rTkS").focus(); return; }
+  if (!D.現場.some(s => s.名前 === v.現場) && !kindGuess(v.現場) && !isSvc($("rSite").value.trim())) {   // まだ無い現場 → 先に登録（登録したら予約と一緒に保存。やめたら予約の小窓に戻る）
+    openSite(v.現場, x => { v.現場 = x.名前; saveRes(v, x); }, null, "行き先の「" + v.現場 + "」はまだ登録されていない現場です。わかる所を入れて登録してください（あとから「機械・現場」でも直せます）。");
+    return;
+  }
+  saveRes(v);
+};
+function saveRes(v, site) {
+  const kind = isSvc($("rSite").value.trim()) ? "整備" : kindGuess(v.現場) || "現場";   // 整備の内容は自由に書いた名前でも整備
   $("dRes").close();
   const nid = newId("r");
   commit(d => {
-    ensureSite(d, v.現場);
-    if (editing) { const x = d.予約.find(y => y.id === editing); Object.assign(x, v, { id: editing }); if (!v.単価品) delete x.単価品; stamp(x); S.sel = x.id; }
+    if (site) addSite(d, site); else ensureSite(d, v.現場, kind);
+    if (editing) { const x = d.予約.find(y => y.id === editing); Object.assign(x, v, { id: editing }); if (!v.単価品) delete x.単価品; if (!v.積置き) delete x.積置き; stamp(x); S.sel = x.id; }
     else { v.id = nid; stamp(v); d.予約.push(v); S.sel = v.id; }
   });
-};
+}
 /* 小窓の Enter は次の欄へ（閉じない） */
-$("dRes").addEventListener("keydown", e => {
+["dRes", "dSite"].forEach(id => $(id).addEventListener("keydown", e => {
   if (e.key !== "Enter" || e.isComposing) return;
   e.preventDefault();
-  const f = [...$("dRes").querySelectorAll("input:not([type=radio]):not([type=checkbox]),select")].filter(x => x.offsetParent);
+  const f = [...$(id).querySelectorAll("input:not([type=radio]):not([type=checkbox]),select")].filter(x => x.offsetParent);
   const i = f.indexOf(e.target); if (i >= 0 && i < f.length - 1) f[i + 1].focus(); else e.target.blur();
-});
+}));
+
+/* ---------- 現場を登録する小窓（2026-10-31 ユーザー：予約を入れるとき、まだ無い現場ならその場で登録。工期は始まり・終わりともカレンダーで） ----------
+   開くのは：予約の小窓でまだ無い行き先を保存したとき・「線を引く現場」に新しい名前を入れたとき・機械・現場 の「＋ 現場を足す」。
+   登録を押すと done(中身) を呼ぶ（呼んだ側が予約と一緒に commit する＝「↶ 戻す」1回で両方戻る）。やめる・Esc は cancel() */
+let SG = null;
+const SG_F = { sgName: "名前", sgCode: "コード", sgFull: "正式名", sgPrime: "元請", sgOrd: "発注者", sgArea: "地域", sgFrom: "工期自", sgTo: "工期至", sgWho: "担当", sgPlace: "場所" };
+$("sgKind").innerHTML = KINDS.map(k => `<option>${k}</option>`).join("");
+function openSite(name, done, cancel, why) {
+  hideTip(); hideCtx();
+  SG = { done, cancel };
+  Object.keys(SG_F).forEach(id => { $(id).value = ""; });
+  $("sgName").value = name || ""; $("sgKind").value = "現場";
+  $("sgNote").textContent = why || "社内現場名は全体工程表の「社内工事名」とそろえておくと、あとでつなげられます。わからない欄は空のままで構いません。";
+  $("sgNames").innerHTML = GENBA.map(g => `<option value="${esc(g.名前)}" label="${esc(g.コード + "　" + g.元請)}">`).join("");
+  $("sgCodes").innerHTML = GENBA.map(g => `<option value="${esc(g.コード)}" label="${esc(g.名前)}">`).join("");
+  sgFill(); sgCheck();
+  showDialog($("dSite"));
+}
+/* 名前かコードが受注台帳等の一覧と合えば、空いている欄に入れる */
+function sgFill() {
+  const g = genbaOf({ 名前: $("sgName").value.trim(), コード: half($("sgCode").value) }); if (!g) return;
+  Object.entries(SG_F).forEach(([id, f]) => { if (!$(id).value && g[f]) $(id).value = g[f]; });
+}
+function sgCheck() {
+  const n = $("sgName").value.trim(), a = $("sgFrom").value, b = $("sgTo").value;
+  $("sgWarn").innerHTML = (n && D.現場.some(s => s.名前 === n) ? `<div class="w">「${esc(n)}」はもう登録されています（登録を押すと、その現場を使います。中身は変えません）</div>` : "") +
+    (a && b && a > b ? `<div class="w">工期の終わりが始まりより前になっています</div>` : "");
+}
+["sgName", "sgFrom", "sgTo"].forEach(id => $(id).addEventListener("input", sgCheck));
+["sgName", "sgCode"].forEach(id => $(id).addEventListener("change", () => { sgFill(); sgCheck(); }));
+$("sgFrom").addEventListener("change", () => { if ($("sgFrom").value && !$("sgTo").value) $("sgTo").min = $("sgFrom").value; });
+$("sgSave").onclick = () => {
+  const x = {};
+  Object.entries(SG_F).forEach(([id, f]) => { x[f] = f === "コード" ? half($(id).value) : $(id).value.trim(); });
+  x.種類 = $("sgKind").value;
+  if (!x.名前) { alert("社内現場名を入れてください"); $("sgName").focus(); return; }
+  if (x.工期自 && x.工期至 && x.工期自 > x.工期至) { alert("工期の終わりが始まりより前になっています"); $("sgTo").focus(); return; }
+  const done = SG.done; SG = null;
+  $("dSite").close();
+  done(x);
+};
+/* やめる・Esc（close の合図は来ないことがあるので、ここで直に戻す） */
+function sgQuit() { const c = SG?.cancel; SG = null; $("dSite").close(); if (c) c(); }
+$("sgCancel").onclick = sgQuit;
+$("dSite").addEventListener("cancel", e => { e.preventDefault(); sgQuit(); });
 
 /* ---------- 空き探し ---------- */
 const FREE = { from: "", to: "", k: "昼", cat: "", m: "" };
@@ -1135,16 +1261,16 @@ function renderSum() {
       let dn = 0, nn = 0, used = 0, idle = 0, rep = 0;
       days.forEach(k => {
         const on = mine.filter(r => works(r, k));
-        const real = on.filter(r => isReal(r.現場));
+        const real = on.filter(isBill);
         if (real.some(r => r.区分 === "昼")) dn++;
         if (real.some(r => r.区分 === "夜")) nn++;
         if (!isWeekday(k)) return;
         if (real.length) used++;
-        else if (on.some(r => ["修理", "検査"].includes(siteOf(r.現場).種類))) rep++;
+        else if (on.some(r => siteOf(r.現場).種類 === "整備")) rep++;
         else idle++;
       });
       const vs = variantsOf(m), subs = {};
-      mine.filter(r => isReal(r.現場)).forEach(r => {
+      mine.filter(isBill).forEach(r => {
         const c = costOf(r, from, to, false, m), bc = costOf(r, from, to, true, m);
         if (!c.days && !c.amt) return;
         const i = resItem(r, m), sp = special(r);
@@ -1214,11 +1340,12 @@ function renderSum() {
       const m = machine(r.機械); if (!m) return;
       const c = costOf(r, from, to, false, m), sp = special(r);
       if (!c.days && !c.amt) return;
-      const x = (by[r.現場] ||= { site: r.現場, items: {}, days: 0, amt: 0 });
-      const it = (x.items[[m.id, r.区分, c.meth, c.unit, c.n, sp].join("|")] ||= { m, k: r.区分, meth: c.meth, unit: c.unit, n: c.n, sp, days: 0, qty: 0, amt: 0 });
+      const site = billTo(r) || r.現場, tk = !isReal(r.現場) && !!billTo(r);   // 積置き（請求する）は積置きした現場の下に
+      const x = (by[site] ||= { site, items: {}, days: 0, amt: 0 });
+      const it = (x.items[[m.id, r.区分, c.meth, c.unit, c.n, sp, tk].join("|")] ||= { m, k: r.区分 + (tk ? "・積置き" : ""), meth: c.meth, unit: c.unit, n: c.n, sp, days: 0, qty: 0, amt: 0 });
       it.days += c.days; x.days += c.days;
       if (c.meth === "日" ? c.days : c.amt) it.qty += c.meth === "日" ? c.days : c.qty;
-      if (isReal(r.現場) && c.amt) { it.amt += c.amt; x.amt += c.amt; }
+      if (isBill(r) && c.amt) { it.amt += c.amt; x.amt += c.amt; }
     });
     const sites = Object.values(by).sort((a, b) => (isReal(b.site) - isReal(a.site)) || b.amt - a.amt);
     const itText = it => (it.sp ? "<b>特</b> " : "") + (it.meth === "式" ? "一式" : it.unit == null ? "単価なし" : `${yen(it.unit)}円／${UNIT[it.meth]}`) + (it.meth !== "日" && it.meth !== "式" ? `×${it.qty}` : "") + (it.n > 1 ? `×${it.n}台` : "");
@@ -1250,7 +1377,7 @@ let MTAB = "machine";
 function renderMaster() {
   const el = $("pMaster");
   const keep = cellWant || cellAt(document.activeElement);   // 描き直しても、いた欄（または移る先の欄）へ戻る
-  const head = `<div class="tabs2"><button data-mt="machine" class="${MTAB === "machine" ? "on" : ""}">機械</button><button data-mt="site" class="${MTAB === "site" ? "on" : ""}">現場・行き先</button></div>`;
+  const head = `<div class="tabs2"><button data-mt="machine" class="${MTAB === "machine" ? "on" : ""}">機械</button><button data-mt="site" class="${MTAB === "site" ? "on" : ""}">現場・行き先</button><button data-mt="svc" class="${MTAB === "svc" ? "on" : ""}">整備</button></div>`;
   if (MTAB === "machine") {
     /* 単価表の品を選ぶ欄（種別ごと）。空＝単価表を使わない（機械の単価）。自動＝道具が名前で決めた品 */
     const auto = m => PR?.対応?.[mKey(m)] || "";
@@ -1291,15 +1418,49 @@ function renderMaster() {
       commit(d => { d.機械 = d.機械.filter(x => x.id !== id); d.予約 = d.予約.filter(r => r.機械 !== id); });
     });
     $("mAdd").onclick = () => { const id = newId("m"); commit(d => { d.機械.push({ id, 名前: "新しい機械", 規格: "", 分類: S.cat || "小型機械", 単価昼: null, 単価夜: null, メモ: "", 使わない: false }); }); };
+  } else if (MTAB === "svc") {
+    /* 整備（2026-10-31 ユーザー：現場とは分ける）。名前＝予約の小窓の「整備の内容」に出る選択肢。稼働率・金額には数えない */
+    const cnt = {}, last = {};
+    D.予約.forEach(r => { cnt[r.現場] = (cnt[r.現場] || 0) + 1; if (!last[r.現場] || r.終了 > last[r.現場]) last[r.現場] = r.終了; });
+    const list = D.現場.filter(s => s.種類 === "整備").sort((a, b) => (last[b.名前] || "") > (last[a.名前] || "") ? 1 : -1);
+    el.innerHTML = head + `<p class="note">点検・整備・クレーン検査・車検 などの行き先です（現場扱いしない＝稼働率・金額に数えない）。稼働表の予約で行き先を「整備」にすると、ここの名前が「内容」の選択肢に出ます（自由にも書けます。書いた内容はここに足されます）。
+      名前を変えると、その予約も全部変わります（同じ名前にすると1つにまとまります）。</p>
+    <table class="t grid" id="vt"><tr><th>内容</th><th>色</th><th>使わない</th><th>予約</th><th>最後の日</th><th></th></tr>` +
+      list.map(s => `<tr data-n="${esc(s.名前)}"${s.完了 ? ' style="color:#888"' : ""}>
+        <td><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
+        <td><input type="color" data-f="色" value="${esc(s.色 || KIND_COLOR.整備)}"></td>
+        <td style="text-align:center"><input type="checkbox" data-f="完了" ${s.完了 ? "checked" : ""} title="内容の選択肢に出さない"></td>
+        <td class="n small">${cnt[s.名前] || 0}</td><td class="small">${last[s.名前] ? last[s.名前].replace(/-/g, "/") : ""}</td>
+        <td>${cnt[s.名前] ? `<button class="sub" tabindex="-1" data-site="${esc(s.名前)}" title="現場・行き先 へ戻す">現場にする</button>` : `<button class="danger" tabindex="-1" data-del="${esc(s.名前)}">消す</button>`}</td></tr>`).join("") + `</table>
+    <p class="form"><input id="vAddN" list="svcList" placeholder="点検・車検 など"> <button id="vAdd">＋ 整備の内容を足す</button></p>`;
+    el.querySelectorAll("#vt [data-f]").forEach(inp => inp.onchange = () => {
+      const n = inp.closest("tr").dataset.n, f = inp.dataset.f, val = inp.type === "checkbox" ? inp.checked : inp.value.trim();
+      if (f === "名前") {
+        if (!val) { renderMaster(); return; }
+        const merge = D.現場.some(s => s.名前 === val);
+        if (merge && !confirm(`「${val}」はもうあります。「${n}」の予約を「${val}」にまとめますか？`)) { renderMaster(); return; }
+        commit(d => { d.予約.forEach(r => { if (r.現場 === n) r.現場 = val; });
+          if (merge) d.現場 = d.現場.filter(s => s.名前 !== n); else d.現場.find(s => s.名前 === n).名前 = val;
+          if (S.paint === n) S.paint = val; if (S.focus === n) S.focus = val; });
+        return;
+      }
+      commit(d => { d.現場.find(x => x.名前 === n)[f] = val; });
+    });
+    el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => commit(d => { d.現場 = d.現場.filter(s => s.名前 !== b.dataset.del); }));
+    el.querySelectorAll("[data-site]").forEach(b => b.onclick = () => commit(d => { const s = d.現場.find(x => x.名前 === b.dataset.site); s.種類 = "現場"; s.色 = PALETTE[d.現場.length % PALETTE.length]; }));
+    $("vAdd").onclick = () => { const n = $("vAddN").value.trim(); if (!n) return;
+      const s = D.現場.find(x => x.名前 === n);
+      if (s && s.種類 !== "整備" && !confirm(`「${n}」は ${s.種類} として登録してあります。整備に移しますか？`)) return;
+      commit(d => { const x = d.現場.find(y => y.名前 === n); if (x) { x.種類 = "整備"; x.色 = KIND_COLOR.整備; } else ensureSite(d, n, "整備"); }); };
   } else {
     const cnt = {}, first = {}, last = {};
     D.予約.forEach(r => { cnt[r.現場] = (cnt[r.現場] || 0) + 1;
       if (!first[r.現場] || r.開始 < first[r.現場]) first[r.現場] = r.開始;
       if (!last[r.現場] || r.終了 > last[r.現場]) last[r.現場] = r.終了; });
-    const nDone = D.現場.filter(s => s.完了).length;
-    const list = D.現場.filter(s => S.showDone || !s.完了).sort((a, b) => (a.完了 - b.完了) || (siteKi(b, first[b.名前]) - siteKi(a, first[a.名前])) ||
+    const nDone = D.現場.filter(s => s.完了 && s.種類 !== "整備").length;
+    const list = D.現場.filter(s => s.種類 !== "整備" && (S.showDone || !s.完了)).sort((a, b) => (a.完了 - b.完了) || (siteKi(b, first[b.名前]) - siteKi(a, first[a.名前])) ||
       ((last[b.名前] || "") > (last[a.名前] || "") ? 1 : -1));
-    el.innerHTML = head + `<p class="note">現場名は全体工程表の「社内工事名」とそろえておくと、あとでつなげられます。種類が「現場」以外（置場・修理・検査）は稼働率・金額に数えません。
+    el.innerHTML = head + `<p class="note">現場名は全体工程表の「社内工事名」とそろえておくと、あとでつなげられます。種類が「現場」以外（置場）は稼働率・金額に数えません。点検・車検 などは「整備」のタブにあります（種類を「整備」にするとそちらへ移ります）。
       「完了」にすると、現場を選ぶ欄（線を引く現場・小窓の行き先）に出なくなります。名前を変えると、その現場の予約も全部変わります（同じ名前にすると1つにまとまります）。<br>
       期＝工事コードの頭2けた（無ければ最初に使った日の期。9月はじまり）。</p>
     <div class="form"><label class="ck"><input type="checkbox" id="sDone" ${S.showDone ? "checked" : ""}> 完了した現場も表示（${nDone}件）</label>
@@ -1308,11 +1469,11 @@ function renderMaster() {
     <table class="t grid" id="st"><tr><th>期</th><th>現場名・行き先</th><th>工事コード</th><th>元請</th><th>地域</th><th>工期</th><th>種類</th><th>色</th><th>完了</th><th>予約</th><th>最後に使う日</th><th></th></tr>` +
       list.map(s => `<tr data-n="${esc(s.名前)}"${s.完了 ? ' style="color:#888"' : ""}>
         <td class="n">${siteKi(s, first[s.名前]) || ""}</td>
-        <td title="${esc([s.正式名, s.担当 && "担当 " + s.担当, s.場所].filter(Boolean).join("\n"))}"><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
+        <td title="${esc([s.正式名, s.発注者 && "発注者 " + s.発注者, s.担当 && "担当 " + s.担当, s.場所].filter(Boolean).join("\n"))}"><input data-f="名前" value="${esc(s.名前)}" size="18"></td>
         <td><input data-f="コード" value="${esc(s.コード || "")}" size="7" inputmode="numeric"></td>
         <td><input data-f="元請" value="${esc(s.元請 || "")}" size="12"></td>
         <td><input data-f="地域" value="${esc(s.地域 || "")}" size="8"></td>
-        <td class="small" style="white-space:nowrap">${s.工期自 || s.工期至 ? `${(s.工期自 || "").replace(/-/g, "/")}〜${(s.工期至 || "").replace(/-/g, "/")}` : ""}</td>
+        <td style="white-space:nowrap"><input type="date" data-f="工期自" value="${esc(s.工期自 || "")}">〜<input type="date" data-f="工期至" value="${esc(s.工期至 || "")}"></td>
         <td><select data-f="種類">${KINDS.map(k => `<option ${s.種類 === k ? "selected" : ""}>${k}</option>`).join("")}</select></td>
         <td><input type="color" data-f="色" value="${esc(s.色 || "#8a96a3")}"></td>
         <td style="text-align:center"><input type="checkbox" data-f="完了" ${s.完了 ? "checked" : ""}></td>
@@ -1349,7 +1510,7 @@ function renderMaster() {
       commit(d => { const s = d.現場.find(x => x.名前 === n); s[f] = val; if (f === "種類" && val !== "現場" && KIND_COLOR[val]) s.色 = KIND_COLOR[val]; });
     });
     el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => commit(d => { d.現場 = d.現場.filter(s => s.名前 !== b.dataset.del); }));
-    $("sAdd").onclick = () => { const n = prompt("現場名（社内工事名）"); if (n && n.trim()) commit(d => ensureSite(d, n.trim())); };
+    $("sAdd").onclick = () => openSite("", x => commit(d => addSite(d, x)));
   }
   el.querySelectorAll("[data-mt]").forEach(b => b.onclick = () => { MTAB = b.dataset.mt; renderMaster(); });
   if (keep) focusCell(keep);
@@ -1417,7 +1578,12 @@ function syncBar() {
   const cats = catList().filter(c => D.機械.some(m => catOf(m) === c));
   $("vCat").innerHTML = `<option value="">分類：全部</option>` + cats.map(c => `<option ${S.cat === c ? "selected" : ""}>${esc(c)}</option>`).join("");
   const active = D.現場.filter(s => !s.完了);
-  $("siteList").innerHTML = active.map(s => `<option value="${esc(s.名前)}">`).join("");
+  const known = new Set(D.現場.map(s => gKey(s.名前)));
+  $("svcList").innerHTML = [...new Set(SVC_CHOICES.concat(D.現場.filter(s => s.種類 === "整備" && s.名前 !== "整備" && !s.完了).map(s => s.名前)))].map(n => `<option value="${esc(n)}">`).join("");
+  $("realList").innerHTML = active.filter(s => s.種類 === "現場").map(s => `<option value="${esc(s.名前)}">`).join("");
+  $("siteList").innerHTML = `<option value="整備" label="点検・車検・クレーン検査 など（内容を選ぶ）">` + active.filter(s => s.種類 !== "整備").map(s => `<option value="${esc(s.名前)}">`).join("") +
+    GENBA.filter(g => !known.has(gKey(g.名前)) && !D.現場.some(s => s.コード && s.コード === g.コード) && (!g.工期至 || g.工期至 >= dayAdd(todayKey(), -60)))   // 終わった現場は出さない
+      .map(g => `<option value="${esc(g.名前)}" label="${esc(g.コード + "　" + g.元請 + "（未登録・受注台帳等）")}">`).join("");
   const from = S.from, to = rangeEnd();
   const inView = [...new Set(D.予約.filter(r => r.開始 <= to && r.終了 >= from).map(r => r.現場))];
   $("vFocus").innerHTML = `<option value="">―</option>` + inView.map(n => `<option ${S.focus === n ? "selected" : ""}>${esc(n)}</option>`).join("");
@@ -1461,7 +1627,16 @@ $("vToday").onclick = () => { S.from = dayAdd(todayKey(), -((dayDow(todayKey()) 
 $("vCat").onchange = () => { S.cat = $("vCat").value; saveView(); renderAll(); };
 $("vQ").oninput = () => { S.q = $("vQ").value; saveView(); renderAll(); };
 $("vUnused").onchange = () => { S.unused = $("vUnused").checked; saveView(); renderAll(); };
-$("vPaint").onchange = () => { S.paint = $("vPaint").value.trim(); saveView(); };
+$("vPaint").onchange = () => {
+  const n = $("vPaint").value.trim();
+  if (n && !D.現場.some(s => s.名前 === n) && kindGuess(n)) { S.paint = n; saveView(); commit(d => ensureSite(d, n, kindGuess(n))); return; }   // 整備・置場は登録の小窓なし
+  if (n && !D.現場.some(s => s.名前 === n)) {   // まだ無い現場 → 登録してから線を引く（やめたら前の現場に戻す）
+    openSite(n, x => { S.paint = x.名前; saveView(); commit(d => addSite(d, x)); syncBar(); }, () => { $("vPaint").value = S.paint; },
+      "「" + n + "」はまだ登録されていない現場です。登録すると、なぞるだけでこの現場の予約が入ります。");
+    return;
+  }
+  S.paint = n; saveView();
+};
 $("vIdle").onchange = () => { S.idle = $("vIdle").checked; saveView(); renderChart(); };
 $("vFocus").onchange = () => { S.focus = $("vFocus").value; saveView(); renderChart(); renderLegend(); };
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
@@ -1602,9 +1777,10 @@ async function start() {
   }
   $("loading").hidden = true;
   ready = true; showSync();
+  loadGenba();
   setTab(S.tab);
   setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
-  setInterval(() => { if (!document.hidden) loadPrices(); }, 5 * 60 * 1000);
+  setInterval(() => { if (!document.hidden) { loadPrices(); loadGenba(); } }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { pull(); checkVersion(); } });
 }
 start();

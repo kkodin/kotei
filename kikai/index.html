@@ -12,11 +12,11 @@
 <meta name="theme-color" content="#1f4e79">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="自社機械">
-<link rel="stylesheet" href="app.css?v=Vr001 10/31 08:31">
+<link rel="stylesheet" href="app.css?v=Vr001 10/31 09:26">
 </head>
 <body>
 <header>
-  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/31 08:31</small></h1>
+  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 10/31 09:26</small></h1>
   <nav id="tabs">
     <button data-tab="chart" class="on">稼働表</button>
     <button data-tab="free">空き探し</button>
@@ -68,7 +68,7 @@
 </main>
 
 <div id="legend"></div>
-<datalist id="siteList"></datalist>
+<datalist id="siteList"></datalist><datalist id="svcList"></datalist><datalist id="realList"></datalist>
 
 <!-- 予約の小窓 -->
 <dialog id="dRes">
@@ -83,7 +83,10 @@
     <div class="grid">
       <label>機械</label><select id="rM"></select>
       <label>区分</label><span><label class="ck"><input type="radio" name="rK" value="昼" checked> 昼</label> <label class="ck"><input type="radio" name="rK" value="夜"> 夜</label></span>
-      <label>行き先</label><input id="rSite" list="siteList" placeholder="現場名（機材センター・修理 なども）">
+      <label>行き先</label><input id="rSite" list="siteList" placeholder="現場名（機材センター・積置き・整備 なども）">
+      <label id="rSvcL" hidden>整備の内容</label><span id="rSvcW" hidden><input id="rSvc" list="svcList" placeholder="点検・車検・クレーン検査 など（自由に書けます）"></span>
+      <label id="rTkL" hidden>積置き</label><span id="rTkW" hidden>どこの現場 <input id="rTkS" list="realList" size="14" placeholder="現場名">
+        積置き中の請求 <label class="ck"><input type="radio" name="rTkB" value="する"> する</label> <label class="ck"><input type="radio" name="rTkB" value="しない" checked> しない</label></span>
       <label>期間</label><span><input type="date" id="rFrom"> 〜 <input type="date" id="rTo"></span>
       <label>使う曜日</label><span>平日 <label class="ck"><input type="checkbox" id="rSat"> 土</label> <label class="ck"><input type="checkbox" id="rSun"> 日・祝</label></span>
       <label>使う日</label><span>
@@ -110,6 +113,33 @@
     </div>
     <div id="rInfo" class="note"></div>
     <div id="rWarn"></div>
+    </div>
+  </form>
+</dialog>
+
+<!-- 現場を登録する小窓（2026-10-31 ユーザー：稼働表で予約を入れるとき、まだ無い現場ならその場で 社内現場名・コード・元請・地域・工期 を登録） -->
+<dialog id="dSite">
+  <form method="dialog" autocomplete="off">
+    <div class="dhead">
+      <h3 id="sgTitle" tabindex="-1" autofocus>新しい現場を登録</h3>
+      <button type="button" class="sub" id="sgCancel">やめる</button>
+      <button type="button" id="sgSave">登録</button>
+    </div>
+    <div class="dbody">
+    <p id="sgNote" class="note"></p>
+    <div class="grid">
+      <label>社内現場名</label><input id="sgName" list="sgNames" placeholder="全体工程表の「社内工事名」とそろえる（受注台帳等の現場は選べます）"><datalist id="sgNames"></datalist>
+      <label>現場コード</label><input id="sgCode" list="sgCodes" inputmode="numeric" size="8" placeholder="510031 など"><datalist id="sgCodes"></datalist>
+      <label>工事名（正式）</label><input id="sgFull" placeholder="契約書どおりの工事名（無くてもよい）">
+      <label>元請</label><input id="sgPrime" placeholder="元請（役所から直に受けたら 自社請け）">
+      <label>発注者</label><input id="sgOrd" placeholder="自社請けのとき：横浜市 など">
+      <label>地域</label><input id="sgArea" size="10" placeholder="横浜市 など">
+      <label>工期</label><span><input type="date" id="sgFrom"> 〜 <input type="date" id="sgTo"></span>
+      <label>担当</label><input id="sgWho" size="10">
+      <label>場所</label><input id="sgPlace" placeholder="住所・目印">
+      <label>種類</label><select id="sgKind"></select>
+    </div>
+    <div id="sgWarn"></div>
     </div>
   </form>
 </dialog>
@@ -141,8 +171,8 @@
 <div id="toast" hidden></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/31 08:31"></script>
-<script src="app.js?v=Vr001 10/31 08:31"></script>
-<script src="excel.js?v=Vr001 10/31 08:31"></script>
+<script src="config.js?v=Vr001 10/31 09:26"></script>
+<script src="app.js?v=Vr001 10/31 09:26"></script>
+<script src="excel.js?v=Vr001 10/31 09:26"></script>
 </body>
 </html>
