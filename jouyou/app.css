@@ -250,6 +250,15 @@ table.sites tr.done input { color: #888; }
 .pgbar { display: inline-flex; align-items: center; gap: 4px; }
 .pgbar .pgn { font-size: 12px; min-width: 64px; text-align: center; }
 #pgNo { font-size: 14px; letter-spacing: 0; margin-left: 10px; color: #555; }
+.rfilt label { font-size: 12px; margin-right: 8px; }
+.rfilt select { font-size: 12px; }
+table.roster th button.thb { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+table.roster th button.thb.on { color: var(--xlg); font-weight: bold; }
+table.shk3 th.dh { border-bottom: 1px solid #bbb; }
+table.shk3 .d3 { min-width: 18px; padding: 1px 2px; font-size: 11px; }
+table.shk3 td.d3.night, table.shk3 th.d3.night { color: #3a3a9a; background: #f6f6fd; }
+table.shk3 td.ot3 { border-right: 2px solid #ccd; }
+table.shk3 td.b { font-weight: bold; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */

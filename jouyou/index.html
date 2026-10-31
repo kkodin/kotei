@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311532">
+<link rel="stylesheet" href="app.css?v=202610311626">
 </head>
 <body>
 <header id="top">
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 10/31 15:32</span>
+    <span id="ver" class="ver">Vr000 10/31 16:26</span>
   </span>
 </header>
 
@@ -191,7 +191,7 @@
 <dialog id="dFind">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>日報を探す</h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody">
-    <div class="btns fbar"><input id="fQ" type="search" placeholder="名前・会社・作業内容・工種・機材・材料名" autocomplete="off"><select id="fCol" title="どの欄で探すか"></select><label><input type="checkbox" id="fAll"> 全部の現場</label></div>
+    <div class="btns fbar"><input id="fQ" type="search" placeholder="名前・会社・作業予定・工種・機材・材料名" autocomplete="off"><select id="fCol" title="どの欄で探すか"></select><label><input type="checkbox" id="fAll"> 全部の現場</label></div>
     <div id="fRes"></div>
   </div>
 </dialog>
@@ -199,11 +199,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311532"></script>
+<script src="config.js?v=202610311626"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202610311532"></script>
-<script src="app.js?v=202610311532"></script>
+<script src="grid.js?v=202610311626"></script>
+<script src="app.js?v=202610311626"></script>
 </body>
 </html>
