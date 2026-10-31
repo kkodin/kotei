@@ -170,8 +170,10 @@ function overtime(st, en, s = site(), sh = "昼") {
 /* ================= 表の列 ================= */
 const UP_ROWS = 5, DN_ROWS = 16;
 // 上の表は作業内容だけ5行（2026-10-31 ユーザー）。データは前と同じ 上[行] = [工種, 作業内容, 人員, 資機材] の 作業内容（1）に入れる
+// 備考は 上[行][4]（2026-10-31 ユーザー：作業内容の隣に備考の列）。右の工種別の集計を小さくした分、左を広げた
 const UPC = [
-  { t: "作業内容", w: 698, k: "txt", di: 1 }
+  { t: "作業内容", w: 500, k: "txt", di: 1 },
+  { t: "備考", w: 376, k: "txt", di: 4 }
 ];
 // di＝データの何列目か（2026-10-31 会社の欄を足した。データは後ろ（12）に足し、画面では作業員名の右に出す）
 // 幅は紙（#sheet）に収まるように詰めた（2026-10-31 ユーザー：用紙からはみ出た）
@@ -238,10 +240,10 @@ function kouSum(d) {
   const rows = countByShoku(d).map(([k, n]) => ({ k, n, ...m.get(k) }));
   return { rows, 計: rows.reduce((a, x) => a + x.n, 0), 夜あり: rows.some(x => x.夜) };
 }
-function kouSumHTML(d) {
-  const K = kouSum(d);
-  if (!K.rows.length) return `<p class="note ksE">下の表に作業員を書くと、工種ごとの人数が出ます。</p>`;
-  return `<table class="ksum"><thead><tr><th>工種</th>${K.夜あり ? "<th>昼</th><th>夜</th>" : ""}<th>人員</th></tr></thead><tbody>` +
+function kouSumHTML(d, title) {
+  const K = kouSum(d), nc = K.夜あり ? 4 : 2, tt = title ? `<tr><th class="kt" colspan="${nc}">工種別の集計</th></tr>` : "";
+  if (!K.rows.length) return title ? `<table class="ksum"><thead>${tt}<tr><th>工種</th><th>人員</th></tr></thead><tbody><tr><td class="ksE" colspan="2">下の作業員から数えます</td></tr></tbody></table>` : "";
+  return `<table class="ksum"><thead>${tt}<tr><th>工種</th>${K.夜あり ? "<th>昼</th><th>夜</th>" : ""}<th>人員</th></tr></thead><tbody>` +
     K.rows.map(x => `<tr><td>${esc(x.k)}</td>${K.夜あり ? `<td class="r">${x.昼 || ""}</td><td class="r night">${x.夜 || ""}</td>` : ""}<td class="r">${x.n}名</td></tr>`).join("") +
     `</tbody><tfoot><tr><td>計</td>${K.夜あり ? `<td class="r">${K.rows.reduce((a, x) => a + x.昼, 0)}</td><td class="r">${K.rows.reduce((a, x) => a + x.夜, 0)}</td>` : ""}<td class="r">${K.計}名</td></tr></tfoot></table>`;
 }
@@ -575,7 +577,7 @@ function applyCells(key, ch, noCheck) {
     });
   }
   pushUndo();
-  const d = ensureDay(), arr = key === "up" ? d.上 : d.下, NC = key === "up" ? 4 : SECS[key].length;
+  const d = ensureDay(), arr = key === "up" ? d.上 : d.下, NC = key === "up" ? 5 : SECS[key].length;
   const touched = new Set();
   for (const { r, c, v } of ch) {
     if (key === "up" && r >= UP_ROWS) continue;
@@ -633,7 +635,7 @@ function applyCells(key, ch, noCheck) {
 function rowOp(key, op, r, n) {
   const s = site(); if (!s || !canEdit()) return;
   pushUndo();
-  const d = ensureDay(), arr = key === "up" ? d.上 : d.下, NC = key === "up" ? 4 : SECS[key].length;
+  const d = ensureDay(), arr = key === "up" ? d.上 : d.下, NC = key === "up" ? 5 : SECS[key].length;
   if (op === "insert") { while (arr.length < r) arr.push(Array(NC).fill("")); arr.splice(r, 0, ...Array.from({ length: n }, () => Array(NC).fill(""))); if (key === "up") arr.length = Math.min(arr.length, UP_ROWS); }
   else arr.splice(r, n);
   tidy(d); if (!hasData(d)) dropDay(s, UI.day);
@@ -685,10 +687,7 @@ function buildSheet() {
         <div class="secT"><b>作業内容</b><span class="cnt" id="cntUp"></span></div>
         <div class="g1" id="g_up"></div>
       </div>
-      <div class="right">
-        <div class="bikouL">工種別の集計</div>
-        <div id="kouSum"></div>
-      </div>
+      <div class="right" id="kouSum"></div>
     </div>
     <div class="low sec" data-key="dn">
       <div class="secT"><b>作業員・使用機材・品名</b><span class="cnt" id="cntDn"></span></div>
@@ -714,9 +713,10 @@ function buildSheet() {
         return null;
       },
       normalize: (c, v) => normalize(cols[c].k, v),
-      complete: (c, v) => { const lv = v.toLowerCase(), ws = colWords(key, di(key, c)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
-      list: c => colWords(key, di(key, c)),
-      hasList: c => key === "up" ? [0, 1].includes(c) : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
+      // 作業内容（上の欄）は自由記入だけ：選択肢・補い・▾ は出さない（2026-10-31 ユーザー）
+      complete: (c, v) => { if (key === "up") return null; const lv = v.toLowerCase(), ws = colWords(key, di(key, c)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
+      list: c => key === "up" ? [] : colWords(key, di(key, c)),
+      hasList: c => key === "up" ? false : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
       apply: ch => applyCells(key, ch.map(x => ({ ...x, c: di(key, x.c) }))),
       undo, redo,
       onSheet: dir => moveDay(dir),
@@ -803,7 +803,7 @@ function refreshSheet() {
   if (document.activeElement !== $("hTan")) $("hTan").value = d ? d.担当者 : "";
   $("hTan").placeholder = s ? s.担当者 : "";
   grids.up.render(); grids.dn.render();
-  $("kouSum").innerHTML = kouSumHTML(d);
+  $("kouSum").innerHTML = kouSumHTML(d, true);
   // 人数のまとめ
   const cnt = countByShoku(d), tot = cnt.reduce((a, x) => a + x[1], 0);
   $("cntDn").textContent = tot ? "作業員 " + cnt.map(([k, n]) => k + " " + n + "名").join("・") + "　計 " + tot + "名" : "";
@@ -841,8 +841,7 @@ function openMenu(key, x, y, sel) {
     ["行の挿入", "Ctrl+Shift+＋", () => rowOp(key, "insert", sel.r0, sel.r1 - sel.r0 + 1)],
     ["行の削除", "Ctrl+－", () => rowOp(key, "delete", sel.r0, sel.r1 - sel.r0 + 1)],
     ["数式と値のクリア", "Delete", () => { const ch = []; for (let r = sel.r0; r <= sel.r1; r++) for (let c = sel.c0; c <= sel.c1; c++) if (!SECS[key][c].ro) ch.push({ r, c: di(key, c), v: "" }); applyCells(key, ch); }],
-    null,
-    ["候補から選ぶ", "Alt+↓", () => grids[key].showList()]
+    ...(key === "up" ? [] : [null, ["候補から選ぶ", "Alt+↓", () => grids[key].showList()]])
   ];
   m.innerHTML = items.map((it, i) => it ? `<div data-i="${i}"><span>${it[0]}</span><kbd>${it[1]}</kbd></div>` : "<hr>").join("");
   document.body.appendChild(m);
@@ -853,13 +852,13 @@ function closeMenu() { const m = $("ctx"); m && m.remove(); }
 document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctx")) closeMenu(); });
 
 /* ---------- 日報を探す（2026-10-31 ユーザー：名前・会社名・作業内容・職種などで探し、当てはまる日の一覧から その日の日報を出す） ---------- */
-const FIND_COLS = [["", "どこでも"], ["名前", "作業員名"], ["会社", "会社"], ["作業", "作業内容"], ["工種", "工種（職種）"], ["機材", "使用機材・規格"], ["所有者", "所有者"], ["品名", "品名"], ["記入者", "記入者"]];
+const FIND_COLS = [["", "どこでも"], ["名前", "作業員名"], ["会社", "会社"], ["作業", "作業内容"], ["工種", "工種（職種）"], ["機材", "使用機材・規格"], ["所有者", "所有者"], ["品名", "品名"], ["備考", "備考"], ["記入者", "記入者"]];
 function findIn(s, words, col) {
   const out = [];
   for (const [x, d] of Object.entries(s.日).sort((a, b) => a[0].localeCompare(b[0]))) {
     const hits = [];   // [欄, 値]
     const look = (f, v) => { v = String(v ?? "").trim(); if (v && (!col || col === f)) hits.push([f, v]); };
-    d.上.forEach(r => { if (r) { look("作業", r[1]); look("工種", r[0]); } });
+    d.上.forEach(r => { if (r) { look("作業", r[1]); look("備考", r[4]); } });   // 工種は下の作業員の工種だけ（作業内容から工種を数えない）
     d.下.forEach(r => {
       if (!r) return;
       look("名前", r[0]); look("会社", r[12] || (r[0] ? companyOf(r[0], s) : "")); look("工種", r[3]);
@@ -2421,10 +2420,11 @@ function daySheet(wb, s, x, d) {
   put("A4", "現場名"); put("B4", s.名前, "B4:I4"); put("J4", d.天気 || ""); put("K4", d.気温 !== "" && d.気温 != null ? d.気温 + "℃" : "℃");
   ws.getCell("K4").alignment = { vertical: "middle", horizontal: "right" };
   // 左：作業内容 5段（2行ずつ）／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
-  put("A5", "作　業　内　容", "A5:K6"); put("L5", "工種別の集計", "L5:P6");
+  put("A5", "作　業　内　容", "A5:G6"); put("H5", "備　考", "H5:K6"); put("L5", "工種別の集計", "L5:P6");
   for (let i = 0; i < UP_ROWS; i++) {
     const r = 7 + i * 2, row = d.上[i] || [];
-    put("A" + r, row[1] || "", `A${r}:K${r + 1}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
+    put("A" + r, row[1] || "", `A${r}:G${r + 1}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
+    put("H" + r, row[4] || "", `H${r}:K${r + 1}`).alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
   }
   const KS = kouSum(d), KR = KS.rows.length > 8 ? [...KS.rows.slice(0, 7), { k: "ほか", n: KS.rows.slice(7).reduce((a, x) => a + x.n, 0), 夜: KS.rows.slice(7).reduce((a, x) => a + x.夜, 0) }] : KS.rows;
   const ninTxt = x => x.n + "名" + (KS.夜あり && x.夜 ? `（夜${x.夜}）` : "");
@@ -2545,8 +2545,8 @@ function dayHTML(s, x, d) {
   h.push(`<tr class="a">${c("現場名")}${c(s.名前, "", sp(8))}${c(d.天気 || "")}${c((d.気温 ?? "") + "℃")}</tr>`);
   // 上の5段（Excel は2行ずつ）。空の行は高さがつぶれるので、1段＝高い1行で組む
   // 左：作業内容 5段／右：工種別の集計（2026-10-31 ユーザー：サイン・備考をやめた）
-  h.push(`<tr class="a2">${c("作　業　内　容", "", sp(11))}${c("工種別の集計", "", sp(5))}</tr>`);
-  for (let i = 0; i < UP_ROWS; i++) h.push(`<tr class="a2"><td class="wk"${sp(11)}>${esc(up(i)[1] || "")}</td>${i === 0 ? `<td class="ks"${sp(5, UP_ROWS)}>${kouSumHTML(d)}</td>` : ""}</tr>`);
+  h.push(`<tr class="a2">${c("作　業　内　容", "", sp(7))}${c("備　考", "", sp(4))}${c("工種別の集計", "", sp(5))}</tr>`);
+  for (let i = 0; i < UP_ROWS; i++) h.push(`<tr class="a2"><td class="wk"${sp(7)}>${esc(up(i)[1] || "")}</td><td class="wk"${sp(4)}>${esc(up(i)[4] || "")}</td>${i === 0 ? `<td class="ks"${sp(5, UP_ROWS)}>${kouSumHTML(d)}</td>` : ""}</tr>`);
   h.push(`<tr class="b2">${c("作業員名", "", sp(2))}${c("始業時間")}${c("終業時間")}${c("工種")}${c("残業時間")}${c("使用機材", "", sp(2))}${c("規格・形式")}${c("数量")}${c("累計")}${c("品名")}${c("数量", "", sp(2))}${c("累計数量", "", sp(2))}</tr>`);
   const n = Math.max(DN_ROWS, d.下.length);
   for (let i = 0; i < n; i++) {

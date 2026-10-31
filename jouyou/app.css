@@ -68,7 +68,7 @@ table.hd select:focus { outline: 2px solid var(--xlg); background: #fff; }
 table.hd .tmp { display: flex; align-items: center; } table.hd .tmp input { text-align: right; }
 .mid { display: flex; gap: 0; margin-top: 6px; align-items: stretch; }
 .mid .left { flex: none; }
-.mid .right { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid #555; border-left: none; margin-left: 8px; border-left: 1px solid #555; }
+.mid .right { flex: 1; min-width: 0; margin-left: 10px; padding-top: 22px; }
 .rhd { display: flex; border-bottom: 1px solid #555; }
 .rhd .l { width: 70px; flex: none; display: flex; align-items: center; justify-content: center; background: #f4f6f8; border-right: 1px solid #555; font-size: 13px; }
 #signBox { flex: 1; height: 86px; position: relative; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 12px; cursor: pointer; touch-action: manipulation; }
@@ -224,14 +224,16 @@ button.tg.on { background: var(--head); color: #fff; }
 .pgh .sp { flex: 1; }
 .pgrp table.price { width: 100%; }
 .pgrp .mh { margin: 10px 0 4px; }
-#kouSum { flex: 1; overflow: auto; }
-#kouSum .ksE { margin: 8px; }
-table.ksum { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.ksum th { background: #f4f6f8; font-weight: normal; border-bottom: 1px solid #999; padding: 3px 6px; }
-table.ksum td { border-bottom: 1px solid #ddd; padding: 3px 8px; }
+/* 工種別の集計：小さな枠の表（2026-10-31 ユーザー） */
+table.ksum { width: 100%; border-collapse: collapse; font-size: 13px; border: 1.5px solid #333; }
+table.ksum th { background: #f4f6f8; font-weight: normal; border: 1px solid #888; padding: 2px 6px; height: 22px; }
+table.ksum th.kt { background: #fff; border-bottom: 1.5px solid #333; }
+table.ksum td { border: 1px solid #aaa; padding: 2px 8px; height: 22px; }
 table.ksum td.r { text-align: right; }
 table.ksum td.night { color: #3a3a9a; }
-table.ksum tfoot td { border-top: 1px solid #999; border-bottom: none; font-weight: bold; }
+table.ksum td.ksE { color: #999; font-size: 12px; text-align: center; }
+table.ksum tfoot td { border-top: 1.5px solid #333; font-weight: bold; }
+table.ksum tfoot td:first-child { text-align: center; }
 .fbar input[type=search] { flex: 1; min-width: 260px; font-size: 15px; padding: 4px 8px; }
 #dFind { width: min(900px, 96vw); }
 #fRes { max-height: 60vh; overflow: auto; }
