@@ -213,6 +213,8 @@ table.ed.shoku input.r { text-align: right; width: 90px; }
 table.ed.shoku td.btn button { padding: 0 5px; }
 /* 左端の番号の列を出さない（幅0。選ぶ・動く仕組みはそのまま） */
 #sheet .xlt th.xlrh { width: 0; min-width: 0; max-width: 0; padding: 0; border: none; font-size: 0; overflow: hidden; }
+.sumshow { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+button.tg.on { background: var(--head); color: #fff; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */

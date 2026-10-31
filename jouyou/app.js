@@ -149,19 +149,19 @@ const UPC = [
 // di＝データの何列目か（2026-10-31 会社の欄を足した。データは後ろ（12）に足し、画面では作業員名の右に出す）
 // 幅は紙（#sheet）に収まるように詰めた（2026-10-31 ユーザー：用紙からはみ出た）
 const DNC = [
-  { t: "作業員名", w: 104, k: "txt", stopFlow: true },
+  { t: "作業員名", w: 114, k: "txt", stopFlow: true },
   { t: "会社", w: 104, k: "txt", di: 12, stopFlow: true },
   { t: "昼夜", w: 36, k: "shift", cls: "c", align: "c", di: 14 },
-  { t: "始業時間", w: 52, k: "time", cls: "c", align: "c" },
-  { t: "終業時間", w: 52, k: "time", cls: "c", align: "c" },
-  { t: "工種", w: 72, k: "txt", cls: "c", align: "c" },
-  { t: "残", w: 40, k: "hrs", cls: "r", align: "r" },
-  { t: "使用機材", w: 104, k: "txt", cls: "sepL" },
-  { t: "規格・形式", w: 84, k: "txt" },
+  { t: "始業時間", w: 54, k: "time", cls: "c", align: "c" },
+  { t: "終業時間", w: 54, k: "time", cls: "c", align: "c" },
+  { t: "工種", w: 78, k: "txt", cls: "c", align: "c" },
+  { t: "残", w: 44, k: "hrs", cls: "r", align: "r" },
+  { t: "使用機材", w: 118, k: "txt", cls: "sepL" },
+  { t: "規格・形式", w: 96, k: "txt" },
   { t: "所有者", w: 104, k: "txt", di: 13, stopFlow: true },
   { t: "数量", w: 42, k: "num", cls: "r", align: "r" },
   { t: "累計", w: 46, k: "num", cls: "r ro", align: "r", ro: true },
-  { t: "品名", w: 92, k: "txt", cls: "sepL" },
+  { t: "品名", w: 106, k: "txt", cls: "sepL" },
   { t: "数量", w: 42, k: "num", cls: "r", align: "r" },
   { t: "累計数量", w: 56, k: "num", cls: "r ro", align: "r", ro: true }
 ];
@@ -1389,13 +1389,16 @@ const r2 = x => String(Math.round(x * 100) / 100);
 function renderSum() {
   const s = site(); if (!s) { $("sumBody").innerHTML = `<p class="note">現場を選んでください</p>`; return; }
   const a = $("sumFrom").value, b = $("sumTo").value;
-  showSumRange();
+  showSumRange(); renderSumShow();
   if (!a || !b || a > b) return;
   const S = summarize(s, a, b);
   if (!S.dates.length) { $("sumBody").innerHTML = `<p class="note">${jpDate(a)}〜${jpDate(b)} に書いた日報がありません</p>`; return; }
   const dl = x => `${+x.slice(5, 7)}/${+x.slice(8)}`;
   const wcls = x => { const w = wd(x); return w === 0 ? "sun" : w === 6 ? "sat" : ""; };
   const h = [];
+  // 出す表を選べる（2026-10-31 ユーザー：職種別も出せるように・残業の集計の欄は不要）。区切りの位置を覚えて、最後に選んだ表だけ出す
+  const SECT = [], mark = n => SECT.push([n, h.length]);
+  mark("日別");
   h.push(`<h3 class="sh">日別（${esc(s.名前)}　${jpDate(a)}〜${jpDate(b)}）</h3>`);
   const NT = S.hasNight || s.勤務 !== "昼";
   h.push(`<table class="sm"><thead><tr><th>日付</th><th>曜</th><th>天気</th><th>気温</th>${S.shoku.map(k => `<th>${esc(k)}</th>`).join("")}${NT ? "<th>昼</th><th>夜</th>" : ""}<th>人員計</th><th>残業計(h)</th><th>サイン</th></tr></thead><tbody>`);
@@ -1406,6 +1409,7 @@ function renderSum() {
   }
   h.push(`</tbody><tfoot><tr><td colspan="4">計（${S.dates.length}日）</td>${S.shoku.map(k => `<td class="r">${tot.get(k)}</td>`).join("")}${NT ? `<td class="r">${S.perDay.reduce((a2, p) => a2 + p.昼, 0)}</td><td class="r">${S.perDay.reduce((a2, p) => a2 + p.夜, 0)}</td>` : ""}<td class="r">${tn}</td><td class="r">${r2(tot_ot)}</td><td class="c">${S.perDay.filter(p => p.sign).length}</td></tr></tfoot></table>`);
 
+  mark("会社別");
   // 会社ごとの集計（日ごとの人数＝人工）
   h.push(`<h3 class="sh">会社別（日ごとの人数）</h3>`);
   h.push(`<table class="sm"><thead><tr><th>会社</th>${S.dates.map(x => `<th class="${wcls(x)}">${+x.slice(8)}</th>`).join("")}<th>人工計</th><th>人数</th><th>残業計(h)</th><th>金額（労務＋残業）</th></tr></thead><tbody>`);
@@ -1414,6 +1418,7 @@ function renderSum() {
     h.push(`<tr class="${cp === "（会社未定）" ? "nocomp" : ""}"><td><b>${esc(cp)}</b></td>${S.dates.map(x => `<td class="r">${C.日[x] || ""}</td>`).join("")}<td class="r"><b>${C.計}</b></td><td class="r">${nppl}名</td><td class="r">${C.残業 ? r2(C.残業) : ""}</td><td class="r">${yen(C.金額)}</td></tr>`);
   }
   h.push(`</tbody><tfoot><tr><td>計</td>${S.dates.map(x => `<td class="r">${S.perDay.find(p => p.date === x).n}</td>`).join("")}<td class="r">${tn}</td><td class="r">${S.ws.length}名</td><td class="r">${r2(tot_ot)}</td><td class="r">${yen(S.money.計.労務 + S.money.計.残業)}</td></tr></tfoot></table>`);
+  mark("職種別");
   // 職種別（工種）：工種ごとの日ごとの人数と、その工種で来た人（2026-10-31 ユーザー：日によって役割が違うので職種別と作業員名別に）
   const hasMoney = (s.単価 || []).length > 0 || Object.values(DB.職種単価).some(p => p.昼 || p.夜 || p.残業);
   h.push(`<h3 class="sh">職種別（工種）の集計（○＝その工種で出面、数字は残業時間）</h3>`);
@@ -1425,6 +1430,7 @@ function renderSum() {
     ppl.forEach(w => h.push(`<tr><td>${esc(w.名前)}</td>${S.dates.map(x => x in w.日 ? `<td class="c">${w.日[x] ? `<span class="ot">${r2(w.日[x])}</span>` : "○"}</td>` : "<td></td>").join("")}<td class="r">${w.日数}</td><td class="r">${w.残業 ? r2(w.残業) : ""}</td>${hasMoney ? "<td></td>" : ""}</tr>`));
   }
   h.push(`</tbody></table>`);
+  mark("作業員名別");
   // 作業員名別：日ごとにその日の工種（略）、工種ごとの日数（会社ごとにまとめる）
   h.push(`<h3 class="sh">作業員名別の集計（日ごとの工種：${SHORT_NOTE}、赤い数字は残業時間）</h3>`);
   h.push(`<table class="sm"><thead><tr><th>会社</th><th>作業員名</th>${S.dates.map(x => `<th class="${wcls(x)}">${+x.slice(8)}</th>`).join("")}<th>工種ごとの日数</th><th>日数</th><th>残業(h)</th>${hasMoney ? "<th>金額</th>" : ""}</tr></thead><tbody>`);
@@ -1444,10 +1450,13 @@ function renderSum() {
     for (const [k, v] of ent) { const [nm, own] = k.split("\t"); h.push(`<tr>${kz ? `<td>${esc(own)}</td>` : ""}<td>${esc(nm)}</td>${S.dates.map(x => `<td class="r">${v.日[x] ? r2(v.日[x]) : ""}</td>`).join("")}<td class="r"><b>${r2(v.計)}</b></td></tr>`); }
     h.push(`</tbody></table>`);
   };
-  h.push(otHTML(S, wcls));
+  mark("使用機材");
   mt("使用機材", S.kizai); mt("品名", S.hin);
+  mark("金額");
   h.push(moneyHTML(S));
-  $("sumBody").innerHTML = h.join("");
+  const show = sumShow(), out = [];
+  SECT.forEach(([n, i], k) => { if (show[n]) out.push(...h.slice(i, k + 1 < SECT.length ? SECT[k + 1][1] : h.length)); });
+  $("sumBody").innerHTML = out.join("") || `<p class="note">上のボタンで出す表を選んでください。</p>`;
 }
 // 残業の集計（2026-10-31 ユーザー：もっと分かりやすく）
 //   上に まとめ（残業した人・延べ時間＝早出＋残業・金額）、作業員別（日ごとの時間・早出・残業・計・金額）、日ごとの計。ます目に マウスを載せると 始業〜終業
@@ -1493,6 +1502,16 @@ function moneyHTML(S) {
   if (M.なし) h.push(`<p class="note ng">単価の無い項目が ${M.なし} 件あります（薄い黄色）。「現場・名簿」の単価マスタで「日報から項目を足す」と、足りない項目が並びます。</p>`);
   return h.join("");
 }
+const SUM_TABLES = ["日別", "会社別", "職種別", "作業員名別", "使用機材", "金額"];
+function sumShow() { const v = UI.sumShow || {}; return Object.fromEntries(SUM_TABLES.map(n => [n, v[n] !== false])); }
+function renderSumShow() {
+  const v = sumShow();
+  $("sumShow").innerHTML = `<span class="note">出す表：</span>` + SUM_TABLES.map(n => `<button class="sub small tg${v[n] ? " on" : ""}" data-st="${n}">${n === "職種別" ? "職種別（工種）" : n}</button>`).join("");
+}
+$("sumShow").addEventListener("click", e => {
+  const b = e.target.closest("[data-st]"); if (!b) return;
+  const v = sumShow(); v[b.dataset.st] = !v[b.dataset.st]; UI.sumShow = v; saveUI(); renderSumShow(); renderSum();
+});
 $("sumBody").addEventListener("click", e => { const a = e.target.closest("[data-go]"); if (a) { UI.day = a.dataset.go; showTab("sheet"); setDay(a.dataset.go); } });
 ["sumFrom", "sumTo"].forEach(id => $(id).addEventListener("change", renderSum));
 $("sumPrev").onclick = () => { const [a, b] = period(addD($("sumFrom").value, -1)); $("sumFrom").value = a; $("sumTo").value = b; renderSum(); };
@@ -2153,18 +2172,6 @@ function sumSheet(wb, s, a, b) {
     [...(kz ? ["所有者"] : []), ttl, ...S.dates.map(x => +x.slice(8)), "計"].forEach((t, i) => cellAt(r, i + 1, t, { fill: "FFEEF3F8" })); r++;
     for (const [k, v] of m) { const [nm, own] = k.split("\t"); if (kz) cellAt(r, 1, own, { h: "left" }); cellAt(r, 1 + o, nm, { h: "left" }); S.dates.forEach((x, i) => cellAt(r, 2 + o + i, v.日[x] || null, { h: "right" })); cellAt(r, 2 + o + S.dates.length, v.計, { h: "right", font: { bold: true } }); r++; }
   };
-  if (S.otRows.length) {
-    r += 1; title("残業の集計（作業員別。時間）");
-    const days = S.dates.filter(dt => S.otRows.some(x => x.date === dt));
-    ["会社", "作業員名", ...days.map(x => +x.slice(5, 7) + "/" + +x.slice(8)), "早出", "残業", "計"].forEach((t, i) => cellAt(r, i + 1, t, { fill: "FFEEF3F8" })); r++;
-    const ppl = new Map(); S.otRows.forEach(x => { const p = ppl.get(x.key) || { 名前: x.名前, 会社: x.会社, 日: {}, 早出: 0, 残業: 0, 計: 0 }; p.日[x.date] = (p.日[x.date] || 0) + x.計; p.早出 += x.早出; p.残業 += x.残業; p.計 += x.計; ppl.set(x.key, p); });
-    for (const p of ppl.values()) {
-      cellAt(r, 1, p.会社, { h: "left" }); cellAt(r, 2, p.名前, { h: "left" });
-      days.forEach((x, i) => cellAt(r, 3 + i, p.日[x] ? Math.round(p.日[x] * 100) / 100 : null, { h: "right", font: { color: { argb: "FFC00000" } } }));
-      cellAt(r, 3 + days.length, Math.round(p.早出 * 100) / 100 || null, { h: "right" }); cellAt(r, 4 + days.length, Math.round(p.残業 * 100) / 100 || null, { h: "right" }); cellAt(r, 5 + days.length, Math.round(p.計 * 100) / 100, { h: "right", font: { bold: true } });
-      r++;
-    }
-  }
   mt("使用機材", S.kizai); mt("品名", S.hin);
   // 金額
   const M = S.money;
