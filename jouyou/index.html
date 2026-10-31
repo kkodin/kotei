@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202610311633">
+<link rel="stylesheet" href="app.css?v=202610311651">
 </head>
 <body>
 <header id="top">
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 10/31 16:33</span>
+    <span id="ver" class="ver">Vr000 10/31 16:51</span>
   </span>
 </header>
 
@@ -40,7 +40,7 @@
   <!-- 日報 -->
   <section id="pSheet">
     <div class="ribbon">
-      <button id="bCopyPrev" class="sub" title="前に書いた日の作業員・工種・機材をこの日に写す（天気・サインは写さない）">前の日と同じ</button>
+      <button id="bCopyPrev" class="sub" title="カレンダーで日報の入っている日を選び、中身を見てからこの日に写す">選択した日からコピー</button>
       <button id="bXlsIn" class="sub" title="元の作業日報の Excel（.xlsx・.xls）から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
       <input type="file" id="xlsFile" accept=".xlsx,.xls" hidden>
       <button id="bFind" class="sub" title="名前・会社・作業内容・工種などで日報を探し、当てはまる日の一覧からその日の日報を出す">🔍 日報を探す</button>
@@ -55,7 +55,7 @@
       <button id="bXlsDay" class="sub" title="この日を Excel（1シート）で出す">Excel（この日）</button>
       <button id="bPdfDay" class="sub" title="この日を印刷・PDF（A4 横 1枚）">PDF（この日）</button>
       <button id="bOut" class="sub" title="期間をまとめて Excel・PDF で出す（1シート1日＋集計）">期間で出力…</button>
-      <button id="bClearDay" class="sub danger" title="この日の日報を消す">この日を消す</button>
+      <button id="bClearDay" class="sub danger" title="カレンダーで日を選んで（いくつでも）日報をまとめて消す">日報を消す…</button>
       <span id="status" class="rstatus"></span>
     </div>
     <div id="roBar" class="robar" hidden></div>
@@ -134,13 +134,14 @@
 </dialog>
 
 <dialog id="dCal">
-  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>日を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="calH">日を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody">
     <div class="calnav"><button type="button" class="sub" id="calPrev" title="前の月">◀</button><b id="calTtl"></b><button type="button" class="sub" id="calNext" title="次の月">▶</button></div>
     <p class="note" id="calInfo"></p>
     <div class="calgrid" id="calGrid"></div>
+    <div class="btns" id="calDelBar" hidden><span class="note" id="calDelN"></span><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" class="danger" id="calDelOk">選んだ日の日報を消す</button></div>
     <p class="note callg"><span class="lg has">●</span> 記入済み　<span class="lg has">✍</span> サインあり　<span class="lg today"></span> 今日　<span class="lg on"></span> 開いている日　<span class="lg inper"></span> 締め期間</p>
-    <div class="btns"><button type="button" class="sub" id="calPrevHas">◀ 前の記入済み</button><button type="button" class="sub" id="calNextHas">次の記入済み ▶</button><span class="sp"></span><button type="button" class="sub" id="calToday">今日</button></div>
+    <div class="btns" id="calBtns"><button type="button" class="sub" id="calPrevHas">◀ 前の記入済み</button><button type="button" class="sub" id="calNextHas">次の記入済み ▶</button><span class="sp"></span><button type="button" class="sub" id="calToday">今日</button></div>
   </div>
 </dialog>
 
@@ -199,11 +200,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202610311633"></script>
+<script src="config.js?v=202610311651"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202610311633"></script>
-<script src="app.js?v=202610311633"></script>
+<script src="grid.js?v=202610311651"></script>
+<script src="app.js?v=202610311651"></script>
 </body>
 </html>

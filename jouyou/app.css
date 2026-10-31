@@ -268,6 +268,10 @@ table.shk3 tr.pfirst td { border-top: 1.5px solid #999; }
 table.shk3 td.zl { color: #777; font-size: 11px; width: 22px; }
 table.shk3 tr.z夜 td { background: #f6f6fd; }
 table.shk3 tr.z夜 td.zl { color: #3a3a9a; }
+.cpbox { max-height: 55vh; overflow: auto; min-width: 520px; }
+table.cpv { margin-bottom: 6px; }
+table.cpv th { background: #f4f6f8; font-weight: normal; }
+#calGrid button.delsel { outline: 3px solid #c62828; background: #fde8e8 !important; }
 #signPad { width: 600px; max-width: 100%; height: 220px; border: 1px dashed #889; border-radius: 4px; background: #fff; touch-action: none; display: block; }
 
 /* ---------- 集計・現場名簿 ---------- */

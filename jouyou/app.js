@@ -1037,18 +1037,40 @@ $("fRes").addEventListener("click", e => {
 });
 
 /* ---------- ボタン ---------- */
+// 選択した日からコピー（2026-10-31 ユーザー：カレンダーで日報の入っている日を選び、中身を見せてからコピーしてよいか聞く）
 $("bCopyPrev").onclick = () => {
   const s = site(); if (!s || !canEdit()) return;
-  const prev = Object.keys(s.日).filter(x => x < UI.day && hasData(s.日[x])).sort().pop();
-  if (!prev) { toast("前に書いた日がありません"); return; }
-  const d = day();
-  if (hasData(d) && !confirm(`この日の内容を ${jpDate(prev)} の内容で置き換えますか？`)) return;
-  pushUndo();
-  const p = s.日[prev], n = ensureDay();
-  n.上 = JSON.parse(JSON.stringify(p.上)); n.下 = JSON.parse(JSON.stringify(p.下));
-  n.担当者 = p.担当者; n.人員手 = p.人員手; n.更新 = now();
-  save(); refreshSheet(); toast(jpDate(prev) + " を写しました（天気・気温・サイン・備考は写していません）");
+  if (!Object.keys(s.日).some(x => x !== UI.day && hasData(s.日[x]))) { toast("ほかに日報の入っている日がありません"); return; }
+  openCal("copy");
 };
+// 写すもの：作業予定（完了報告は写さない）・作業員と使用機材・材料の行・ページの数。天気・気温・記入者・高速・燃料は写さない
+function copyPreview(x) {
+  const s = site(), p = s.日[x], cur = day(), T = (t, rows) => rows.length ? `<h4 class="mh">${t}</h4><table class="sm cpv">${rows.join("")}</table>` : "";
+  const work = (p.上 || []).filter(r => r && r[1]).map(r => `<tr><td>${esc(r[1])}</td></tr>`);
+  const ppl = (p.下 || []).filter(r => r && r[0]).map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[12] || "")}</td><td class="c">${esc(r[3] || "")}</td><td class="c">${esc(r[14] || "")}</td><td class="c">${esc(r[1] || "")}〜${esc(r[2] || "")}</td><td class="r">${esc(r[4] || "")}</td></tr>`);
+  const kiz = (p.下 || []).filter(r => r && r[5]).map(r => `<tr><td>${esc(r[5])}</td><td>${esc(r[6] || "")}</td><td>${esc(r[13] || "")}</td><td class="r">${esc(r[7] || "")}</td></tr>`);
+  const hin = (p.下 || []).filter(r => r && r[9]).map(r => `<tr><td>${esc(r[9])}</td><td class="r">${esc(r[10] || "")}</td><td class="r">${esc(r[15] || "")}</td></tr>`);
+  $("eTtl").textContent = `${jpDate(x)}（${WD[wd(x)]}）の内容をコピーしますか？`;
+  $("eBody").innerHTML = `<div class="cpbox">` +
+    T("作業予定", work) +
+    T(`作業員（${ppl.length}名）`, [`<tr><th>作業員名</th><th>会社</th><th>工種</th><th>昼夜</th><th>始業〜終業</th><th>残</th></tr>`, ...ppl].filter((_, i) => ppl.length || i)) +
+    T("使用機材", kiz.length ? [`<tr><th>使用機材</th><th>規格・形式</th><th>所有者</th><th>数量</th></tr>`, ...kiz] : []) +
+    T("材料", hin.length ? [`<tr><th>材料名</th><th>数量</th><th>実費</th></tr>`, ...hin] : []) +
+    `</div><p class="note">写すもの：作業予定・作業員・使用機材・材料（${pageCount(p) > 1 ? pageCount(p) + "ページ分" : "1ページ"}）。完了報告・天気・気温・記入者・高速・燃料は写しません。</p>` +
+    (hasData(cur) ? `<p class="note ng">${jpDate(UI.day)} にはもう書いてある内容があります。コピーすると作業予定・作業員・使用機材・材料の欄は置き換わります。</p>` : "") +
+    `<div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="eOk">${jpDate(UI.day)} にコピーする</button></div>`;
+  openDlg($("dEdit"));
+  $("eBody").onkeydown = null;
+  $("eOk").onclick = () => {
+    closeDlg($("dEdit")); if (!canEdit()) return;
+    pushUndo();
+    const n = ensureDay();
+    n.上 = JSON.parse(JSON.stringify(p.上 || [])).map(r => { if (r) { while (r.length < 5) r.push(""); r[4] = ""; } return r; });
+    n.下 = JSON.parse(JSON.stringify(p.下 || []));
+    n.頁 = pageCount(p); n.人員手 = p.人員手; n.更新 = now(); tidy(n);
+    UI.pg = 0; save(); refreshSheet(); toast(`${jpDate(x)} の内容をコピーしました`);
+  };
+}
 $("pgBar").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.pg) { goPage((UI.pg || 0) + Number(b.dataset.pg)); return; }
@@ -1063,11 +1085,15 @@ $("pgBar").addEventListener("click", e => {
 $("bInsRow").onclick = () => { const g = grids[cur], s = g.selection(); rowOp(cur, "insert", s.r0, s.r1 - s.r0 + 1); g.focus(); };
 $("bDelRow").onclick = () => { const g = grids[cur], s = g.selection(); rowOp(cur, "delete", s.r0, s.r1 - s.r0 + 1); g.focus(); };
 $("bUndo").onclick = undo; $("bRedo").onclick = redo;
-$("bClearDay").onclick = () => {
-  const s = site(); if (!s || !s.日[UI.day]) { toast("この日は書いていません"); return; }
-  if (!canEdit()) return;
-  if (!confirm(jpDate(UI.day) + " の日報を消しますか？（↶ で戻せます）")) return;
-  pushUndo(); dropDay(s, UI.day); save(); refreshSheet();
+// 日報を消す（2026-10-31 ユーザー：カレンダーで複数の日を選んでまとめて消す）
+$("bClearDay").onclick = () => { const s = site(); if (!s || !canEdit()) return; if (!Object.keys(s.日).length) { toast("消す日報がありません"); return; } openCal("del"); };
+$("calDelOk").onclick = () => {
+  const s = site(); if (!s || !canEdit()) return;
+  if (!calSel.size) { toast("消す日を選んでください"); return; }
+  const ds = [...calSel].sort();
+  if (!confirm(`${ds.length} 日分の日報を消します（${ds.map(jpDate).join("、")}）。
+消した日報は元に戻せません。よいですか？`)) return;
+  ds.forEach(x => dropDay(s, x)); closeDlg($("dCal")); UNDO = []; REDO = []; save(); refreshSheet(); toast(`${ds.length} 日分の日報を消しました`);
 };
 $("bXlsDay").onclick = () => exportXlsx([UI.day], false);
 $("bPdfDay").onclick = () => printDays([UI.day]);
@@ -1616,8 +1642,14 @@ $("outRange").onclick = () => openRange($("outFrom").value, $("outTo").value, (a
 /* ---------- 日を選ぶカレンダー（2026-10-31 ユーザー：上の日付を押すと、記入済みの日に印が付いたカレンダーから選ぶ） ---------- */
 function showDayBtn() { const w = wd(UI.day); $("inDay").textContent = `${UI.day.slice(0, 4)}/${+UI.day.slice(5, 7)}/${+UI.day.slice(8)}（${WD[w]}）`; $("inDay").className = "sub daybtn" + (w === 0 ? " sun" : w === 6 ? " sat" : ""); }
 let calYM = "";
-function openCal() {
+// mode "copy"：写す日を選ぶ（日報が入っている日だけ選べる）
+let calMode = "", calSel = new Set();   // mode "del"：消す日を選ぶ（いくつでも）
+function openCal(mode) {
+  calMode = mode === "copy" || mode === "del" ? mode : ""; calSel = new Set();
+  $("calDelBar").hidden = calMode !== "del";
   calYM = UI.day.slice(0, 7);
+  $("calH").textContent = calMode === "copy" ? "コピーする日を選ぶ（● の日）" : calMode === "del" ? "消す日を選ぶ（押すたびに選ぶ／外す）" : "日を選ぶ";
+  $("calBtns").hidden = !!calMode;
   renderCal(); openDlg($("dCal"));
 }
 function renderCal() {
@@ -1636,10 +1668,25 @@ function renderCal() {
       `<span class="dn">${d}</span>${has ? `<span class="mk">${dd.サイン ? "✍" : "●"}</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : ""}</button>`);
   }
   $("calGrid").innerHTML = h.join("");
+  if (calMode === "del") { calSel.forEach(k => { const b = $("calGrid").querySelector(`[data-d="${k}"]`); if (b) b.classList.add("delsel"); }); $("calDelN").textContent = calSel.size ? `${calSel.size} 日を選んでいます：${[...calSel].sort().map(k => +k.slice(5, 7) + "/" + +k.slice(8)).join("・")}` : "日報の入っている日（●）を押して選んでください"; }
   $("calInfo").textContent = s ? `${siteLabel(s)}　この月の記入済み ${cnt} 日` : "現場を選んでいません";
 }
-$("inDay").onclick = openCal;
-$("calGrid").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (!b) return; closeDlg($("dCal")); setDay(b.dataset.d); });
+$("inDay").onclick = () => openCal();
+$("calGrid").addEventListener("click", e => {
+  const b = e.target.closest("[data-d]"); if (!b) return;
+  if (calMode === "del") {
+    const s = site(), x = b.dataset.d;
+    if (!s || !s.日[x]) { toast("日報が入っていない日です"); return; }
+    calSel.has(x) ? calSel.delete(x) : calSel.add(x); renderCal(); return;
+  }
+  if (calMode === "copy") {
+    const s = site(), x = b.dataset.d;
+    if (x === UI.day) { toast("いま開いている日です。ほかの日を選んでください"); return; }
+    if (!s || !hasData(s.日[x])) { toast("日報が入っていない日です（● の日を選んでください）"); return; }
+    closeDlg($("dCal")); copyPreview(x); return;
+  }
+  closeDlg($("dCal")); setDay(b.dataset.d);
+});
 $("calPrev").onclick = () => { const [y, m] = calYM.split("-").map(Number); const d = new Date(y, m - 2, 1); calYM = ymd(d).slice(0, 7); renderCal(); };
 $("calNext").onclick = () => { const [y, m] = calYM.split("-").map(Number); const d = new Date(y, m, 1); calYM = ymd(d).slice(0, 7); renderCal(); };
 $("calToday").onclick = () => { closeDlg($("dCal")); setDay(ymd(new Date())); };
