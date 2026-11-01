@@ -179,3 +179,14 @@ table.list tr.miss td:last-child::after { content: "未報告"; color: var(--war
 .dcol { height: 220px; width: 96px; overflow-y: scroll; scroll-snap-type: y mandatory; padding: 88px 0; box-sizing: border-box; scrollbar-width: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .dcol::-webkit-scrollbar { display: none; }
 .dcol > div { height: 44px; line-height: 44px; text-align: center; font-size: 24px; scroll-snap-align: center; }
+/* 月の一覧（1日〜月末を縦に） */
+.lhead select { font-size: 16px; padding: 4px 8px; max-width: 60vw; }
+table.mlist { background: #fff; border: 1px solid var(--line); }
+table.mlist th, table.mlist td { padding: 7px 6px; }
+table.mlist td:nth-child(1), table.mlist td:nth-child(2), table.mlist th:nth-child(1), table.mlist th:nth-child(2) { width: 2.2em; text-align: center; white-space: nowrap; }
+table.mlist td:nth-child(3) { width: 34%; }
+table.mlist tbody tr { cursor: pointer; }
+table.mlist tr.sun td:nth-child(-n+2) { color: var(--ng); } table.mlist tr.sun { background: #fdf6f5; }
+table.mlist tr.sat td:nth-child(-n+2) { color: #2b6cb0; } table.mlist tr.sat { background: #f5f8fc; }
+table.mlist .plan { color: var(--sub); }
+table.mlist .mk { margin-left: 6px; font-size: 11px; color: var(--warn); white-space: nowrap; }

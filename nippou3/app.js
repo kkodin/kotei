@@ -124,7 +124,8 @@ const S = {
   F: {},                         // 月 → { doc, eTag, pending:[fn], saving, timer, err, loaded }
   M: { 社員: [], 従業員: [], 外注業者: [], 機械: [] },   // 工程データ\マスタ.json（機械は自社機械稼働表の機械の名前）
   sites: [],                     // 稼働データ\現場一覧.json の 現場（コード・名前・正式名・元請）
-  view: "me",                    // me＝私の日報、all＝この日の全員の日報、mysum＝私の月の集計、site＝現場別日報（別ウィンドウ）
+  view: "me",                    // me＝私の日報、all＝この日の全員の日報、mysum＝私の月の集計、list＝月の一覧、site＝現場別日報（別ウィンドウ）
+  who: "",                       // 月の一覧で見ている人（空＝自分）
   K: { sites: [], rest: [] },    // 全体工程表の 現場_*.json と 休日.json（予定を作る。ゲストは読めない）
   kikai: null,                   // 稼働データ.json（機械の稼働の集計。読めなければ出さない）
   site: null,                    // 現場別日報で見ている現場 { place, code }
@@ -439,6 +440,7 @@ function render() {
   $("bSite").hidden = S.view === "site";
   if (S.view === "all") return renderAll();
   if (S.view === "mysum") return renderMySum();
+  if (S.view === "list") return renderList();
   $("empty").hidden = true;
   if (S.view === "site") renderSite();
   else {
@@ -720,6 +722,36 @@ async function renderSiteSum() {
     $("all").innerHTML = `<h3>${esc(S.site.place)}　${+m.slice(5)}月の集計<small>（全員の日報から。◀▶ で月を移る）</small></h3>` + sumHTML(entries, days, "だれ", siteMachines(days));
   } catch (e) { $("all").innerHTML = `<p class="ng">集計できませんでした：${esc(e.message)}</p>`; }
 }
+// 月の一覧（「…」→ この月の一覧）：1日〜月末を縦に、日・曜日・現場・作業内容（要約）。名前を選ぶと、ほかの人の分も見られる
+function workSum(rs) {
+  const rep = [], plan = [], pick = a => [...new Set(a.map(v => v.trim()).filter(Boolean))].join("、");
+  rs.forEach(r => workLines(r).forEach(l => { if (l.報告) rep.push(...String(l.報告).split(/\r?\n/)); else if (l.予定) plan.push(l.予定); }));
+  const t = pick(rep), cut = v => v.length > 60 ? v.slice(0, 60) + "…" : v;
+  return t ? { t: cut(t) } : { t: cut(pick(plan)), plan: true };
+}
+async function renderList() {
+  $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
+  $("dayHead").innerHTML = `<button id="bBack">← 日報に戻る</button>`;
+  $("bBack").onclick = () => { S.view = S.site ? "site" : "me"; render(); };
+  const m = monthOf(S.day);
+  if (!$("all").querySelector(".mlist")) $("all").innerHTML = `<p>読んでいます…</p>`;
+  await loadMonth(m);
+  let docs = [];
+  try { docs = await monthDocs(m); } catch (e) { toast("ほかの人の日報を読めませんでした：" + e.message); }
+  if (S.view !== "list" || monthOf(S.day) !== m) return;
+  const names = [...new Set([S.me.name, ...docs.map(d => d.名前).filter(Boolean)])];
+  const who = names.find(n => nk(n) === nk(S.who)) || S.me.name, mine = nk(who) === nk(S.me.name);
+  const doc = mine ? fileOf(m).doc : docs.find(d => nk(d.名前) === nk(who)) || { 日: {} };
+  const body = monthDays(m).map(k => {
+    const d = (doc.日 || {})[k] || {}, rs = d.行 || [], w = workSum(rs);
+    const places = [...new Set(rs.map(r => r.行先).filter(Boolean))].join("　");
+    return `<tr data-k="${k}" class="${dayCls(k)}"><td class="num">${+k.slice(8)}</td><td>${WD[dow(k)]}</td><td>${esc(places)}</td><td>${w.plan && w.t ? `<span class="plan">予定：${esc(w.t)}</span>` : esc(w.t)}${rs.length && !d.報告 ? `<span class="mk">書きかけ</span>` : ""}</td></tr>`;
+  }).join("");
+  $("all").innerHTML = `<h3 class="lhead">${+m.slice(5)}月　<select id="lWho">${names.map(n => `<option${n === who ? " selected" : ""}>${esc(n)}</option>`).join("")}</select><small>◀▶ で月を移る・行を押すとその日</small></h3>
+    <table class="list mlist"><thead><tr><th>日</th><th>曜日</th><th>現場</th><th>作業内容</th></tr></thead><tbody>${body}</tbody></table>`;
+  $("lWho").onchange = () => { S.who = $("lWho").value; renderList(); };
+  $("all").querySelector("tbody").onclick = e => { const tr = e.target.closest("tr[data-k]"); if (!tr) return; S.view = S.site ? "site" : mine ? "me" : "all"; if (S.site) S.tab = "day"; setDay(tr.dataset.k); };
+}
 // 私の月の集計（「…」→ この月の集計）
 async function renderMySum() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
@@ -832,13 +864,13 @@ async function setDay(k) {
   await loadMonth(monthOf(k)); if (S.day === k) render();
 }
 function bind() {
-  const monthView = () => S.view === "mysum" || (S.view === "site" && S.tab === "sum");
+  const monthView = () => S.view === "mysum" || S.view === "list" || (S.view === "site" && S.tab === "sum");
   const monthStep = n => { const d = dateOf(monthOf(S.day) + "-01"); d.setMonth(d.getMonth() + n); return keyOf(d); };
   $("bPrev").onclick = () => setDay(monthView() ? monthStep(-1) : dayAdd(S.day, -1));
   $("bNext").onclick = () => setDay(monthView() ? monthStep(1) : dayAdd(S.day, 1));
   $("bToday").onclick = () => setDay(todayKey());
   $("inDay").onchange = () => { if ($("inDay").value) setDay($("inDay").value); };
-  $("bAdd").onclick = () => { if (S.view === "all" || S.view === "mysum") { S.view = "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
+  $("bAdd").onclick = () => { if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
   $("bSite").onclick = chooseSite;
   $("bReport").onclick = report;
   $("bMe").onclick = async () => { const n = await askMe(S.me.acct, false); if (n) setMe(n); };
@@ -852,6 +884,7 @@ function bind() {
     if (m.dataset.m === "me") $("bMe").click();
     if (m.dataset.m === "find") findFolder();
     if (m.dataset.m === "same") sameAsBefore();
+    if (m.dataset.m === "list") { S.view = "list"; render(); }
     if (m.dataset.m === "mysum") { S.view = S.view === "site" ? "site" : "mysum"; if (S.view === "site") S.tab = "sum"; render(); }
   };
   // PC：Alt+←/→ で日を移る
