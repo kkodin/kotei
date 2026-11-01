@@ -4,7 +4,10 @@
      本社だけの日は1枚、いくつも回った日はカードを足す。詳しく書かない人はここまで。
    ・現場のカードから「詳しく書く」で常用日報（kotei/jouyou）を開き、この日・この現場に作業内容と人を入れた形で詳しく書く。
    ・画面は PC・iPad・iPhone SE で1つ（幅で並びが変わる）。ボタンは下の3つ＋「…」だけ。ホーム画面に置くとアドレスバーが出ない。
-   ・データ：会社の OneDrive の 工程データ\日報\個人_<名前>_<YYYY-MM>.json（1人1か月1ファイル）。マスタは読むだけ。 */
+   ・データ：会社の OneDrive の 日報のフォルダ（config の nippou）に 個人_<名前>_<YYYY-MM>.json（1人1か月1ファイル）。マスタは読むだけ。
+     365 のアカウントが無い人はゲストに招き、日報のフォルダだけを共有する（工程データは見せない）。ゲストは同じフォルダの 名簿.json
+     （工程データのマスタ・現場一覧の名前だけの写し。工程データを読める人が開くたびに作り直す）で名前・現場を選ぶ。
+     config に nippou が無いときは、これまでどおり 工程データ\日報\ に書く。 */
 "use strict";
 const $ = id => document.getElementById(id);
 const CFG = window.NIPPOU_CONFIG;
@@ -12,6 +15,8 @@ const SCOPES = ["User.Read", "Files.ReadWrite.All"];
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const DEMO = new URLSearchParams(location.search).has("demo");
 const NDIR = "日報";
+const SEP = DEMO || !!(CFG.nippou && CFG.nippou.itemId);   // 日報だけ別のフォルダ（ゲストに共有する）
+const ROSTER = "名簿.json";                                  // そのフォルダに置く名簿・現場一覧の写し
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pad2 = n => String(n).padStart(2, "0");
 const keyOf = d => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
@@ -107,9 +112,10 @@ function DemoFolder(prefix) {
     }
   };
 }
-const koteiStore = DEMO ? DemoFolder("工程/") : GraphFolder("kotei");
-const nippouStore = DEMO ? DemoFolder("日報/") : GraphFolder("kotei", NDIR);
-const kikaiStore = DEMO ? DemoFolder("機械/") : GraphFolder("kikai");
+const GUEST_DEMO = DEMO && new URLSearchParams(location.search).has("guest");   // 試し：工程データを読めないゲストのつもり
+const koteiStore = DEMO ? DemoFolder(GUEST_DEMO ? "見えない/" : "工程/") : GraphFolder("kotei");
+const nippouStore = DEMO ? DemoFolder("日報/") : SEP ? GraphFolder("nippou") : GraphFolder("kotei", NDIR);
+const kikaiStore = DEMO ? DemoFolder(GUEST_DEMO ? "見えない/" : "機械/") : GraphFolder("kikai");
 
 /* ---------- 状態 ---------- */
 const S = {
@@ -175,12 +181,27 @@ async function loadMonth(m, force) {
   catch (e) { toast("日報を読めませんでした：" + e.message); }
 }
 
-/* ---------- マスタ（読むだけ） ---------- */
+/* ---------- マスタ（読むだけ）。日報が別のフォルダなら、そこに名前だけの写し（名簿.json）を置き、ゲストはそれを読む ---------- */
+const siteMin = x => ({ コード: x.コード || "", 名前: x.名前 || "", 正式名: x.正式名 || "", 元請: x.元請 || "" });
 async function loadMasters() {
   const [m, s] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null)]);
   if (m) S.M = { 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] };
   if (s) S.sites = (s.data.現場 || []).filter(x => x && (x.名前 || x.正式名));
+  if (SEP) {
+    const cur = await nippouStore.get(ROSTER).catch(() => null);
+    if (m) await saveRoster(cur, !!s);
+    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [] }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
+    else if (!m) throw new Error("名簿がまだありません（工程データを読める人が一度開くと作られます）");
+  }
   try { localStorage.setItem("nippou_master_v3", JSON.stringify({ M: S.M, sites: S.sites })); } catch (e) { }
+}
+// 工程データを読めた人が開いたとき：名簿.json を今のマスタに合わせる（変わっていなければ書かない）。現場一覧を読めなかったら現場は前の写しのまま
+async function saveRoster(cur, gotSites) {
+  const c = cur ? cur.data : {};
+  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
+  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 現場: c.現場 })) return;
+  const doc = { 形式: "工事日報の名簿", 版: 1, 説明: "工程データのマスタ・現場一覧の名前だけの写し。工事日報が自動で作り直す（ここを直しても戻る）", ...body, 更新: nowStr() };
+  try { await nippouStore.put(ROSTER, doc, cur ? cur.eTag : null); } catch (e) { console.warn("名簿の写しを保存できませんでした", e); }
 }
 function cachedMasters() { try { const c = JSON.parse(localStorage.getItem("nippou_master_v3")); if (c) { S.M = c.M; S.sites = c.sites; } } catch (e) { } }
 const people = () => [...S.M.社員, ...S.M.従業員];
@@ -422,6 +443,30 @@ function installGuide() {
     `<div class="btns"><button class="pri" data-close>わかった</button></div>`);
 }
 
+/* ---------- 日報のフォルダを調べる（管理者が1回だけ。?setup で開くと「…」に出る） ----------
+   OneDrive の共有リンクから driveId・itemId を出し、config.js の nippou に書いてもらう（リンクそのものは config に書かない） */
+function findFolder() {
+  dlg(`<h2>日報のフォルダを調べる</h2><p style="font-size:14px">OneDrive で日報のフォルダを選び、「共有」→「リンクのコピー」で写したリンクを貼ってください。</p>
+    <input id="shUrl" placeholder="https://…sharepoint.com/…" autocomplete="off"><pre id="shOut" style="white-space:pre-wrap;font-size:14px"></pre>
+    <div class="btns"><button data-close>閉じる</button><button class="pri" id="shGo">調べる</button></div>`);
+  $("shGo").onclick = async () => {
+    const u = $("shUrl").value.trim(); if (!u) return;
+    const id = "u!" + btoa(unescape(encodeURIComponent(u))).replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-");
+    $("shOut").textContent = "調べています…";
+    try {
+      const r = await g(`/shares/${id}/driveItem`); if (!r.ok) throw httpErr(r, "リンクを開けません");
+      const j = await r.json(); if (!j.folder) throw new Error("フォルダのリンクではありません");
+      $("shOut").textContent = `「${j.name}」
+nippou: {
+  driveId: "${j.parentReference.driveId}",
+  itemId: "${j.id}"
+}
+
+この4行を Claude に渡してください（config.js に入れます）。`;
+    } catch (e) { $("shOut").textContent = "調べられませんでした：" + e.message; }
+  };
+}
+
 /* ---------- 日を移る・ボタン ---------- */
 async function setDay(k) {
   S.day = k; closeSug();
@@ -446,6 +491,7 @@ function bind() {
     if (m.dataset.m === "reload") { await loadMasters(); await loadMonth(monthOf(S.day), true); render(); toast("最新を読みました"); }
     if (m.dataset.m === "install") installGuide();
     if (m.dataset.m === "me") $("bMe").click();
+    if (m.dataset.m === "find") findFolder();
   };
   // PC：Alt+←/→ で日を移る
   document.addEventListener("keydown", e => { if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); setDay(dayAdd(S.day, e.key === "ArrowLeft" ? -1 : 1)); } });
@@ -473,6 +519,7 @@ async function start() {
     S.me.acctName = acc.name || acc.username;
   }
   $("app").hidden = false; $("bar").hidden = false;
+  if (!DEMO && new URLSearchParams(location.search).has("setup")) $("mFind").hidden = false;
   bind();
   await loadMasters().catch(e => toast("マスタを読めませんでした（前に読んだ控えで動きます）：" + e.message));
   let name = savedMe(S.me.acct);
@@ -486,6 +533,7 @@ async function start() {
 function seedDemo() {
   try { if (localStorage.getItem(DEMO_KEY)) return; } catch (e) { return; }
   const put = (name, data) => { const all = JSON.parse(localStorage.getItem(DEMO_KEY) || "{}"); all[name] = { data, eTag: "e" + Math.random().toString(36).slice(2) }; localStorage.setItem(DEMO_KEY, JSON.stringify(all)); };
+  if (GUEST_DEMO) put("日報/名簿.json", { 形式: "工事日報の名簿", 版: 1, 社員: ["見本　一郎", "見本　二郎", "試験　花子"], 従業員: ["作業　三郎", "作業　四郎", "作業　五郎"], 外注業者: ["第一カッター興業", "見本警備"], 現場: [{ コード: "510001", 名前: "A現場 配水管", 正式名: "A町配水管布設工事", 元請: "見本市水道局" }] });
   put("工程/マスタ.json", { 社員: ["見本　一郎", "見本　二郎", "試験　花子"], 従業員: ["作業　三郎", "作業　四郎", "作業　五郎"], 外注業者: ["第一カッター興業", "見本警備"] });
   put("機械/現場一覧.json", { 現場: [{ コード: "510001", 名前: "A現場 配水管", 正式名: "A町配水管布設工事", 元請: "見本市水道局" }, { コード: "510002", 名前: "B現場 道路改良", 正式名: "B線道路改良工事", 元請: "見本建設" }] });
   const y = dayAdd(todayKey(), -1), m = monthOf(y);

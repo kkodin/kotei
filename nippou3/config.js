@@ -14,6 +14,9 @@ window.NIPPOU_CONFIG = {
     driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
     itemId: "01NJOWDESCMVESZPAWFJCK3KKPBSCGAJKG"
   },
+  // nippou：日報だけを置くフォルダ（365 の無い人をゲストに招いて、ここだけ共有する）。?setup で開いて「…」→「日報のフォルダを調べる」で出る値を書く。
+  //         書かない（null）うちは 工程データ\日報\ に書く
+  nippou: null,
   // 天候を自動で入れる場所（横浜市役所あたり）。open-meteo（登録不要の天気の API）に緯度経度だけを送る
   weather: { lat: 35.444, lon: 139.638 }
 };
