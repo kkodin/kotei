@@ -213,11 +213,11 @@ async function loadMasters() {
   const [m, s] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null), loadKotei()]);
   if (m) S.M = { 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] };
   if (s) S.sites = (s.data.現場 || []).filter(x => x && (x.名前 || x.正式名));
-  S.M.機械 = S.kikai ? [...new Set((S.kikai.機械 || []).map(machName))] : (S.M.機械 || []);
+  if (S.kikai) { const ms = (S.kikai.機械 || []).filter(m => !m.使わない); S.M.機械 = [...new Set(ms.map(machName))]; S.M.機械分類 = Object.fromEntries(ms.map(m => [machName(m), m.分類 || "その他"])); }
   if (SEP) {
     const cur = await nippouStore.get(ROSTER).catch(() => null);
     if (m) await saveRoster(cur, !!s);
-    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
+    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
     else if (!m) throw new Error("名簿がまだありません（工程データを読める人が一度開くと作られます）");
   }
   try { localStorage.setItem("nippou_master_v3", JSON.stringify({ M: S.M, sites: S.sites })); } catch (e) { }
@@ -225,8 +225,8 @@ async function loadMasters() {
 // 工程データを読めた人が開いたとき：名簿.json を今のマスタに合わせる（変わっていなければ書かない）。現場一覧を読めなかったら現場は前の写しのまま
 async function saveRoster(cur, gotSites) {
   const c = cur ? cur.data : {};
-  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 機械: S.kikai ? S.M.機械 : (c.機械 || []), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
-  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 機械: c.機械, 現場: c.現場 })) return;
+  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
+  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 機械: c.機械, 機械分類: c.機械分類, 現場: c.現場 })) return;
   const doc = { 形式: "工事日報の名簿", 版: 1, 説明: "工程データのマスタ・現場一覧の名前だけの写し。工事日報が自動で作り直す（ここを直しても戻る）", ...body, 更新: nowStr() };
   try { await nippouStore.put(ROSTER, doc, cur ? cur.eTag : null); } catch (e) { console.warn("名簿の写しを保存できませんでした", e); }
 }
@@ -369,10 +369,17 @@ function placeItems() {
   const recent = [], seen = new Set();
   for (let i = 0; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => { const k = nk(r.行先); if (r.行先 && !seen.has(k)) { seen.add(k); recent.push({ grp: "最近行った所", v: r.行先, コード: r.コード || "" }); } });
   return [...recent, ...OFFICE.filter(v => !seen.has(nk(v))).map(v => ({ grp: "本社など", v })),
-    ...S.sites.filter(x => !seen.has(nk(siteName(x)))).map(x => ({ grp: "現場", v: siteName(x), sub: [x.コード, x.元請].filter(Boolean).join(" "), コード: x.コード || "" }))];
+    ...S.sites.filter(x => !seen.has(nk(siteName(x)))).map(x => ({ grp: "現場", v: siteName(x), sub: [x.コード, x.元請 === "自社請け" ? "自社請け " + (x.発注者 || "") : x.元請].filter(Boolean).join(" "), コード: x.コード || "" }))];
 }
-// 人の候補：この行先に前に来ていた人 → 社員・従業員
+// 人の候補：この行先に前に来ていた人 → 社員・従業員。PICK.人 で 職員（社員）・作業員（従業員）に絞る
+const PICK = { 人: "", 機械: "" };   // 選ぶ欄の絞り込み（参加者＝職員／作業員、機械＝稼働表の分類）
 function personItems(place, have) {
+  const all = personItems0(place, have), f = PICK.人;
+  if (!f) return all;
+  const L = new Set((f === "職員" ? S.M.社員 : S.M.従業員).map(nk));
+  return all.filter(x => L.has(nk(x.v)));
+}
+function personItems0(place, have) {
   const hv = new Set(have.map(nk)), out = [], seen = new Set();
   for (let i = 1; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => { if (nk(r.行先) === nk(place)) (r.人 || []).forEach(n => { const k = nk(n); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "前にこの現場に来ていた人", v: n }); } }); });
   S.M.社員.forEach(n => { const k = nk(n); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "社員", v: n }); } });
@@ -385,8 +392,8 @@ function machItems(have) {
   const hv = new Set(have.map(nk)), out = [], seen = new Set();
   const add = (grp, v) => { const k = nk(v); if (v && !hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp, v }); } };
   for (let i = 1; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => (r.機械 || []).forEach(v => add("前に使った機械", v)));
-  (S.M.機械 || []).forEach(v => add("自社の機械", v));
-  return out;
+  (S.M.機械 || []).forEach(v => add("自社の機械　" + ((S.M.機械分類 || {})[v] || "その他"), v));
+  return PICK.機械 ? out.filter(x => ((S.M.機械分類 || {})[x.v] || "その他") === PICK.機械) : out;
 }
 
 /* ---------- 時刻（「8」→8:00、「830」→8:30、「21.5」→21:30） ---------- */
@@ -474,7 +481,7 @@ function drawCards(list, draft) {
 }
 function cardHTML(r, i, draft) {
   const off = isOffice(r.行先), st = !off && r.行先 ? siteOf(r.行先, r.コード) : null, L = workLines(r);
-  const info = st ? `<div class="pinfo">工事コード <b>${esc(st.コード || "―")}</b>　元請 <b>${esc(st.元請 || "―")}</b></div>` : !off && r.行先 ? `<div class="pinfo">現場一覧にない行先（このまま書けます）</div>` : "";
+  const info = st ? `<div class="pinfo">${siteInfo(r.行先, r.コード)}</div>` : !off && r.行先 ? `<div class="pinfo">現場一覧にない行先（このまま書けます）</div>` : "";
   const work = L.map((l, j) => `<div class="wr"><textarea data-f="wp${j}" data-wj="${j}" data-wk="予定" rows="1" placeholder="予定">${esc(l.予定 || "")}</textarea><textarea data-f="wr${j}" data-wj="${j}" data-wk="報告" rows="1" placeholder="したこと">${esc(l.報告 || "")}</textarea>${L.length > 1 ? `<button type="button" data-delw="${j}" aria-label="この作業を消す">×</button>` : "<span></span>"}</div>`).join("");
   const hasPR = ["人", "外注", "機械"].some(x => listIn(r, "p", x).length || listIn(r, "r", x).length);
   const side = s => chipsBox(r, s, "人") + gaiBox(r, s) + chipsBox(r, s, "機械");
@@ -482,9 +489,9 @@ function cardHTML(r, i, draft) {
   return `<div class="card" data-id="${r.id}">
     <div class="ch"><span class="no">${i + 1}</span><span class="kind">${esc(r.コード ? "現場 " + r.コード : off ? "" : r.行先 ? "現場" : "")}</span><span class="sp"></span>${draft ? "" : `<button type="button" data-act="del">消す</button>`}</div>
     <div class="row2">
-      <div class="f"><label>現場名（行先）</label><div class="pick"><input data-f="place" value="${esc(r.行先 || "")}" placeholder="現場名・本社（打つと候補。自由に書いてもよい）" autocomplete="off"></div>${info}</div>
+      <div class="f"><label>現場名（行先）</label><div class="pick"><input data-f="place" value="${esc(r.行先 || "")}" placeholder="現場名・本社（打つと候補。自由に書いてもよい）" autocomplete="off"></div>${info}${honshaBox(r)}</div>
       <div class="f"><label>時間</label><div class="time"><input class="tm" data-f="t0" value="${esc(r.始め || "")}" inputmode="decimal" placeholder="始め"${tip}><span>〜</span><input class="tm" data-f="t1" value="${esc(r.終わり || "")}" inputmode="decimal" placeholder="終わり"${tip}></div>
-        ${r.始め || r.終わり ? "" : `<div class="time quick" style="margin-top:6px"><button type="button" data-tq="8:00|17:00">8:00〜17:00</button><button type="button" data-tq="21:00|6:00">21:00〜6:00</button></div>`}</div>
+        ${kubunBox(r)}${r.始め || r.終わり ? "" : `<div class="time quick" style="margin-top:6px"><button type="button" data-tq="8:00|17:00">8:00〜17:00</button><button type="button" data-tq="21:00|6:00">21:00〜6:00</button></div>`}</div>
     </div>
     <div class="f"><label>作業内容</label><div class="wl"><div class="wh"><span>予定</span><span>報告（したこと）</span><span></span></div>${work}</div>
       <button type="button" class="addline" data-act="addw">＋ 作業内容を追加</button></div>
@@ -498,12 +505,85 @@ function cardHTML(r, i, draft) {
 // 参加者名・使用機械（チップ。打つか選んで増やす）／外注業者名＋人数（1行ずつ増やす）
 function chipsBox(r, s, kind) {
   const L = listIn(r, s, kind), man = kind === "人";
+  const cats = man ? ["職員", "作業員"] : [...new Set(Object.values(S.M.機械分類 || {}))].sort((a, b) => MCATS.indexOf(a) - MCATS.indexOf(b));
+  const sel = cats.length ? `<select class="pf" data-pf="${kind}" aria-label="絞る"><option value="">${man ? "全員" : "全部の機械"}</option>${cats.map(c => `<option${PICK[kind] === c ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>` : "";
   return `<div class="f"><label>${man ? "参加者名" : "使用機械"}</label>${L.length ? `<div class="chips">${L.map((n, j) => `<span class="chip">${esc(n)}<button type="button" data-dc="${s}|${kind}|${j}" aria-label="${esc(n)} を外す">×</button></span>`).join("")}</div>` : ""}` +
-    `<div class="pick"><input data-f="c${s}${kind}" data-ci="${s}|${kind}" placeholder="${man ? "＋ 参加者を追加（名前を打つか選ぶ）" : "＋ 機械を追加（打つか選ぶ）"}" autocomplete="off"></div></div>`;
+    `<div class="pickrow">${sel}<div class="pick"><input data-f="c${s}${kind}" data-ci="${s}|${kind}" placeholder="${man ? "＋ 参加者を追加（名前を打つか選ぶ）" : "＋ 機械を追加（打つか選ぶ）"}" autocomplete="off"></div></div></div>`;
 }
+const ROLES = ["作業員", "職長", "世話役"];
+const MCATS = ["車両", "重機", "小型機械", "測量", "その他"];
 function gaiBox(r, s) {
-  return `<div class="f"><label>外注業者名＋人数</label>` + listIn(r, s, "外注").map((x, j) => `<div class="gai"><div class="pick"><input data-f="g${s}${j}" data-gi="${s}|${j}" value="${esc(x.業者)}" placeholder="業者名" autocomplete="off"></div><input class="n" data-f="n${s}${j}" data-gn="${s}|${j}" value="${esc(x.人数 ?? "")}" inputmode="numeric" placeholder="人数"><span>名</span><button type="button" data-delg="${s}|${j}" aria-label="外す">×</button></div>`).join("") +
+  return `<div class="f"><label>外注業者名＋人数</label>` + listIn(r, s, "外注").map((x, j) => `<div class="gaibox"><div class="gai"><div class="pick"><input data-f="g${s}${j}" data-gi="${s}|${j}" value="${esc(x.業者)}" placeholder="業者名" autocomplete="off"></div><input class="n" data-f="n${s}${j}" data-gn="${s}|${j}" value="${esc(x.人数 ?? "")}" inputmode="numeric" placeholder="人数"><span>名</span><button type="button" data-delg="${s}|${j}" aria-label="外す">×</button></div>
+    <div class="gmem">${(x.名前 || []).map((m, k) => `<span class="chip">${esc(m.名前)}<select data-grole="${s}|${j}|${k}" aria-label="役">${ROLES.map(v => `<option${(m.役 || "作業員") === v ? " selected" : ""}>${v}</option>`).join("")}</select><button type="button" data-gdel="${s}|${j}|${k}" aria-label="外す">×</button></span>`).join("")}
+      <div class="pick"><input data-f="m${s}${j}" data-gm="${s}|${j}" placeholder="＋ 作業員の名前（わかれば）" autocomplete="off"></div></div></div>`).join("") +
     `<button type="button" class="addline" data-addg="${s}">＋ 外注業者を追加</button></div>`;
+}
+// 本社：本社だけ／本社＋現場名（本社でその現場の仕事をした）。行.関連現場 = { 名前, コード }
+const isHonsha = v => /^本社/.test(String(v || "").trim());
+function honshaBox(r) {
+  if (!isHonsha(r.行先)) return "";
+  const on = !!r.関連現場;
+  return `<div class="honsha"><label class="ck"><input type="radio" name="hs${r.id}" data-hs="0"${on ? "" : " checked"}> 本社だけ</label><label class="ck"><input type="radio" name="hs${r.id}" data-hs="1"${on ? " checked" : ""}> 本社＋現場名</label>
+    ${on ? `<div class="pick"><input data-f="rel" data-rel="1" value="${esc(r.関連現場.名前 || "")}" placeholder="どの現場の仕事か（打つと候補）" autocomplete="off"></div>` : ""}</div>`;
+}
+// 外注の作業員名の候補：前にこの業者で来ていた人（あとで NAS の安全書類の作業員名簿も）
+function gaiMemItems(gyosha, have) {
+  const hv = new Set(have.map(nk)), out = [], seen = new Set();
+  for (let i = 0; i <= 60; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => ["p", "r"].forEach(s => listIn(r, s, "外注").forEach(g => { if (nk(g.業者) !== nk(gyosha)) return; (g.名前 || []).forEach(m => { const k = nk(m.名前); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "前に来ていた人", v: m.名前, 役: m.役 }); } }); })));
+  return out;
+}
+// 昼勤・夜勤（行.区分。無ければ始めの時刻で決める＝17時〜5時に始めたら夜）
+const kubunOf = r => r.区分 || ((t => t != null && (t >= 17 * 60 || t < 5 * 60))(tmin(r.始め)) ? "夜" : "昼");
+const kubunBox = r => `<div class="kbn">${["昼", "夜"].map(v => `<label class="ck"><input type="radio" name="kb${r.id}" data-kb="${v}"${kubunOf(r) === v ? " checked" : ""}> ${v}勤</label>`).join("")}</div>`;
+// 同じ日・同じ時間帯（昼夜が同じで、時刻があれば重なる）に、ほかの日報や自社機械稼働表の予約に入っている人・機械 → 尋ねる
+function spanOf(r) { const a = tmin(r.始め), b = tmin(r.終わり); if (r.終日 || a == null || b == null) return null; return [a, b <= a ? b + 1440 : b]; }
+function sameSlot(r1, r2) { if (kubunOf(r1) !== kubunOf(r2)) return false; const a = spanOf(r1), b = spanOf(r2); return !a || !b || (a[0] < b[1] && b[0] < a[1]); }
+async function clashes(k, r, what) {
+  const out = [], slot = x => `（${kubunOf(x)}勤${x.始め ? " " + x.始め + "〜" + (x.終わり || "") : ""}）`;
+  let docs = [];
+  try { docs = await monthDocs(monthOf(k)); } catch (e) { }
+  evsOn(docs, k).forEach(x => {
+    if (x.r.id === r.id || !sameSlot(x.r, r)) return;
+    const mem = membersOf(x), mac = listIn(x.r, "r", "機械").length ? listIn(x.r, "r", "機械") : listIn(x.r, "p", "機械");
+    (what.人 || []).forEach(n => { if (mem.some(v => nk(v) === nk(n))) out.push(`・${n}：${x.who} の日報「${titleOf(x.r)}」${slot(x.r)}に入っています`); });
+    (what.機械 || []).forEach(n => { if (mac.some(v => nk(v) === nk(n))) out.push(`・${n}：${x.who} の日報「${titleOf(x.r)}」${slot(x.r)}で使っています`); });
+  });
+  if (S.kikai && r.行先) {
+    const names = kikaiNames(r.行先, r.コード);
+    (what.機械 || []).forEach(n => { const mc = (S.kikai.機械 || []).find(m => nk(machName(m)) === nk(n)); if (!mc) return;
+      const y = (S.kikai.予約 || []).find(y => y.機械 === mc.id && y.状態 !== "仮" && (y.区分 || "昼") === kubunOf(r) && kikaiWorks(y, k) && !names.includes(nk(y.現場)));
+      if (y) out.push(`・${n}：自社機械稼働表で「${y.現場}」（${y.区分 || "昼"}）に予約があります`); });
+  }
+  return [...new Set(out)];
+}
+async function okClash(k, r, what) {
+  const m = await clashes(k, r, what);
+  return !m.length || confirm(`同じ時間帯に、ほかでも入っています。\n\n${m.join("\n")}\n\nこのままでよいですか？`);
+}
+// 参加者・機械の絞り込み、外注の作業員名と役、本社＋現場名、昼勤・夜勤。apply(fn, rerender) で行を直す（カードと編集の窓で同じ）
+function bindExtras(root, get, apply, refocus) {
+  root.querySelectorAll("[data-kb]").forEach(el => el.onchange = () => { const v = el.dataset.kb; apply(y => {
+    // 時間が空か、もう一方のいつもの時間（8:00〜17:00／21:00〜6:00）のままなら、いつもの時間に入れ替える
+    const t = [y.始め || "", y.終わり || ""].join("|"); y.区分 = v;
+    if (!y.終日 && ["|", "8:00|17:00", "21:00|6:00"].includes(t)) { y.始め = v === "夜" ? "21:00" : "8:00"; y.終わり = v === "夜" ? "6:00" : "17:00"; }
+  }, true); });
+  root.querySelectorAll("[data-pf]").forEach(el => el.onchange = () => { PICK[el.dataset.pf] = el.value; const i = el.parentElement.querySelector("[data-ci]"); if (i) { i.focus(); i.dispatchEvent(new Event("input")); } });
+  const gOf = (y, s, j) => listOf(y, s, "外注")[+j];
+  root.querySelectorAll("[data-gm]").forEach(el => { const [s, j] = el.dataset.gm.split("|");
+    bindPick(el, () => { const g = gOf(get(), s, j) || {}; return gaiMemItems(g.業者, (g.名前 || []).map(m => m.名前)); }, x => {
+      const n = String(x.v || "").trim(); if (!n) return;
+      apply(y => { const g = gOf(y, s, j); if (!g) return; g.名前 ||= []; if (g.名前.some(m => nk(m.名前) === nk(n))) return; g.名前.push({ 名前: n, 役: x.役 || "作業員" }); if ((parseFloat(g.人数) || 0) < g.名前.length) g.人数 = String(g.名前.length); }, true);
+      refocus(`[data-gm="${s}|${j}"]`);
+    }); });
+  root.querySelectorAll("[data-grole]").forEach(el => el.onchange = () => { const [s, j, k] = el.dataset.grole.split("|"); apply(y => { const g = gOf(y, s, j); if (g && g.名前[+k]) g.名前[+k].役 = el.value; }); });
+  root.querySelectorAll("[data-gdel]").forEach(el => el.onclick = e => { e.stopPropagation(); const [s, j, k] = el.dataset.gdel.split("|"); apply(y => { const g = gOf(y, s, j); if (g) g.名前.splice(+k, 1); }, true); });
+  root.querySelectorAll("[data-hs]").forEach(el => el.onchange = () => { const on = el.dataset.hs === "1"; apply(y => { if (on) y.関連現場 ||= { 名前: "", コード: "" }; else delete y.関連現場; }, true); if (on) refocus("[data-rel]"); });
+  const rel = root.querySelector("[data-rel]");
+  if (rel) {
+    const setRel = (v, code) => apply(y => { const st = siteOf(v, code); y.関連現場 = { 名前: v, コード: code || (st && st.コード) || "" }; }, true);
+    bindPick(rel, () => placeItems().filter(x => x.grp !== "本社など"), x => { rel.value = x.v; setRel(x.v, x.コード); });
+    rel.addEventListener("change", () => { const v = rel.value.trim(); if (v !== ((get().関連現場 || {}).名前 || "")) setRel(v, ""); });
+  }
 }
 function grow(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; }
 const findRow = (d, id) => (d.行 || []).find(x => x.id === id);
@@ -530,9 +610,10 @@ function bindCard(id) {
     setRow(id, y => { y.作業行 = workLines(y).map(l => ({ ...l })); while (y.作業行.length <= j) y.作業行.push({ 予定: "", 報告: "" }); y.作業行[j][f] = v; syncWork(y); });
   }));
   c.querySelectorAll("[data-ci]").forEach(el => { const [s, kind] = el.dataset.ci.split("|");
-    bindPick(el, () => kind === "人" ? personItems(r().行先, listIn(r(), s, kind)) : machItems(listIn(r(), s, kind)), x => {
+    bindPick(el, () => kind === "人" ? personItems(r().行先, listIn(r(), s, kind)) : machItems(listIn(r(), s, kind)), async x => {
       const n = String(x.v || "").trim(); if (!n) return;
       if (listIn(r(), s, kind).some(v => nk(v) === nk(n))) { el.value = ""; return; }
+      if (!await okClash(S.day, r(), { [kind]: [n] })) { el.value = ""; return; }
       setRow(id, y => { listOf(y, s, kind).push(n); }, true);
       setTimeout(() => { const p = document.querySelector(`.card[data-id="${id}"] [data-ci="${s}|${kind}"]`); if (p) p.focus(); }, 0);
     }); });
@@ -541,9 +622,10 @@ function bindCard(id) {
     bindPick(el, gaiItems, x => { el.value = x.v; setRow(id, y => { const g = gOf(y, sj); if (g) g.業者 = x.v; }); });
     el.addEventListener("change", () => setRow(id, y => { const g = gOf(y, sj); if (g) g.業者 = el.value.trim(); })); });
   c.querySelectorAll("[data-gn]").forEach(el => { const sj = el.dataset.gn; el.addEventListener("change", () => { const v = el.value.normalize("NFKC").replace(/[^\d.]/g, ""); el.value = v; setRow(id, y => { const g = gOf(y, sj); if (g) g.人数 = v; }); }); });
+  bindExtras(c, r, (fn, re) => setRow(id, fn, re), sel => setTimeout(() => { const p = document.querySelector(`.card[data-id="${id}"] ${sel}`); if (p) p.focus(); }, 0));
   c.addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
-    if (b.dataset.tq) { const [a, z] = b.dataset.tq.split("|"); setRow(id, y => { y.始め = a; y.終わり = z; }, true); }
+    if (b.dataset.tq) { const [a, z] = b.dataset.tq.split("|"); setRow(id, y => { y.始め = a; y.終わり = z; y.区分 = a === "21:00" ? "夜" : "昼"; }, true); }
     if (b.dataset.dc) { const [s, kind, j] = b.dataset.dc.split("|"); setRow(id, y => { listOf(y, s, kind).splice(+j, 1); }, true); }
     if (b.dataset.delg) { const [s, j] = b.dataset.delg.split("|"); setRow(id, y => { listOf(y, s, "外注").splice(+j, 1); }, true); }
     if (b.dataset.addg) { const s = b.dataset.addg; setRow(id, y => { listOf(y, s, "外注").push({ 業者: "", 人数: "" }); }, true); setTimeout(() => { const els = document.querySelectorAll(`.card[data-id="${id}"] [data-gi^="${s}|"]`); els.length && els[els.length - 1].focus(); }, 0); }
@@ -602,7 +684,8 @@ function toDetail(r) {
 /* ---------- 現場別日報（別ウィンドウ ?site=現場名&code=コード&d=日）
    全員の私の日報から、この現場の分を集めて見せる。自分の分はここでも同じカードで書ける（同じデータなので、私の日報とつながっている）。
    「月の集計」：作業員の出面・外注の人数・機械の稼働（自社機械稼働表）・書いた人の勤務時間・作業内容の予定と報告 ---------- */
-const onSite = r => !!S.site && ((S.site.code && r.コード && String(r.コード) === String(S.site.code)) || nk(r.行先) === nk(S.site.place));
+const onSite0 = (r, site) => (site.code && r.コード && String(r.コード) === String(site.code)) || nk(r.行先) === nk(site.place);
+const onSite = r => !!S.site && (onSite0(r, S.site) || (!!r.関連現場 && onSite0({ 行先: r.関連現場.名前, コード: r.関連現場.コード }, S.site)));
 const DOCS = {};   // 月 → { t, docs }（全員の私の日報。20秒で読み直す）
 async function monthDocs(m, force) {
   const c = DOCS[m];
@@ -622,6 +705,31 @@ function openSite(place, code) {
   window.open(u.href, "_blank");
 }
 // 「現場別詳細工程」：この日の現場が1つならそれ、ほかは選ぶ
+// 「現場別詳細工程」（2026-11-02 ユーザー：工程が開くと思った。全体工程表・自社機械稼働表・日報（現場別／人別）を開けるように）
+// ほかのアプリは同じ kkodin.github.io/kotei の中（全体工程表＝kotei/、自社機械稼働表＝kikai/、常用日報＝jouyou/）。別のタブで開く
+function openApps() {
+  const url = p => new URL("../" + p + (DEMO ? "?demo" : ""), location.href).href;
+  dlg(`<div class="dh"><h2>開く</h2><button type="button" data-close aria-label="閉じる">×</button></div><div class="apps">
+    <button type="button" data-app="kotei"><b>全体工程表</b><small>現場ごとの工程（予定）</small></button>
+    <button type="button" data-app="kikai"><b>自社機械稼働表</b><small>機械の予約・稼働</small></button>
+    <button type="button" data-app="site"><b>日報（現場別）</b><small>現場を選んで、その現場の全員の日報・月の集計</small></button>
+    <button type="button" data-app="person"><b>日報（人別）</b><small>人を選んで、その人の月の一覧</small></button>
+    <button type="button" data-app="jouyou"><b>常用日報</b><small>常用の現場の詳しい日報</small></button></div>`);
+  $("dlgBody").querySelector(".apps").onclick = e => {
+    const b = e.target.closest("[data-app]"); if (!b) return; const a = b.dataset.app;
+    if (a === "site") return chooseSite();
+    if (a === "person") return choosePerson();
+    closeDlg(); window.open(url(a === "kotei" ? "" : a + "/"), "_blank");
+  };
+}
+// 日報（人別）：人を選んで、その人の月の一覧
+function choosePerson() {
+  const list = [...new Set([S.me.name, ...S.M.社員, ...S.M.従業員])];
+  const btns = () => { const q = nk($("pQ").value); return list.filter(n => !q || nk(n).includes(q)).map(n => `<button type="button" data-n="${esc(n)}">${esc(n)}</button>`).join("") || "<p>見つかりません</p>"; };
+  dlg(`<h2>だれの日報を開きますか</h2><input id="pQ" placeholder="名前で絞り込み" autocomplete="off"><div class="namelist" id="pL"></div><div class="btns"><button data-close>やめる</button></div>`);
+  $("pL").innerHTML = btns(); $("pQ").oninput = () => { $("pL").innerHTML = btns(); };
+  $("pL").onclick = e => { const b = e.target.closest("[data-n]"); if (!b) return; closeDlg(); S.who = b.dataset.n; S.view = "list"; render(); };
+}
 function chooseSite() {
   const today = [], seen = new Set();
   rowsOf().forEach(r => { if (r.行先 && !isOffice(r.行先) && !seen.has(nk(r.行先))) { seen.add(nk(r.行先)); today.push({ grp: "この日の現場", v: r.行先, コード: r.コード || "" }); } });
@@ -744,13 +852,13 @@ async function renderList() {
   let docs = [];
   try { docs = await monthDocs(m); } catch (e) { toast("ほかの人の日報を読めませんでした：" + e.message); }
   if (S.view !== "list" || monthOf(S.day) !== m) return;
-  const names = [...new Set([S.me.name, ...docs.map(d => d.名前).filter(Boolean)])];
+  // 人は書いた人だけでなく、ほかの人の日報に参加者として出てくる人（作業員）も選べる。その人が入っている行を全員の日報から集める
+  const names = [...new Set([S.me.name, ...docs.map(d => d.名前).filter(Boolean), ...(S.who ? [S.who] : [])])];
   const who = names.find(n => nk(n) === nk(S.who)) || S.me.name, mine = nk(who) === nk(S.me.name);
-  const doc = mine ? fileOf(m).doc : docs.find(d => nk(d.名前) === nk(who)) || { 日: {} };
   const body = monthDays(m).map(k => {
-    const d = (doc.日 || {})[k] || {}, rs = d.行 || [], w = workSum(rs);
-    const places = [...new Set(rs.map(r => r.行先).filter(Boolean))].join("　");
-    return `<tr data-k="${k}" class="${dayCls(k)}"><td class="num">${+k.slice(8)}</td><td>${WD[dow(k)]}</td><td>${esc(places)}</td><td>${w.plan && w.t ? `<span class="plan">予定：${esc(w.t)}</span>` : esc(w.t)}${rs.length && !d.報告 ? `<span class="mk">書きかけ</span>` : ""}</td></tr>`;
+    const xs = evsOn(docs, k).filter(x => membersOf(x).some(v => nk(v) === nk(who))), rs = xs.map(x => x.r), w = workSum(rs);
+    const places = [...new Set(rs.map(r => titleOf(r)).filter(Boolean))].join("　"), by = [...new Set(xs.filter(x => nk(x.who) !== nk(who)).map(x => x.who))];
+    return `<tr data-k="${k}" class="${dayCls(k)}"><td class="num">${+k.slice(8)}</td><td>${WD[dow(k)]}</td><td>${esc(places)}${by.length ? `<br><small class="plan">記入：${esc(by.join("、"))}</small>` : ""}</td><td>${w.plan && w.t ? `<span class="plan">予定：${esc(w.t)}</span>` : esc(w.t)}${xs.some(x => !x.rep) ? `<span class="mk">書きかけ</span>` : ""}</td></tr>`;
   }).join("");
   $("all").innerHTML = `<h3 class="lhead">${+m.slice(5)}月　<select id="lWho">${names.map(n => `<option${n === who ? " selected" : ""}>${esc(n)}</option>`).join("")}</select><small>◀▶ で月を移る・行を押すとその日</small></h3>
     <table class="list mlist"><thead><tr><th>日</th><th>曜日</th><th>現場</th><th>作業内容</th></tr></thead><tbody>${body}</tbody></table>`;
@@ -877,7 +985,7 @@ function bind() {
   $("bToday").onclick = () => setDay(todayKey());
   $("inDay").onchange = () => { if ($("inDay").value) setDay($("inDay").value); };
   $("bAdd").onclick = () => { if (S.view === "cal") return editEv(S.day, null); if (S.view === "all" || S.view === "mysum" || S.view === "list") { S.view = S.site ? "site" : "me"; render(); } if (S.view === "site" && S.tab !== "day") { S.tab = "day"; render(); } addRow(); };
-  $("bSite").onclick = chooseSite;
+  $("bSite").onclick = openApps;
   $("bReport").onclick = report;
   $("bMe").onclick = async () => { const n = await askMe(S.me.acct, false); if (n) setMe(n); };
   $("bMore").onclick = e => { e.stopPropagation(); $("menu").hidden = !$("menu").hidden; };
@@ -890,6 +998,7 @@ function bind() {
     if (m.dataset.m === "me") $("bMe").click();
     if (m.dataset.m === "find") findFolder();
     if (m.dataset.m === "same") sameAsBefore();
+    if (m.dataset.m === "kuro") kuroOpen();
     if (m.dataset.m === "list") { S.view = "list"; render(); }
     if (m.dataset.m === "cal") { S.view = "cal"; calHome("cal"); render(); }
     if (m.dataset.m === "cards") { S.view = "me"; calHome("me"); render(); }
@@ -954,7 +1063,7 @@ function seedDemo() {
     バー: [{ id: "b1", 段: "l1", 作業: "配水管布設", 開始: a(-10), 終了: a(10) }, { id: "b2", 段: "l2", 作業: "舗装切断工", 開始: a(-2), 終了: a(3) }] });
   put("工程/現場_s2.json", { id: "s2", 名前: "B現場 道路改良", コード: "510002", 段: [{ id: "m1", 区分: "昼", 名前: "", 土: true }],
     バー: [{ id: "c1", 段: "m1", 作業: "伐採工", 開始: a(-5), 終了: a(2) }, { id: "c2", 段: "m1", 作業: "掘削工", 開始: a(3), 終了: a(15) }] });
-  put("機械/稼働データ.json", { 機械: [{ id: "k1", 名前: "バックホウ", 規格: "0.25㎥" }, { id: "k2", 名前: "規制車", 規格: "2t" }],
+  put("機械/稼働データ.json", { 機械: [{ id: "k1", 名前: "バックホウ", 規格: "0.25㎥", 分類: "重機" }, { id: "k2", 名前: "規制車", 規格: "2t", 分類: "車両" }, { id: "k3", 名前: "4t セルフダンプ", 規格: "", 分類: "車両" }, { id: "k4", 名前: "発電機", 規格: "", 分類: "小型機械" }],
     予約: [{ id: "y1", 機械: "k1", 区分: "昼", 現場: "B現場 道路改良", 開始: a(-5), 終了: a(15), 土: true, 日祝: false, 状態: "確定" },
       { id: "y2", 機械: "k2", 区分: "夜", 現場: "A現場 配水管", 開始: a(-10), 終了: a(10), 土: false, 日祝: false, 状態: "確定" }] });
   put("日報/現場設定.json", { 形式: "工事日報の現場設定", 版: 1, 現場: { "c:510001": { 形態: "常用", 名前: "A現場 配水管" } } });

@@ -277,3 +277,68 @@ table.ft select:not(.filt) { width: auto; min-width: 140px; }
   table.ft > tbody > tr > th { border-bottom: none; padding: 8px 2px 0; color: var(--sub); }
   table.ft > tbody > tr > td { padding: 4px 2px 10px; }
 }
+/* 絞り込み（参加者＝職員／作業員、機械＝分類）・外注の作業員名と役・本社＋現場名 */
+.pickrow { display: flex; gap: 6px; align-items: flex-start; }
+.pickrow .pick { flex: 1; min-width: 0; }
+.pickrow select.pf { width: auto; flex: none; max-width: 42%; font-size: 14px; padding: 8px 4px; }
+.gaibox { margin-bottom: 8px; }
+.gmem { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: -2px 0 0 10px; padding-left: 8px; border-left: 2px solid #e3e8ed; }
+.gmem .chip select { width: auto; border: none; background: transparent; font-size: 12px; padding: 2px; color: var(--pri); }
+.gmem .pick { flex: 1; min-width: 160px; }
+.gmem .pick input { font-size: 14px; padding: 6px 8px; }
+.honsha { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-top: 6px; }
+.honsha .pick { flex-basis: 100%; }
+.kbn { display: inline-flex; gap: 14px; margin-top: 6px; }
+.dt .kbn { margin-top: 0; }
+.kbn input { width: auto; }
+/* ドラッグ：予定を人のます目へ・線を移す／写す・右端で日を増やす */
+.pv[draggable=true], .ev.mv { cursor: grab; }
+.ev { position: relative; }
+.ev .rz { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; background: rgba(255,255,255,.35); }
+.ev.tm .rz { background: rgba(0,0,0,.08); }
+table.cg td.dropok, table.mg td.dropok { outline: 2px dashed var(--pri); outline-offset: -3px; background: #eef4fb; }
+table.cg td.rzsel { background: #e3eefb; }
+/* 開く（全体工程表・自社機械稼働表・日報 現場別／人別・常用日報） */
+.apps { display: grid; gap: 8px; }
+.apps button { text-align: left; display: grid; gap: 2px; padding: 10px 14px; }
+.apps button small { color: var(--sub); font-size: 13px; }
+/* クロジカから取り込む */
+.kuro-steps { line-height: 1.8; padding-left: 22px; }
+.kuro-file { font-size: 14px; margin: 0 0 6px; }
+table.list.kuro td { vertical-align: middle; }
+table.list.kuro input[type=checkbox] { width: auto; }
+table.list.kuro .pick input { font-size: 14px; padding: 6px 8px; }
+.kh { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.kh.ok { background: #e3f4e8; color: var(--acc); } .kh.maybe, b.maybe { background: #fff3dc; color: var(--warn); } .kh.ng, b.ng { background: #fde8e6; color: var(--ng); } .kh.off { background: #eef1f4; color: var(--sub); }
+/* スマホのカレンダー（週・日）：日ごとの縦の一覧 */
+.mlist2 { display: grid; gap: 10px; }
+.mday { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.mday .mdh { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #f3f5f7; border-bottom: 1px solid var(--line); }
+.mday .mdh a { cursor: pointer; font-size: 15px; }
+.mday .mdh small { color: var(--ng); margin-left: 6px; }
+.mday .mdh .sp { flex: 1; }
+.mday.sun .mdh a { color: var(--ng); } .mday.sat .mdh a { color: #2b6cb0; }
+.mday.today .mdh { background: #e8f5e9; }
+.madd { min-height: 36px; width: 44px; padding: 0; font-size: 20px; color: var(--pri); }
+.mpl { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 6px 10px 2px; }
+.mpl small { color: var(--sub); margin-right: 2px; }
+.mpl .pv { margin: 0; }
+.mev { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-left: 5px solid var(--c); border-bottom: 1px solid #eef1f4; cursor: pointer; }
+.mev:last-child { border-bottom: none; }
+.mev.draft { background: repeating-linear-gradient(135deg, #fff 0 8px, #fafafa 8px 16px); }
+.mev .mt { flex: none; width: 82px; font-size: 13px; color: var(--sub); }
+.mev .mb { display: grid; gap: 2px; min-width: 0; }
+.mev .mb b { font-weight: normal; font-size: 15px; }
+.mev .mb small { color: var(--sub); font-size: 12px; }
+.mday .none { padding: 8px 10px; margin: 0; }
+/* スマホの詳細・編集：クロジカと同じく全画面、項目名は灰色の帯 */
+@media (max-width: 639px) {
+  dialog.wide { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  dialog.wide #dlgBody { max-height: 100dvh; height: 100dvh; box-sizing: border-box; padding: 12px 14px calc(16px + env(safe-area-inset-bottom)); }
+  dialog.wide table.ft > tbody > tr > th { background: #efefef; color: var(--ink); font-weight: bold; padding: 10px 10px; margin-top: 10px; border-radius: 2px; }
+  dialog.wide table.ft > tbody > tr > td { border-bottom: none; padding: 10px 2px 6px; font-size: 16px; }
+  dialog.wide .btns { flex-wrap: wrap; justify-content: flex-end; }
+  dialog.wide .dh { border-bottom: none; }
+  .calbar .cttl { font-size: 15px; flex-basis: 100%; order: 2; }
+}
+@media (max-width: 759px) { #cKuro { display: none; } .calbar > button { min-height: 34px; padding: 2px 10px; font-size: 13px; } }
