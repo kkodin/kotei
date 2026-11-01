@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>工事日報</title>
+<!-- ホーム画面に置くとアドレスバーなしで開く（2026-11-01 ユーザー：PC・iPad・iPhone SE で入力する所を広く） -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="工事日報">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css?v=202611011505">
+</head>
+<body>
+<header id="top">
+  <button id="bPrev" class="nav" aria-label="前の日">◀</button>
+  <label class="date"><span id="dLabel"></span><input type="date" id="inDay" aria-label="日付"></label>
+  <button id="bNext" class="nav" aria-label="次の日">▶</button>
+  <button id="bToday" class="today">今日</button>
+  <span class="sp"></span>
+  <span id="sync" class="sync"></span>
+  <button id="bMe" class="me" title="名前を選び直す"></button>
+</header>
+
+<div id="signin" class="center" hidden>
+  <h1>工事日報</h1>
+  <p>会社の Microsoft アカウントでサインインしてください。</p>
+  <button id="bSignIn" class="big">サインイン</button>
+  <p id="signinMsg" class="ng"></p>
+</div>
+
+<main id="app" hidden>
+  <div id="dayHead"></div>
+  <div id="cards"></div>
+  <p id="empty" class="emptyMsg" hidden>まだ何も書いていません。<br>下の「＋ 行った所」から書きはじめます。</p>
+  <section id="all" hidden></section>
+</main>
+
+<!-- いつも見える3つのボタン（2026-11-01 ユーザー：ボタンを絞る。ほかは「…」の中） -->
+<footer id="bar" hidden>
+  <button id="bAdd" class="add">＋ 行った所</button>
+  <button id="bSame" class="sub">前の日と同じ</button>
+  <button id="bReport" class="go">報告する</button>
+  <button id="bMore" class="more" aria-label="ほかの機能">…</button>
+</footer>
+
+<div id="menu" class="menu" hidden>
+  <button data-m="all">この日のみんなの日報</button>
+  <button data-m="reload">最新を読み直す</button>
+  <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
+  <button data-m="me">名前を選び直す</button>
+  <span class="ver">Vr003 11/01 15:05</span>
+</div>
+
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<div id="toast"></div>
+
+<script src="lib/msal-browser.min.js"></script>
+<script src="config.js?v=202611011505"></script>
+<script src="app.js?v=202611011505"></script>
+</body>
+</html>
