@@ -83,7 +83,7 @@ async function renderCal() {
   const ttl = CAL.mode === "week" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日〜${d1.getMonth() + 1}月${d1.getDate()}日`
     : CAL.mode === "day" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日(${WD[d0.getDay()]})` : `${dateOf(S.day).getFullYear()}年${+monthOf(S.day).slice(5)}月`;
   $("dayHead").innerHTML = `<div class="calbar"><div class="tabs">${MODES.map(([v, t]) => `<button type="button" data-cm="${v}" class="${CAL.mode === v ? "on" : ""}">${t}</button>`).join("")}</div>
-    <b class="cttl">${ttl}</b><span class="sp"></span><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">私の日報（カード）</button></div>`;
+    <b class="cttl">${ttl}</b><span class="sp"></span><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">${esc(S.me.name)} の日報（カード）</button></div>`;
   $("dayHead").querySelectorAll("[data-cm]").forEach(b => b.onclick = () => { CAL.mode = b.dataset.cm; calSave(); render(); });
   $("cWho").onclick = chooseWho;
   $("cKuro").onclick = kuroOpen;

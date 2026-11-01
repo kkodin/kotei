@@ -445,6 +445,7 @@ function render() {
   $("inDay").value = k;
   $("bToday").hidden = k === todayKey();
   $("bMe").textContent = "👤 " + (S.me.name || "名前");
+  const mc = document.querySelector('#menu [data-m="cards"]'); if (mc) mc.textContent = `${S.me.name || ""} の日報（カードで書く）`;
   $("bAdd").textContent = S.view === "site" ? "＋ この現場に書く" : "＋ 現場名(行先)を追加";
   $("bSite").hidden = S.view === "site";
   $("app").classList.toggle("wide", S.view === "cal");
@@ -868,7 +869,7 @@ async function renderList() {
 // 私の月の集計（「…」→ この月の集計）
 async function renderMySum() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
-  $("dayHead").innerHTML = `<button id="bBack">← 自分の日報に戻る</button>`;
+  $("dayHead").innerHTML = `<button id="bBack">← ${esc(S.me.name)} の日報に戻る</button>`;
   $("bBack").onclick = () => { S.view = "me"; render(); };
   const m = monthOf(S.day);
   await loadMonth(m);
@@ -882,7 +883,7 @@ async function renderMySum() {
 /* ---------- この日の全員の日報（行先ごと） ---------- */
 async function renderAll() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
-  $("dayHead").innerHTML = `<button id="bBack">← 自分の日報に戻る</button>`;
+  $("dayHead").innerHTML = `<button id="bBack">← ${esc(S.me.name)} の日報に戻る</button>`;
   $("bBack").onclick = () => { S.view = "me"; render(); };
   $("all").innerHTML = `<p>読んでいます…</p>`;
   const k = S.day, m = monthOf(k);
