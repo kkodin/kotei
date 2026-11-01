@@ -333,3 +333,12 @@ table.ed tr.on td { background: #e8f5e9; }
   .pg.sum table { border-collapse: collapse; font-size: 8pt; }
   .pg.sum th, .pg.sum td { border: 0.5pt solid #444; padding: 0.3mm 1mm; white-space: nowrap; }
 }
+/* 配置表・クロジカから取り込む（2026-11-01） */
+.imbox { min-width: 640px; }
+table.imt { width: 100%; }
+table.imt input.imv, table.imt textarea.imv { width: 100%; box-sizing: border-box; font: inherit; }
+table.imt textarea.imv { resize: vertical; }
+.imhad { display: inline-block; margin-left: 6px; font-size: 11px; color: #a05a00; }
+.imwho { font-size: 11px; color: #666; }
+.imsteps { margin: 4px 0 6px 20px; padding: 0; font-size: 13px; }
+@media (max-width: 700px) { .imbox { min-width: 0; } }

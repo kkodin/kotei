@@ -1071,6 +1071,213 @@ function copyPreview(x) {
     UI.pg = 0; save(); refreshSheet(); toast(`${jpDate(x)} の内容をコピーしました`);
   };
 }
+
+/* ================= 配置表・クロジカから取り込む（2026-11-01 ユーザー） =================
+   ・配置表：OneDrive の 06_配置表\配置表データ（配置表入力が作る 年ごとの 2026.js・追加分.js）。この日の確定があれば確定、なければ予定。
+     この現場の行（現場コード → 現場名で寄せる。昼・夜の2行も）の 作業内容 → 作業予定、作業員 → 下の作業員の行（昼夜は区分から）。
+     サインインしていないとき（試しも）は、配置表入力で保存した日のファイル（.json）を選んで読める。
+   ・クロジカ：app.aipo.com の「⋮ → ダウンロード」の CSV（Shift-JIS・セル内改行あり）を選ぶよう促す。この日・この現場の予定の 内容 → 完了報告。
+   ・読んだものを一覧で見せ、取り込むもの・取り込まないものを選んでから入れる（直せる。↶ で戻せる）。
+   ・現場名の寄せ方・CSV の読み方は 配置表（kotei/haichi）の「クロジカから作業内容」と同じ（別名の表は実在の現場名なので持たない） */
+const HAICHI_DIRS = ["社内共有フォルダ/06_配置表/配置表データ", "社内共有フォルダ/02_配置表/配置表データ"];
+const HY = {};      // 年 → { 確定:{日付:{data}}, 予定:{…} }（ページを開いている間の控え）
+let HADD = null;    // 追加分.js（Excel に出力した日。年のファイルより新しい）
+async function haichiText(name) {
+  const t = await token(); let st = 0;
+  for (const p of HAICHI_DIRS) {
+    const path = p.split("/").concat([name]).map(encodeURIComponent).join("/");
+    const res = await fetch(`${GRAPH}/drives/${CFG.kotei.driveId}/root:/${path}:/content`, { headers: { Authorization: "Bearer " + t }, cache: "no-store" });
+    if (res.ok) return res.text();
+    st = res.status;   // 共有された人は、無い名前に 404 でなく 403 が返ることもあるので、どちらでも次を試す
+  }
+  throw new Error(name + " を読めません（" + st + (st === 403 || st === 404 ? "：配置表データ フォルダが共有されていないかも" : "") + "）");
+}
+// 中身は window.HAICHI_PAST_Y などへの代入なので、ページの window を汚さないように別の入れ物で流す
+function runJs(text) { const w = {}; if (text) new Function("window", text)(w); return w; }
+async function haichiDay(x) {
+  const y = x.slice(0, 4);
+  if (!HY[y]) {
+    const [yt, at] = await Promise.all([haichiText(y + ".js").catch(e => { if (HADD) throw e; return null; }), HADD ? null : haichiText("追加分.js").catch(() => null)]);
+    HY[y] = (runJs(yt).HAICHI_PAST_Y || {})[y] || {};
+    if (!HADD) HADD = runJs(at).HAICHI_PAST_ADD || { 確定: {}, 予定: {} };
+  }
+  for (const k of ["確定", "予定"]) { const r = (HADD[k] || {})[x] || (HY[y][k] || {})[x]; if (r && r.data) return { 版: k, data: r.data }; }
+  return null;
+}
+// 比べる形：ヶ・ケ・が→ガ、二丁目・第一工区→2丁目・第1工区、括弧・ハイフンを外す
+const kKey = v => nk(v).replace(/[ヶケヵが]/g, "ガ").replace(/([一二三四五六七八九])(丁目|工区|号)/g, (a, k, u) => ("一二三四五六七八九".indexOf(k) + 1) + u).replace(/[-?‐－−―()（）]/g, "");
+// この現場か：現場コードか名前（正式名・略称）が同じ＝3、片方が片方を含む＝2
+function siteScore(s, name, code) {
+  if (code && s.コード && String(code) === String(s.コード)) return 3;
+  const a = kKey(name); if (!a) return 0;
+  const ks = [s.名前, s.略称].filter(Boolean).map(kKey);
+  if (ks.includes(a)) return 3;
+  return ks.some(k => k.length >= 2 && a.length >= 2 && (k.includes(a) || a.includes(k))) ? 2 : 0;
+}
+function bestOf(list, sc) { const m = Math.max(0, ...list.map(sc)); return m ? list.filter(x => sc(x) === m) : []; }
+function fromHaichi(D, 版) {
+  const s = site(), d = day() || { 上: [], 下: [] };
+  const rows = bestOf((D.現場 || []).filter(r => r && r.現場名), r => siteScore(s, r.現場名, r.現場コード));
+  const hasW = new Set(d.上.filter(r => r && r[1]).map(r => String(r[1]).trim())), hasP = new Set(d.下.filter(r => r && r[0]).map(r => nk(r[0])));
+  const work = [], ppl = [], seen = new Set();
+  rows.forEach(r => {
+    const sh = /夜/.test(r.区分 || "") ? "夜" : /昼/.test(r.区分 || "") ? "昼" : "";
+    String(r.作業内容 || "").split(/\r?\n/).map(v => v.trim()).filter(Boolean).forEach(v => { if (!work.some(w => w.v === v)) work.push({ v, on: !hasW.has(v), had: hasW.has(v) }); });
+    (r.作業員 || []).forEach(w => {
+      const n = masterName(String((w && w.氏名) || (typeof w === "string" ? w : "")).trim()), k = nk(n);
+      if (!k || seen.has(k)) return; seen.add(k);
+      ppl.push({ v: n, sh, comp: companyOf(n, s), on: !hasP.has(k), had: hasP.has(k) });
+    });
+  });
+  const gai = (D.外注 || []).filter(r => r && r.現場名 && siteScore(s, r.現場名, r.現場コード)).map(r => `${r.業者 || "外注"}${r.員数 ? " " + r.員数 + "名" : ""}`);
+  return { 版, names: [...new Set(rows.map(r => r.現場名 + (r.区分 ? "（" + r.区分 + "）" : "")))], work, ppl, gai };
+}
+// クロジカの CSV（セル内の改行あり）
+function kuroCsv(text) {
+  const rows = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+const kuroDay = v => { const m = /^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/.exec(String(v || "").trim()); return m ? m[1] + "-" + pad(+m[2]) + "-" + pad(+m[3]) : ""; };
+async function readKuro(f) {
+  const u8 = new Uint8Array(await f.arrayBuffer()); let t;
+  if (u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF) t = new TextDecoder("utf-8").decode(u8.subarray(3));
+  else try { t = new TextDecoder("utf-8", { fatal: true }).decode(u8); } catch (e) { t = new TextDecoder("shift_jis").decode(u8); }
+  const rows = kuroCsv(t), hd = (rows[0] || []).map(v => String(v).trim()), ix = k => hd.indexOf(k);
+  const iD = ix("開始日"), iS = ix("予定"), iC = ix("内容"), iN = ix("名前");
+  if (iD < 0 || iS < 0 || iC < 0) throw new Error("クロジカの CSV ではないようです（「開始日」「予定」「内容」の列がありません）");
+  return rows.slice(1).map(r => ({ 日: kuroDay(r[iD]), 予定: String(r[iS] || "").trim(), 内容: String(r[iC] || "").replace(/\r\n?/g, "\n"), 名前: iN >= 0 ? String(r[iN] || "").trim() : "" })).filter(e => e.日);
+}
+// 予定（＝現場名）から 残4h・(夜勤)・(本社) などを外す
+function kuroBase(raw) {
+  let t = String(raw || "").trim().normalize("NFKC").replace(/\s*残\s*[0-9.]+\s*[hH時間]*\s*$/, "");
+  const m = /^(?:本社|会社)\((.+)\)$/.exec(t); if (m) t = m[1];
+  return t.replace(/\((夜勤|夜間|昼勤|昼間)\)?/g, "").replace(/(夜勤|夜間)$/, "").replace(/\(本社\)$/, "").trim();
+}
+const RE_KURO_NOT = /安全協議会|工事部会|安全大会|健康診断|安全パトロール|朝礼|^(夜勤)?明け休み$|^明け$|^有給|^休み|^忌引|^代休|^振替|^本社$|^会社$/;
+// 内容 → 完了報告（1行ずつにして、同じ行の重なりを除き、全角空白でつなぐ）
+function kuroClean(t) {
+  const seen = new Set(), out = [];
+  String(t || "").split("\n").forEach(l => { l = l.replace(/^[\s　・\-－]+|[\s　]+$/g, ""); const k = l.normalize("NFKC").replace(/\s/g, ""); if (l && !seen.has(k)) { seen.add(k); out.push(l); } });
+  return out.join("　");
+}
+function fromKuro(all, file) {
+  const s = site(), d = day() || { 上: [] }, x = IMP.x, today = all.filter(e => e.日 === x);
+  const hit = bestOf(today.filter(e => { const b = kuroBase(e.予定); return b && !RE_KURO_NOT.test(b); }), e => siteScore(s, kuroBase(e.予定)));
+  const has = new Set(d.上.filter(r => r && r[4]).map(r => String(r[4]).trim()));
+  const ds = [...new Set(all.map(e => e.日))].sort();
+  return { file, from: ds[0], to: ds[ds.length - 1], dayN: today.length,
+    list: hit.map(e => { const v = kuroClean(e.内容); return { v, 予定: e.予定, 名前: e.名前, on: !has.has(v), had: has.has(v) }; }).filter(e => e.v) };
+}
+let IMP = null;   // 取り込みの窓の中身 { x, hai, haiMsg, kuro, kuroMsg }
+$("bImport").onclick = () => {
+  const s = site(); if (!s || !canEdit()) return;
+  IMP = { x: UI.day, hai: null, haiMsg: "", kuro: null, kuroMsg: "" };
+  if (msalApp && msalApp.getActiveAccount() && !DEMO) {
+    IMP.haiMsg = "配置表を読んでいます…";
+    haichiDay(UI.day).then(r => { if (!IMP) return; if (r) { IMP.hai = fromHaichi(r.data, r.版); IMP.haiMsg = ""; } else IMP.haiMsg = `${jpDate(IMP.x)} の配置表（確定・予定）がまだありません。`; renderImport(); })
+      .catch(e => { if (!IMP) return; IMP.haiMsg = "配置表を読めませんでした：" + e.message; renderImport(); });
+  } else IMP.haiMsg = "サインインしていないので、OneDrive の配置表は読めません。配置表入力で保存した日のファイル（.json）を選べば読めます。";
+  renderImport(); openDlg($("dEdit"));
+};
+function renderImport() {
+  const H = IMP.hai, K = IMP.kuro, ck = (g, i, it) => `<input type="checkbox" data-g="${g}" data-i="${i}"${it.on ? " checked" : ""}>`;
+  const had = it => it.had ? `<span class="imhad">もう入っています</span>` : "";
+  const h = [];
+  h.push(`<h4 class="mh">配置表 → 作業予定・作業員</h4>`);
+  if (IMP.haiMsg) h.push(`<p class="note">${esc(IMP.haiMsg)}</p>`);
+  if (H) {
+    if (!H.names.length) h.push(`<p class="note ng">配置表（${H.版}）に、この現場の行が見つかりませんでした。</p>`);
+    else {
+      h.push(`<p class="note">配置表（${H.版}）の「${esc(H.names.join("」「"))}」から。</p>`);
+      h.push(H.work.length ? `<table class="sm cpv imt"><tr><th>取込</th><th>作業予定（直せます）</th></tr>${H.work.map((w, i) => `<tr><td class="c">${ck("w", i, w)}</td><td><input class="imv" data-g="w" data-i="${i}" value="${esc(w.v)}">${had(w)}</td></tr>`).join("")}</table>` : `<p class="note">作業内容は書いてありません。</p>`);
+      h.push(H.ppl.length ? `<table class="sm cpv imt"><tr><th>取込</th><th>作業員名</th><th>会社</th><th>昼夜</th></tr>${H.ppl.map((p, i) => `<tr><td class="c">${ck("p", i, p)}</td><td>${esc(p.v)}${had(p)}</td><td>${esc(p.comp || "")}</td><td class="c">${esc(p.sh || "")}</td></tr>`).join("")}</table>` : `<p class="note">作業員は書いてありません。</p>`);
+      if (H.gai.length) h.push(`<p class="note">外注（配置表は員数だけで名前が無いので取り込みません）：${esc(H.gai.join("、"))}</p>`);
+    }
+  }
+  if (!H) h.push(`<div class="btns"><button type="button" class="sub small" id="imHaiFile">配置表のファイル（.json）を選ぶ</button></div>`);
+  h.push(`<h4 class="mh">クロジカ → 完了報告</h4>`);
+  if (!K) h.push(`<ol class="imsteps"><li><a href="https://app.aipo.com/" target="_blank" rel="noopener">クロジカ</a>を開き、${jpDate(IMP.x)} が入る表示で「⋮ → ダウンロード」を押して CSV を落とす</li><li>下の「CSV を選ぶ」を押して、落とした CSV を選ぶ（ダウンロードのフォルダが開きます）</li></ol>`);
+  if (IMP.kuroMsg) h.push(`<p class="note ng">${esc(IMP.kuroMsg)}</p>`);
+  if (K) {
+    h.push(`<p class="note">${esc(K.file)}（${fmtD2(K.from)}〜${fmtD2(K.to)}）</p>`);
+    if (!K.dayN) h.push(`<p class="note ng">この CSV には ${jpDate(IMP.x)} の予定がありません。クロジカで日付を合わせてダウンロードし直してください。</p>`);
+    else if (!K.list.length) h.push(`<p class="note ng">${jpDate(IMP.x)} の予定（${K.dayN} 件）に、この現場のものが見つかりませんでした。</p>`);
+    else h.push(`<table class="sm cpv imt"><tr><th>取込</th><th>クロジカの予定（報告した人）</th><th>完了報告（直せます）</th></tr>${K.list.map((k, i) => `<tr><td class="c">${ck("k", i, k)}</td><td>${esc(k.予定)}${k.名前 ? `<br><span class="imwho">${esc(k.名前)}</span>` : ""}</td><td><textarea class="imv" data-g="k" data-i="${i}" rows="2">${esc(k.v)}</textarea>${had(k)}</td></tr>`).join("")}</table>`);
+  }
+  h.push(`<div class="btns"><button type="button" class="sub small" id="imKuro">${K ? "別の CSV を選ぶ" : "CSV を選ぶ"}</button></div>`);
+  const n = imPicked().n;
+  $("eTtl").textContent = `${jpDate(IMP.x)}（${WD[wd(IMP.x)]}）に配置表・クロジカから取り込む`;
+  $("eBody").innerHTML = `<div class="cpbox imbox">${h.join("")}</div>
+    <p class="note">作業予定・完了報告は空いている行に、作業員は下の空いている行に足します（書いてあるものは消しません）。取り込んだあと「↶ 元に戻す」で戻せます。</p>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="eOk"${n ? "" : " disabled"}>選んだものを取り込む（${n} 件）</button></div>`;
+  $("eBody").onkeydown = null;
+}
+const fmtD2 = x => x ? `${+x.slice(5, 7)}/${+x.slice(8)}` : "";
+function imPicked() {
+  const W = IMP.hai ? IMP.hai.work.filter(w => w.on && w.v.trim()) : [], P = IMP.hai ? IMP.hai.ppl.filter(p => p.on) : [], K = IMP.kuro ? IMP.kuro.list.filter(k => k.on && k.v.trim()) : [];
+  return { W, P, K, n: W.length + P.length + K.length };
+}
+const imList = g => g === "w" ? IMP.hai.work : g === "p" ? IMP.hai.ppl : IMP.kuro.list;
+$("eBody").addEventListener("change", e => {
+  const t = e.target; if (!IMP || !t.dataset.g || t.type !== "checkbox") return;
+  imList(t.dataset.g)[+t.dataset.i].on = t.checked;
+  const n = imPicked().n, b = $("eOk"); if (b && b.textContent.startsWith("選んだもの")) { b.disabled = !n; b.textContent = `選んだものを取り込む（${n} 件）`; }
+});
+$("eBody").addEventListener("input", e => { const t = e.target; if (IMP && t.classList.contains("imv")) imList(t.dataset.g)[+t.dataset.i].v = t.value; });
+$("eBody").addEventListener("click", e => {
+  if (!IMP) return;
+  const id = e.target.id;
+  if (id === "imKuro") pickFile({ id: "jouyou_kuro_csv", desc: "クロジカの CSV", accept: { "text/csv": [".csv"] } }, f => readKuro(f).then(all => { IMP.kuro = fromKuro(all, f.name); IMP.kuroMsg = ""; }).catch(err => { IMP.kuro = null; IMP.kuroMsg = err.message; }).then(renderImport));
+  if (id === "imHaiFile") pickFile({ id: "jouyou_haichi_json", desc: "配置表のファイル", accept: { "application/json": [".json"] } }, f => f.text().then(t => {
+    const j = JSON.parse(t), D = j.現場 ? j : j.data;
+    if (!D || !D.現場) throw new Error("配置表のファイルではないようです（「現場」がありません）");
+    if (D.日付 && D.日付 !== IMP.x && !confirm(`このファイルは ${jpDate(D.日付)} の配置表です。${jpDate(IMP.x)} の日報に取り込みますか？`)) return;
+    IMP.hai = fromHaichi(D, D.版 === "確定" ? "確定" : D.版 === "予定" ? "予定" : "ファイル"); IMP.haiMsg = "";
+  }).catch(err => { IMP.haiMsg = "読めませんでした：" + err.message; }).then(renderImport));
+  if (id === "eOk" && e.target.textContent.startsWith("選んだもの")) applyImport();
+});
+// ファイルを選ぶ（showOpenFilePicker はダウンロードのフォルダから。2回目からは前に選んだ場所。無いブラウザ（iPad など）は input）
+function pickFile(o, got) {
+  if (window.showOpenFilePicker) {
+    window.showOpenFilePicker({ id: o.id, startIn: "downloads", multiple: false, types: [{ description: o.desc, accept: o.accept }] })
+      .then(hs => hs[0].getFile()).then(got).catch(err => { if (err && err.name !== "AbortError") toast("ファイルを開けませんでした：" + err.message); });
+    return;
+  }
+  const i = document.createElement("input"); i.type = "file"; i.accept = Object.values(o.accept).flat().join(",");
+  i.onchange = () => i.files[0] && got(i.files[0]); i.click();
+}
+function applyImport() {
+  const s = site(); if (!s || !canEdit() || UI.day !== IMP.x) return;
+  const { W, P, K } = imPicked(); if (!W.length && !P.length && !K.length) return;
+  closeDlg($("dEdit")); pushUndo();
+  const d = ensureDay();
+  // c 列が空いている最初の行（無ければ後ろに足す）
+  const slot = (arr, c, nc) => { let r = 0; while (arr[r] && arr[r][c]) r++; while (arr.length <= r) arr.push(Array(nc).fill("")); if (!arr[r]) arr[r] = Array(nc).fill(""); while (arr[r].length < nc) arr[r].push(""); return arr[r]; };
+  W.forEach(w => { slot(d.上, 1, 5)[1] = w.v.trim(); });
+  K.forEach(k => { slot(d.上, 4, 5)[4] = k.v.trim(); });
+  // 作業員：名前を打ったときと同じく、名簿の工種・定時の始業／終業・残業・会社を入れ、この現場の名簿に足す
+  P.forEach(p => {
+    const row = slot(d.下, 0, 16), w = s.作業員.find(x => nk(x.名前) === nk(p.v));
+    row[0] = p.v; row[14] = p.sh || (s.勤務 === "夜" ? "夜" : "昼");
+    if (!row[3] && w) row[3] = w.職種 || "";
+    const [ts, te] = teiji(s, row[14]); if (!row[1]) row[1] = ts; if (!row[2]) row[2] = te;
+    row[4] = overtime(row[1], row[2], s, row[14]);
+    if (!row[12]) row[12] = companyOf(p.v, s);
+    if (!w) s.作業員.push({ 名前: p.v, 職種: row[3] || "" });
+  });
+  tidy(d); d.更新 = now(); IMP = null;
+  save(); refreshSheet();
+  toast(`取り込みました（${[W.length && `作業予定 ${W.length}`, P.length && `作業員 ${P.length}名`, K.length && `完了報告 ${K.length}`].filter(Boolean).join("・")}）。違っていたら「↶ 元に戻す」で戻せます`, 5000);
+}
 $("pgBar").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.pg) { goPage((UI.pg || 0) + Number(b.dataset.pg)); return; }
