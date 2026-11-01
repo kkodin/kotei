@@ -82,7 +82,7 @@ main { padding: 10px 10px calc(var(--bar) + 24px + env(safe-area-inset-bottom));
 .menu button { border: none; text-align: left; min-height: 46px; }
 .menu .ver { font-size: 11px; color: var(--sub); padding: 4px 12px; }
 
-/* みんなの日報 */
+/* 全員の日報 */
 #all h3 { margin: 6px 2px 10px; font-size: 16px; }
 .allsite { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
 .allsite h4 { margin: 0 0 6px; font-size: 15px; }
@@ -163,3 +163,19 @@ table.list .num { text-align: right; white-space: nowrap; }
 table.list.work td:first-child { white-space: nowrap; }
 table.list tr.miss td:last-child::after { content: "未報告"; color: var(--warn); font-size: 12px; }
 @media (max-width: 759px) { #bar .add, #bar .sub { font-size: 13px; line-height: 1.2; padding: 4px 6px; } }
+/* 予定と報告：参加者名・外注業者名＋人数・使用機械（PC は左右、スマホは上下） */
+.pr { margin-top: 12px; display: grid; gap: 10px; }
+.pr .side { border: 1px solid var(--line); border-radius: 10px; padding: 2px 10px 10px; min-width: 0; }
+.pr .side.plan { background: #f7f9fb; }
+.pr h5 { margin: 8px 0 0; font-size: 14px; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.pr h5 .same { margin-left: auto; min-height: 32px; padding: 2px 10px; font-size: 13px; color: var(--pri); }
+@media (min-width: 760px) { .pr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; } }
+.sum h4 .key { font-weight: normal; font-size: 12px; color: var(--sub); margin-left: 8px; }
+/* 時間：回して選ぶ窓（スマホ・タブレット） */
+.time input.tm { cursor: ns-resize; }
+.drum { position: relative; display: flex; justify-content: center; align-items: center; gap: 12px; margin: 6px 0; user-select: none; }
+.drum::before { content: ""; position: absolute; left: 12%; right: 12%; top: calc(50% - 22px); height: 44px; border-top: 2px solid var(--pri); border-bottom: 2px solid var(--pri); background: rgba(30,90,150,.06); pointer-events: none; }
+.drum b { font-size: 24px; }
+.dcol { height: 220px; width: 96px; overflow-y: scroll; scroll-snap-type: y mandatory; padding: 88px 0; box-sizing: border-box; scrollbar-width: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.dcol::-webkit-scrollbar { display: none; }
+.dcol > div { height: 44px; line-height: 44px; text-align: center; font-size: 24px; scroll-snap-align: center; }
