@@ -1000,8 +1000,8 @@ function bind() {
     if (m.dataset.m === "same") sameAsBefore();
     if (m.dataset.m === "kuro") kuroOpen();
     if (m.dataset.m === "list") { S.view = "list"; render(); }
-    if (m.dataset.m === "cal") { S.view = "cal"; calHome("cal"); render(); }
-    if (m.dataset.m === "cards") { S.view = "me"; calHome("me"); render(); }
+    if (m.dataset.m === "cal") { S.view = "cal"; render(); }
+    if (m.dataset.m === "cards") { S.view = "me"; render(); }
     if (m.dataset.m === "mysum") { S.view = S.view === "site" ? "site" : "mysum"; if (S.view === "site") S.tab = "sum"; render(); }
   };
   // PC：Alt+←/→ で日を移る
@@ -1038,7 +1038,7 @@ async function start() {
   $("app").hidden = false; $("bar").hidden = false;
   if (!DEMO && new URLSearchParams(location.search).has("setup")) $("mFind").hidden = false;
   bind();
-  if (!S.site && calHome() === "cal") S.view = "cal";   // PC はカレンダーから（スマホは私の日報のカード。「…」で切り替えると覚える）
+  if (!S.site) S.view = "cal";   // いつもカレンダーから開く（クロジカと同じ）
   await loadMasters().catch(e => toast("マスタを読めませんでした（前に読んだ控えで動きます）：" + e.message));
   await loadSets();
   if (S.site && !S.site.code) { const x = siteOf(S.site.place) || koteiSite(S.site.place); if (x && x.コード) S.site.code = String(x.コード); }

@@ -12,11 +12,9 @@
 const CAL = { mode: "week", hide: {}, home: "" };
 try { Object.assign(CAL, JSON.parse(localStorage.getItem("nippou_cal_v4")) || {}); } catch (e) { }
 const calSave = () => { try { localStorage.setItem("nippou_cal_v4", JSON.stringify({ mode: CAL.mode, hide: CAL.hide, home: CAL.home })); } catch (e) { } };
-// はじめに開く画面：カレンダー（スマホも）。「…」で私の日報のカードに切り替えると覚える
-function calHome(v) {
-  if (v) { CAL.home = v; calSave(); }
-  return CAL.home || "cal";   // スマホもカレンダーから（クロジカと同じ。2026-11-02 ユーザー）
-}
+// はじめに開く画面：いつもカレンダー（PC もスマホも。クロジカと同じ）。カードに切り替えても覚えない
+// （2026-11-02 ユーザー：開くと入力画面が出る。クロジカのカレンダーの画面からにしたい）
+function calHome() { return "cal"; }
 const MODES = [["week", "週"], ["day", "日"], ["month", "月"], ["person", "人別"], ["site", "現場別"]];
 const PAL = ["#3f51b5", "#e53935", "#795548", "#827717", "#7986cb", "#00acc1", "#5e35b1", "#00695c", "#e57373", "#fb8c00", "#558b2f", "#1565c0", "#ad1457", "#6d4c41"];
 function colorOf(n) {
@@ -89,7 +87,7 @@ async function renderCal() {
   $("dayHead").querySelectorAll("[data-cm]").forEach(b => b.onclick = () => { CAL.mode = b.dataset.cm; calSave(); render(); });
   $("cWho").onclick = chooseWho;
   $("cKuro").onclick = kuroOpen;
-  $("cCards").onclick = () => { S.view = "me"; calHome("me"); render(); };
+  $("cCards").onclick = () => { S.view = "me"; render(); };
   if (!$("all").querySelector(".cal")) $("all").innerHTML = `<p>読んでいます…</p>`;
   let docs;
   try { docs = await docsFor(days); } catch (e) { $("all").innerHTML = `<p class="ng">日報を読めませんでした：${esc(e.message)}</p>`; return; }
