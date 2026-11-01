@@ -126,3 +126,40 @@ button.big { background: var(--pri); color: #fff; border-color: var(--pri); padd
 
 /* 自動入力を出さないための form（noAutofill）。箱を作らない */
 form.nofill { display: contents; }
+
+/* 現場名の下：工事コード・元請（現場一覧にある現場） */
+.pinfo { font-size: 13px; color: var(--sub); margin: 4px 2px 0; }
+.pinfo b { color: var(--ink); font-weight: normal; }
+/* 作業内容：左に予定、右に報告 */
+.wl .wh, .wl .wr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 6px; align-items: start; }
+.wl .wh { font-size: 12px; color: var(--sub); margin: 0 2px 2px; }
+.wl .wr { margin-bottom: 6px; }
+.wl .wr textarea[data-wk="予定"] { background: #f7f9fb; }
+.wl .wr button { min-height: 40px; padding: 0; border: none; color: var(--sub); background: transparent; }
+.wv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.wv span:first-child { color: var(--sub); }
+/* 現場別日報 */
+.sitehead { width: 100%; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.sitehead b { font-size: 18px; color: var(--ink); }
+.tabs { display: flex; gap: 6px; }
+.tabs button { min-height: 36px; padding: 4px 14px; font-size: 14px; }
+.tabs button.on { background: var(--pri); color: #fff; border-color: var(--pri); }
+#all h3 small { font-weight: normal; font-size: 13px; color: var(--sub); margin-left: 8px; }
+.none { color: var(--sub); font-size: 14px; }
+.namelist .grp { font-size: 12px; color: var(--sub); padding: 6px 2px 0; }
+/* 集計 */
+.sum { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+.sum h4 { margin: 0 0 8px; font-size: 15px; }
+.gwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.grid { border-collapse: collapse; font-size: 12px; }
+table.grid th, table.grid td { border: 1px solid #e3e8ed; padding: 3px 4px; text-align: center; min-width: 24px; white-space: nowrap; }
+table.grid tbody th { position: sticky; left: 0; background: #fff; text-align: left; font-weight: normal; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+table.grid .sun { background: #fdf0ef; } table.grid .sat { background: #eef4fb; }
+table.grid .tot { font-weight: bold; }
+table.grid tr.foot td, table.grid tr.foot th { background: #f5f7f9; font-weight: bold; }
+table.list { border-collapse: collapse; font-size: 14px; width: 100%; }
+table.list th, table.list td { border-bottom: 1px solid #eef1f4; padding: 6px 4px; text-align: left; vertical-align: top; }
+table.list .num { text-align: right; white-space: nowrap; }
+table.list.work td:first-child { white-space: nowrap; }
+table.list tr.miss td:last-child::after { content: "未報告"; color: var(--warn); font-size: 12px; }
+@media (max-width: 759px) { #bar .add, #bar .sub { font-size: 13px; line-height: 1.2; padding: 4px 6px; } }

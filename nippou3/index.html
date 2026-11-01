@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="工事日報">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611011509">
+<link rel="stylesheet" href="app.css?v=202611011540">
 </head>
 <body>
 <header id="top">
@@ -36,32 +36,34 @@
 <main id="app" hidden>
   <div id="dayHead"></div>
   <div id="cards"></div>
-  <p id="empty" class="emptyMsg" hidden>まだ何も書いていません。<br>下の「＋ 行った所」から書きはじめます。</p>
+  <p id="empty" class="emptyMsg" hidden></p>
   <section id="all" hidden></section>
 </main>
 
-<!-- いつも見える3つのボタン（2026-11-01 ユーザー：ボタンを絞る。ほかは「…」の中） -->
+<!-- いつも見えるボタン（2026-11-01 ユーザー：一番下に「現場名(行先)を追加」「現場別詳細工程」。ほかは「…」の中） -->
 <footer id="bar" hidden>
-  <button id="bAdd" class="add">＋ 行った所</button>
-  <button id="bSame" class="sub">前の日と同じ</button>
+  <button id="bAdd" class="add">＋ 現場名(行先)を追加</button>
+  <button id="bSite" class="sub">現場別詳細工程</button>
   <button id="bReport" class="go">報告する</button>
   <button id="bMore" class="more" aria-label="ほかの機能">…</button>
 </footer>
 
 <div id="menu" class="menu" hidden>
+  <button data-m="same">前の日と同じにする</button>
+  <button data-m="mysum">この月の集計</button>
   <button data-m="all">この日のみんなの日報</button>
   <button data-m="reload">最新を読み直す</button>
   <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
   <button data-m="me">名前を選び直す</button>
   <button data-m="find" id="mFind" hidden>日報のフォルダを調べる（管理者）</button>
-  <span class="ver">Vr003 11/01 15:09</span>
+  <span class="ver">Vr003 11/01 15:40</span>
 </div>
 
 <dialog id="dlg"><div id="dlgBody"></div></dialog>
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=202611011509"></script>
-<script src="app.js?v=202611011509"></script>
+<script src="config.js?v=202611011540"></script>
+<script src="app.js?v=202611011540"></script>
 </body>
 </html>
