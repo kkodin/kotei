@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="工事日報">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611020232">
+<link rel="stylesheet" href="app.css?v=202611020923">
 </head>
 <body>
 <header id="top">
@@ -52,6 +52,7 @@
   <button data-m="cal">カレンダー（週・日・月・人別・現場別）</button>
   <button data-m="cards">日報（カードで書く）</button>
   <button data-m="kuro">クロジカから取り込む（CSV）</button>
+  <button data-m="haichi">配置表から取り込む（過去の作業内容を一人ずつの日報に）</button>
   <button data-m="same">前の日と同じにする</button>
   <button data-m="list">この月の一覧（名前を選べば、ほかの人も）</button>
   <button data-m="mysum">この月の集計</button>
@@ -60,16 +61,18 @@
   <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
   <button data-m="me">名前を選び直す</button>
   <button data-m="find" id="mFind" hidden>日報のフォルダを調べる（管理者）</button>
-  <span class="ver">Vr004 11/02 02:32</span>
+  <span class="ver">Vr004 11/02 09:23</span>
 </div>
 
 <dialog id="dlg"><div id="dlgBody"></div></dialog>
 <div id="toast"></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=202611020232"></script>
-<script src="app.js?v=202611020232"></script>
-<script src="kuro.js?v=202611020232"></script>
-<script src="cal.js?v=202611020232"></script>
+<script src="config.js?v=202611020923"></script>
+<script src="app.js?v=202611020923"></script>
+<script src="imp.js?v=202611020923"></script>
+<script src="kuro.js?v=202611020923"></script>
+<script src="haichi.js?v=202611020923"></script>
+<script src="cal.js?v=202611020923"></script>
 </body>
 </html>

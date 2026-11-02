@@ -342,3 +342,10 @@ table.list.kuro .pick input { font-size: 14px; padding: 6px 8px; }
   .calbar .cttl { font-size: 15px; flex-basis: 100%; order: 2; }
 }
 @media (max-width: 759px) { #cKuro { display: none; } .calbar > button { min-height: 34px; padding: 2px 10px; font-size: 13px; } }
+
+/* 月ごとの取り込み方・個別に確認（imp.js） */
+.polbox { margin: 10px 0 0; padding: 8px 10px; border: 1px solid #e2e7ec; border-radius: 8px; background: #fafbfc; }
+.polbox > b { font-size: 14px; } .polbox > small { color: var(--sub); margin-left: 8px; font-size: 12px; }
+.polall { font-size: 13px; margin: 6px 0; }
+table.list.pol td { vertical-align: middle; } table.list.pol select, .polall select { font-size: 14px; padding: 4px 6px; }
+table.list.askt td { font-size: 13px; } table.list.askt .ch3 { white-space: nowrap; } table.list.askt .ck { display: block; }

@@ -209,15 +209,23 @@ async function loadMonth(m, force) {
 
 /* ---------- マスタ（読むだけ）。日報が別のフォルダなら、そこに名前だけの写し（名簿.json）を置き、ゲストはそれを読む ---------- */
 const siteMin = x => ({ コード: x.コード || "", 名前: x.名前 || "", 正式名: x.正式名 || "", 元請: x.元請 || "", 発注者: x.発注者 || "" });
+// 作業員名簿.json（工程データ。NAS の安全書類から 01_マスタ抽出\作業員名簿を作る.py が作る）：配置表の名簿に無い社員・従業員を足し、外注の作業員を会社ごとに
+const uniqNames = (...ls) => { const m = new Map(); ls.flat().forEach(n => { n = String(n || "").trim(); if (n && !m.has(nk(n))) m.set(nk(n), n); }); return [...m.values()]; };
+function withRoster(M, w) {
+  if (!w) return { ...M, 外注作業員: M.外注作業員 || [] };
+  const names = L => (L || []).map(x => typeof x === "string" ? x : x.名前);
+  return { ...M, 社員: uniqNames(M.社員, names(w.社員)), 従業員: uniqNames(M.従業員, names(w.従業員)), 外注業者: uniqNames(M.外注業者, w.外注会社 || []),
+    外注作業員: (w.外注 || []).filter(x => x && x.名前).map(x => ({ 会社: x.会社 || "", 名前: x.名前 })) };
+}
 async function loadMasters() {
-  const [m, s] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null), loadKotei()]);
-  if (m) S.M = { 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] };
+  const [m, s, w] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null), koteiStore.get("作業員名簿.json").catch(() => null), loadKotei()]);
+  if (m) S.M = withRoster({ 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] }, w && w.data);
   if (s) S.sites = (s.data.現場 || []).filter(x => x && (x.名前 || x.正式名));
   if (S.kikai) { const ms = (S.kikai.機械 || []).filter(m => !m.使わない); S.M.機械 = [...new Set(ms.map(machName))]; S.M.機械分類 = Object.fromEntries(ms.map(m => [machName(m), m.分類 || "その他"])); }
   if (SEP) {
     const cur = await nippouStore.get(ROSTER).catch(() => null);
     if (m) await saveRoster(cur, !!s);
-    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
+    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 外注作業員: c.外注作業員 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
     else if (!m) throw new Error("名簿がまだありません（工程データを読める人が一度開くと作られます）");
   }
   try { localStorage.setItem("nippou_master_v3", JSON.stringify({ M: S.M, sites: S.sites })); } catch (e) { }
@@ -225,8 +233,8 @@ async function loadMasters() {
 // 工程データを読めた人が開いたとき：名簿.json を今のマスタに合わせる（変わっていなければ書かない）。現場一覧を読めなかったら現場は前の写しのまま
 async function saveRoster(cur, gotSites) {
   const c = cur ? cur.data : {};
-  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
-  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 機械: c.機械, 機械分類: c.機械分類, 現場: c.現場 })) return;
+  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 外注作業員: S.M.外注作業員 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
+  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 外注作業員: c.外注作業員 || [], 機械: c.機械, 機械分類: c.機械分類, 現場: c.現場 })) return;
   const doc = { 形式: "工事日報の名簿", 版: 1, 説明: "工程データのマスタ・現場一覧の名前だけの写し。工事日報が自動で作り直す（ここを直しても戻る）", ...body, 更新: nowStr() };
   try { await nippouStore.put(ROSTER, doc, cur ? cur.eTag : null); } catch (e) { console.warn("名簿の写しを保存できませんでした", e); }
 }
@@ -527,10 +535,15 @@ function honshaBox(r) {
   return `<div class="honsha"><label class="ck"><input type="radio" name="hs${r.id}" data-hs="0"${on ? "" : " checked"}> 本社だけ</label><label class="ck"><input type="radio" name="hs${r.id}" data-hs="1"${on ? " checked" : ""}> 本社＋現場名</label>
     ${on ? `<div class="pick"><input data-f="rel" data-rel="1" value="${esc(r.関連現場.名前 || "")}" placeholder="どの現場の仕事か（打つと候補）" autocomplete="off"></div>` : ""}</div>`;
 }
-// 外注の作業員名の候補：前にこの業者で来ていた人（あとで NAS の安全書類の作業員名簿も）
+// 外注の作業員名の候補：前にこの業者で来ていた人 → 作業員名簿（NAS の安全書類）のこの会社の人 → ほかの会社の人
+const coKey = v => nk(String(v || "").replace(/[㈱㈲]|\(.*?\)|（.*?）/g, ""));
+const sameCo = (a, b) => { const x = coKey(a), y = coKey(b); return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 2 && (x.includes(y) || y.includes(x)))); };
 function gaiMemItems(gyosha, have) {
   const hv = new Set(have.map(nk)), out = [], seen = new Set();
   for (let i = 0; i <= 60; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => ["p", "r"].forEach(s => listIn(r, s, "外注").forEach(g => { if (nk(g.業者) !== nk(gyosha)) return; (g.名前 || []).forEach(m => { const k = nk(m.名前); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "前に来ていた人", v: m.名前, 役: m.役 }); } }); })));
+  const W = S.M.外注作業員 || [], add = (grp, x) => { const k = nk(x.名前); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp, v: x.名前, sub: x.会社 }); } };
+  W.filter(x => sameCo(x.会社, gyosha)).forEach(x => add("作業員名簿　" + x.会社, x));
+  W.filter(x => !sameCo(x.会社, gyosha)).forEach(x => add("作業員名簿（ほかの会社）", x));
   return out;
 }
 // 昼勤・夜勤（行.区分。無ければ始めの時刻で決める＝17時〜5時に始めたら夜）
@@ -1000,6 +1013,7 @@ function bind() {
     if (m.dataset.m === "find") findFolder();
     if (m.dataset.m === "same") sameAsBefore();
     if (m.dataset.m === "kuro") kuroOpen();
+    if (m.dataset.m === "haichi") haichiOpen();
     if (m.dataset.m === "list") { S.view = "list"; render(); }
     if (m.dataset.m === "cal") { S.view = "cal"; render(); }
     if (m.dataset.m === "cards") { S.view = "me"; render(); }

@@ -13,7 +13,8 @@
      常用日報そのもの（現場ごと）は日報のフォルダの 常用日報_<コード>.json に写して残す（常用日報の形の編集・集計で使う）。その現場の請負形態は「常用」にする。
    ・予定（現場名）ごとに、日報に入れる現場名を一覧で確かめる：一致／候補（確かめる）／一覧にない／現場ではない（有給・休み・明けなど。はじめは外す）。直せる・外せる。
    ・取り込んだ行は 行.取込（"kuro:…"／"jouyou:コード|日"）。もう一度取り込んでも重ならない。同じ人・同じ日・同じ現場にクロジカと常用日報の両方があれば1行にまとめる。
-     その日に報告が無ければ「報告済み（○○から取り込み）」にする。 */
+     その日に報告が無ければ「報告済み（○○から取り込み）」にする。
+   ・ファイルを選ぶか、フォルダの Kurojica_calendar_….csv を全部読むか。月ごとの取り込み方（アプリの予定を優先 など）と書き込みは imp.js（配置表と共通）。 */
 "use strict";
 function kuroCsv(text) {
   const rows = []; let row = [], f = "", q = false;
@@ -164,15 +165,32 @@ function jouyouRow(j, k, d, x) {
 /* ---------- 取り込みの窓 ---------- */
 let KURO = null;   // { files, groups, jous, map: Map(予定の名前 → { raw, base, honsha, n, v, code, how, on }), from, to }
 function kuroOpen() { KURO = null; kuroDraw(); }
-async function kuroPick() {
+// フォルダから：その中の Kurojica_calendar_<期間>( (n)).csv を全部（2026-11-02 ユーザー：ファイルか、フォルダにあるものを全部か選ぶ）
+const RE_KURO_FILE = /^Kurojica_calendar_.*\.csv$/i;
+async function kuroFolder() {
+  if (window.showDirectoryPicker) {
+    try {
+      const dir = await showDirectoryPicker({ id: "nippou_kuro_dir", startIn: "downloads" }), out = [];
+      for await (const h of dir.values()) if (h.kind === "file" && RE_KURO_FILE.test(h.name)) out.push(await h.getFile());
+      return out;
+    } catch (e) { if (e.name === "AbortError") return null; }
+  }
+  return new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.webkitdirectory = true; i.onchange = () => res([...i.files].filter(f => RE_KURO_FILE.test(f.name))); i.click(); });
+}
+async function kuroPick(folder) {
   let fs = [];
-  try {
-    if (window.showOpenFilePicker) fs = await Promise.all((await showOpenFilePicker({ id: "nippou_kuro", startIn: "downloads", multiple: true,
-      types: [{ description: "クロジカの CSV・常用日報の .json", accept: { "text/csv": [".csv"], "application/json": [".json"] } }] })).map(h => h.getFile()));
-  } catch (e) { if (e.name === "AbortError") return; }
-  if (!fs.length) {
-    fs = await new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.multiple = true; i.accept = ".csv,.json,text/csv,application/json"; i.onchange = () => res([...i.files]); i.click(); });
-    if (!fs.length) return;
+  if (folder === true) {
+    fs = await kuroFolder(); if (!fs) return;
+    if (!fs.length) { toast("そのフォルダに Kurojica_calendar_….csv がありません", 6000); return; }
+  } else {
+    try {
+      if (window.showOpenFilePicker) fs = await Promise.all((await showOpenFilePicker({ id: "nippou_kuro", startIn: "downloads", multiple: true,
+        types: [{ description: "クロジカの CSV・常用日報の .json", accept: { "text/csv": [".csv"], "application/json": [".json"] } }] })).map(h => h.getFile()));
+    } catch (e) { if (e.name === "AbortError") return; }
+    if (!fs.length) {
+      fs = await new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.multiple = true; i.accept = ".csv,.json,text/csv,application/json"; i.onchange = () => res([...i.files]); i.click(); });
+      if (!fs.length) return;
+    }
   }
   try {
     const rows = [], jous = [], names = [];
@@ -197,7 +215,7 @@ async function kuroPick() {
     jous.forEach(j => { const key = "jouyou:" + (j.code || nk(j.name)); j.mk = key; map.set(key, { raw: "常用日報：" + j.name, base: j.name, honsha: false, n: j.days.length, ...kuroGuess(j.name, j.code), on: true, jouyou: true }); });
     const ks = [...groups.map(g => g.日), ...jous.flatMap(j => [j.from, j.to])].filter(Boolean).sort();
     if (!ks.length) throw new Error("取り込むものがありません");
-    KURO = { files: names, groups, jous, map, from: ks[0], to: ks[ks.length - 1], all: [ks[0], ks[ks.length - 1]] };
+    KURO = { files: names, groups, jous, map, from: ks[0], to: ks[ks.length - 1], all: [ks[0], ks[ks.length - 1]], pol: KURO ? KURO.pol : {}, def: KURO ? KURO.def : "" };
   } catch (e) { toast("読めませんでした：" + e.message, 8000); return; }
   kuroDraw();
 }
@@ -212,9 +230,11 @@ function kuroDraw() {
   if (!K) {
     dlg(`<div class="dh"><h2>クロジカ・常用日報から取り込む</h2><button type="button" data-close aria-label="閉じる">×</button></div>
       <ol class="kuro-steps"><li><a href="https://app.aipo.com/" target="_blank" rel="noopener">クロジカ</a>で取り込みたい月を出し、「⋮ → ダウンロード」で CSV を落とす（ダウンロードのフォルダに入ります。何か月分でも）</li>
-      <li>下の「ファイルを選ぶ」を押して、CSV を選ぶ（Ctrl か Shift を押しながら、いくつでも。常用日報の保存ファイル .json も一緒に選べます）</li><li>現場名を確かめてから「取り込む」</li></ol>
-      <div class="btns"><button data-close>閉じる</button><button class="pri" id="kFile">ファイルを選ぶ</button></div>`, "wide keep");
-    $("kFile").onclick = kuroPick; return;
+      <li>どちらかを押す<br>・<b>フォルダから全部</b>：選んだフォルダ（ダウンロードなど）の <code>Kurojica_calendar_….csv</code> を全部読む（同じ月を何度も落とした「(1)」などのファイルも。重なりは1つにまとめます）<br>
+        ・<b>ファイルを選ぶ</b>：CSV を選ぶ（Ctrl か Shift を押しながら、いくつでも。常用日報の保存ファイル .json も一緒に選べます）</li>
+      <li>現場名と、月ごとの取り込み方（その日にアプリの予定があるとき）を確かめてから「取り込む」</li></ol>
+      <div class="btns"><button data-close>閉じる</button><button id="kFile">ファイルを選ぶ</button><button class="pri" id="kDir">フォルダから全部</button></div>`, "wide keep");
+    $("kFile").onclick = () => kuroPick(false); $("kDir").onclick = () => kuroPick(true); return;
   }
   const items = kuroItems(), ppl = new Set(items.map(i => nk(i.owner)));
   const list = [...K.map.entries()].sort((a, b) => (b[1].jouyou ? 1 : 0) - (a[1].jouyou ? 1 : 0) || (a[1].how === "一致") - (b[1].how === "一致") || b[1].n - a[1].n);
@@ -226,9 +246,11 @@ function kuroDraw() {
     ${list.map(([key, x], i) => `<tr${x.jouyou ? ` class="jy"` : ""}><td><input type="checkbox" data-kon="${i}"${x.on ? " checked" : ""}></td><td>${esc(x.raw)}</td><td class="num">${x.n}</td>
       <td>${x.honsha ? `<span class="pinfo">本社${x.v || x.how !== "本社" ? "＋" : "だけ"}</span>` : ""}${x.honsha && x.how === "本社" && !x.v ? "" : `<div class="pick"><input data-kv="${i}" value="${esc(x.v)}" autocomplete="off"></div>`}${x.alt && x.alt.length ? `<small class="pinfo">ほかの候補：${esc(x.alt.join("、"))}</small>` : ""}</td>
       <td><span class="kh ${cls[x.how] || ""}">${esc(x.how)}</span></td></tr>`).join("")}</table></div>
-    <div class="btns"><button type="button" id="kFile">別のファイルを選ぶ</button><span style="flex:1"></span><button data-close>閉じる</button><button class="pri" id="kGo"${items.length ? "" : " disabled"}>${items.length}件を取り込む（${ppl.size}人）</button></div>`, "wide keep");
+    ${polHTML(K, items)}
+    <div class="btns"><button type="button" id="kFile">別のファイルを選ぶ</button><button type="button" id="kDir">フォルダから全部</button><span style="flex:1"></span><button data-close>閉じる</button><button class="pri" id="kGo"${items.length ? "" : " disabled"}>${items.length}件を取り込む（${ppl.size}人）</button></div>`, "wide keep");
   const B = $("dlgBody");
-  $("kFile").onclick = kuroPick;
+  $("kFile").onclick = () => kuroPick(false); $("kDir").onclick = () => kuroPick(true);
+  bindPol(K, kuroDraw);
   $("kFrom").onchange = () => { K.from = $("kFrom").value || K.from; kuroDraw(); };
   $("kTo").onchange = () => { K.to = $("kTo").value || K.to; kuroDraw(); };
   B.querySelectorAll("[data-kon]").forEach(el => el.onchange = () => { list[+el.dataset.kon][1].on = el.checked; kuroDraw(); });
@@ -240,45 +262,11 @@ function kuroDraw() {
   });
   $("kGo").onclick = () => kuroImport(items).catch(e => { toast("取り込めませんでした：" + e.message, 8000); kuroDraw(); });
 }
-// 同じ人・同じ日・同じ現場に、ちがう取り込み元（クロジカ／常用日報）の行があれば、その行にまとめる
-const sameSite = (a, b) => (a.コード && b.コード ? String(a.コード) === String(b.コード) : nk(a.行先) === nk(b.行先)) && !a.関連現場 && !b.関連現場 && !isOffice(a.行先);
-const srcOf = r => String(r.取込 || "").split(":")[0];
-const idsOf = y => [y.取込, ...(y.取込他 || [])].filter(Boolean);
-function mergeInto(y, r) {
-  const uniq = (a, b, key) => { b.forEach(v => { if (!a.some(w => key(w) === key(v))) a.push(v); }); return a; };
-  y.人 = uniq(listOf(y, "r", "人"), r.人, nk); y.機械 = uniq(listOf(y, "r", "機械"), r.機械, nk);
-  if (srcOf(r) === "jouyou") { y.外注 = r.外注; if (!y.始め || y.終日) { y.始め = r.始め; y.終わり = r.終わり; y.終日 = false; } }
-  else y.外注 = uniq(listOf(y, "r", "外注"), r.外注, g => nk(g.業者));
-  const has = new Set(workLines(y).map(l => nk(l.予定) + "|" + nk(l.報告)));
-  y.作業行 = [...workLines(y).filter(l => l.予定 || l.報告), ...workLines(r).filter(l => (l.予定 || l.報告) && !has.has(nk(l.予定) + "|" + nk(l.報告)))];
-  (y.取込他 ||= []).push(r.取込); syncWork(y);
-}
 async function kuroImport(items) {
-  const K = KURO, files = new Map();
-  items.forEach(it => { const key = it.owner + "|" + monthOf(it.k); if (!files.has(key)) files.set(key, { owner: it.owner, m: monthOf(it.k), list: [] }); files.get(key).list.push(it); });
+  const K = KURO;
   $("kGo").disabled = true;
-  let added = 0, merged = 0, skipped = 0, done = 0;
-  for (const F of files.values()) {
-    $("kGo").textContent = `取り込んでいます… ${++done}/${files.size}`;
-    const name = `個人_${nk(F.owner)}_${F.m}.json`;
-    for (let tries = 0; ; tries++) {
-      const cur = await nippouStore.get(name), doc = cur ? cur.data : { 形式: "私の日報", 版: 1, 名前: F.owner, アカウント: "", 月: F.m, 日: {} };
-      let a = 0, mg = 0, s = 0;
-      F.list.forEach(({ k, r }) => {
-        const d = doc.日[k] ||= { 行: [], 報告: null };
-        if (d.行.some(y => idsOf(y).includes(r.取込))) { s++; return; }
-        const other = d.行.find(y => y.取込 && srcOf(y) !== srcOf(r) && sameSite(y, r));
-        if (other) { if (srcOf(r) === "jouyou") { const keep = other; Object.assign(r, { id: keep.id }); mergeInto(r, keep); r.取込他 = [...new Set([...(r.取込他 || []).filter(v => v !== keep.取込), keep.取込, ...(keep.取込他 || [])])]; d.行[d.行.indexOf(keep)] = r; } else mergeInto(other, r); mg++; }
-        else { d.行.push(r); a++; }
-        if (!d.報告) d.報告 = { だれ: F.owner, いつ: (srcOf(r) === "jouyou" ? "常用日報" : "クロジカ") + "から取り込み" };
-        d.更新 = nowStr();
-      });
-      if (!a && !mg) { skipped += s; break; }
-      doc.更新 = nowStr();
-      try { await nippouStore.put(name, doc, cur ? cur.eTag : null); added += a; merged += mg; skipped += s; break; }
-      catch (e) { if ((e.status !== 412 && e.status !== 409) || tries >= 4) throw e; }
-    }
-  }
+  const st = await importItems(items, { srcs: ["kuro", "jouyou"], pol: K.pol, label: "クロジカ", how: r => srcOf(r) === "jouyou" ? "常用日報" : "クロジカ", prog: impProg });
+  if (!st) { kuroDraw(); return; }
   // 常用日報そのものを日報のフォルダに写して残す・請負形態を「常用」に
   for (const j of K.jous) {
     const x = K.map.get(j.mk); if (!x || !x.on || !x.v) continue;
@@ -286,9 +274,6 @@ async function kuroImport(items) {
     await nippouStore.put(name, { 形式: "常用日報（現場）", 版: 1, 元: j.file, 取り込み: nowStr(), だれ: S.me.name, 現場: j.site }, cur ? cur.eTag : null).catch(e => toast("常用日報の写しを保存できませんでした：" + e.message, 6000));
     if (formOf(x.v, x.code) !== "常用") await setForm(x.v, x.code, "常用");
   }
-  Object.keys(DOCS).forEach(m => delete DOCS[m]);
-  for (const m of new Set([...files.values()].filter(F => nk(F.owner) === nk(S.me.name)).map(F => F.m))) { const f = S.F[m]; if (f && !f.pending.length && !f.saving) f.loaded = false; await loadMonth(m, true); }
-  closeDlg(); KURO = null; render();
-  dlg(`<h2>取り込みました</h2><p>${added}件を入れました${merged ? `（ほかに ${merged}件は、同じ人・同じ日・同じ現場の行にまとめました）` : ""}。人・月ごとに ${files.size} のファイルです。${skipped ? `<br>${skipped}件はもう入っていたので入れていません。` : ""}</p>
-    <p class="pinfo">カレンダーの週・月・人別で確かめてください。取り込んだ行は普通の日報と同じに直せます。</p><div class="btns"><button class="pri" data-close>閉じる</button></div>`);
+  KURO = null; render();
+  importDone(st);
 }

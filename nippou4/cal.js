@@ -58,7 +58,7 @@ const timed = r => !r.終日 && r.始め && r.終わり && hoursOf(r) < 6;   // 
 function evTip(x) {
   const r = x.r, L = workLines(r).filter(l => l.予定 || l.報告);
   return [titleOf(r) + (r.始め || r.終わり ? `  ${r.始め || ""}〜${r.終わり || ""}` : ""), "記入者：" + x.who + (x.rep ? "" : "（書きかけ）"),
-    membersOf(x).length ? "参加者：" + membersOf(x).join("、") : "", gaiTxt(listIn(r, "r", "外注")) ? "外注：" + gaiTxt(listIn(r, "r", "外注")) : "",
+    membersOf(x).length ? "参加者：" + membersOf(x).join("、") : "", (r.同行 || []).length ? "同じ現場：" + r.同行.join("、") : "", gaiTxt(listIn(r, "r", "外注")) ? "外注：" + gaiTxt(listIn(r, "r", "外注")) : "",
     listIn(r, "r", "機械").length ? "設備：" + listIn(r, "r", "機械").join("、") : listIn(r, "p", "機械").length ? "設備（予定）：" + listIn(r, "p", "機械").join("、") : "",
     ...L.map(l => "・" + (l.報告 || "（予定）" + l.予定))].filter(Boolean).join("\n");
 }
@@ -83,10 +83,11 @@ async function renderCal() {
   const ttl = CAL.mode === "week" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日〜${d1.getMonth() + 1}月${d1.getDate()}日`
     : CAL.mode === "day" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日(${WD[d0.getDay()]})` : `${dateOf(S.day).getFullYear()}年${+monthOf(S.day).slice(5)}月`;
   $("dayHead").innerHTML = `<div class="calbar"><div class="tabs">${MODES.map(([v, t]) => `<button type="button" data-cm="${v}" class="${CAL.mode === v ? "on" : ""}">${t}</button>`).join("")}</div>
-    <b class="cttl">${ttl}</b><span class="sp"></span><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">${esc(S.me.name)} の日報（カード）</button></div>`;
+    <b class="cttl">${ttl}</b><span class="sp"></span><button type="button" id="cHai" title="配置表（配置確定）から過去の作業内容を、作業員ひとりずつの日報に取り込む">配置表から取り込む</button><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">${esc(S.me.name)} の日報（カード）</button></div>`;
   $("dayHead").querySelectorAll("[data-cm]").forEach(b => b.onclick = () => { CAL.mode = b.dataset.cm; calSave(); render(); });
   $("cWho").onclick = chooseWho;
   $("cKuro").onclick = kuroOpen;
+  $("cHai").onclick = haichiOpen;
   $("cCards").onclick = () => { S.view = "me"; render(); };
   if (!$("all").querySelector(".cal")) $("all").innerHTML = `<p>読んでいます…</p>`;
   let docs;
@@ -99,10 +100,11 @@ async function renderCal() {
   $("all").innerHTML = `<div class="cal ${CAL.mode}">${html}</div>`;
   bindCal(evs);
 }
-// 表に出す人：社員と、この期間に日報に出てくる人（「表示する人」で外した人は出さない）
+// 表に出す人：社員・従業員（名簿の全員）と、この期間に日報に出てくる人（「表示する人」で外した人は出さない）
+// （2026-11-02 ユーザー：社員と一部の従業員しか出ていない → 従業員も全員）
 function calNames(evs) {
   const m = new Map(), add = n => { if (n && !m.has(nk(n))) m.set(nk(n), n); };
-  S.M.社員.forEach(add); add(S.me.name);
+  S.M.社員.forEach(add); add(S.me.name); S.M.従業員.forEach(add);
   [...evs.values()].flat().forEach(x => membersOf(x).forEach(add));
   return [...m.values()].filter(n => !CAL.hide[nk(n)]);
 }
@@ -291,7 +293,7 @@ function bindDrag(box) {
 }
 function chooseWho() {
   const all = [...new Set([...S.M.社員, ...S.M.従業員])];
-  dlg(`<h2>表示する人</h2><p style="font-size:14px">社員と、その週・月に日報に出てくる人を出します。外した人は出しません（この端末だけ）。</p>
+  dlg(`<h2>表示する人</h2><p style="font-size:14px">社員・従業員と、その週・月に日報に出てくる人を出します。外した人は出しません（この端末だけ）。</p>
     <div class="btns" style="justify-content:flex-start;margin:0 0 6px"><button type="button" id="wAll">全部</button><button type="button" id="wNone">全部外す</button></div>
     <div class="checks">${all.map(n => `<label><input type="checkbox" value="${esc(n)}"${CAL.hide[nk(n)] ? "" : " checked"}><span class="dot" style="background:${colorOf(n)}"></span>${esc(n)}</label>`).join("")}</div>
     <div class="btns"><button data-close>やめる</button><button class="pri" id="wOk">決める</button></div>`);
@@ -342,6 +344,7 @@ function showEv(x) {
     ${r.行先 && !isOffice(r.行先) ? `<tr><th>請負形態</th><td>${formSel(r.行先, r.コード, "sForm")}</td></tr>` : ""}
     <tr><th>内容</th><td>${L.length ? `<table class="wt"><tr><th>予定</th><th>報告</th></tr>${L.map(l => `<tr><td>${esc(l.予定 || "")}</td><td>${esc(l.報告 || "")}</td></tr>`).join("")}</table>` : "―"}</td></tr>
     <tr><th>参加者</th><td><div class="pr2"><div><small>予定</small>${chipsT(listIn(r, "p", "人")) || "―"}</div><div><small>報告</small>${chipsT(mem) || "―"}</div></div></td></tr>
+    ${(r.同行 || []).length ? `<tr><th>同じ現場</th><td>${chipsT(r.同行)}<div class="pinfo">配置表で同じ現場にいた人（それぞれの日報に入っています）</div></td></tr>` : ""}
     <tr><th>外注</th><td>${two("外注", a => esc(gaiTxt(a)))}</td></tr>
     <tr><th>設備</th><td>${two("機械", chipsT)}${(r.未使用機械 || []).length ? `<div class="pinfo">使わなかった：${esc(r.未使用機械.join("、"))}</div>` : ""}</td></tr>
     <tr><th>記入者</th><td>${esc(x.who)}${r.更新 ? `（${esc(r.更新)}）` : ""}${x.rep ? "" : "　<span class=\"badge draft\">書きかけ</span>"}</td></tr>

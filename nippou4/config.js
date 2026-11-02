@@ -14,6 +14,12 @@ window.NIPPOU_CONFIG = {
     driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
     itemId: "01NJOWDESCMVESZPAWFJCK3KKPBSCGAJKG"
   },
+  // haichi：配置表入力の 配置表データ（年ごとの .js）。「配置表から取り込む」で読むだけ（配置表の閲覧版と同じ場所。前の名前の場所も見る）
+  haichi: {
+    driveId: "b!fW3m73KhV0i7xf8c58hB1ha1ymrf1RZIq3ibCMmfIEMZJwRVBBcZSqMjvDbFdiXW",
+    path: "社内共有フォルダ/06_配置表/配置表データ",
+    oldPath: "社内共有フォルダ/02_配置表/配置表データ"
+  },
   // nippou：日報だけを置くフォルダ（365 の無い人をゲストに招いて、ここだけ共有する）。?setup で開いて「…」→「日報のフォルダを調べる」で出る値を書く。
   //         書かない（null）うちは 工程データ\日報\ に書く
   nippou: null,
