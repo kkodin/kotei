@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>常用日報</title>
-<link rel="stylesheet" href="app.css?v=202611011216">
+<title>詳細日報</title>
+<link rel="stylesheet" href="app.css?v=202611031016">
 </head>
 <body>
 <header id="top">
-  <span class="ttl">常用日報</span>
+  <span class="ttl">詳細日報</span>
   <nav id="views">
     <button data-tab="sheet" class="on" title="1日1枚の作業日報">日報</button>
     <button data-tab="sum" title="締め期間の集計（日別・作業員別・機材別）">集計</button>
@@ -32,7 +32,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 11/01 12:16</span>
+    <span id="ver" class="ver">Vr000 11/03 10:16</span>
   </span>
 </header>
 
@@ -185,6 +185,14 @@
   <div class="dbody" id="kpBody"></div>
 </dialog>
 
+<dialog id="dForm">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>この現場の区分を選んでください</h3></div>
+  <div class="dbody">
+    <p class="note"><b id="fmSite"></b><br>常用＝請負とは別に使ったものを請求する仕事／請負＝請負の範囲の仕事（常用の計算に入れません）。<br>次からは前回選んだ区分が入ります。日ごとに変えるときは日報の上の「区分」で。</p>
+    <div class="btns"><span class="sp"></span><button type="button" data-form="請負" class="sub">請負</button><button type="button" data-form="常用">常用</button></div>
+  </div>
+</dialog>
+
 <dialog id="dEdit">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody" id="eBody"></div>
@@ -201,11 +209,11 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202611011216"></script>
+<script src="config.js?v=202611031016"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202611011216"></script>
-<script src="app.js?v=202611011216"></script>
+<script src="grid.js?v=202611031016"></script>
+<script src="app.js?v=202611031016"></script>
 </body>
 </html>

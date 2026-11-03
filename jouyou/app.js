@@ -22,6 +22,24 @@ const jpDate = s => { const d = pd(s); return `${d.getFullYear()}年${d.getMonth
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const now = () => { const d = new Date(); return ymd(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
 
+/* ブラウザの自動入力（住所・会社名・氏名の候補）を出さない（2026-11-01 ユーザー：表のセルに Chrome の住所の候補が出た）。
+   Chrome は autocomplete="off" を無視して住所の候補を出すことがある。1つの form の中の欄が3つ未満だと住所の自動入力をしないので、
+   form の外の欄を1つずつ form（display:contents。見た目は変わらない）で包む。あとから足された欄も包む（いま打っている欄なら打つ所を戻す） */
+function noAutofill(root) {
+  if (!root || !root.querySelectorAll) return;
+  const list = root.matches && root.matches("input,textarea,select") ? [root] : root.querySelectorAll("input,textarea,select");
+  list.forEach(el => {
+    if (el.closest("form") || /^(checkbox|radio|file|button|submit|hidden|range|color)$/.test(el.type)) return;
+    const on = document.activeElement === el, s0 = on && el.selectionStart, s1 = on && el.selectionEnd;
+    const f = document.createElement("form"); f.className = "nofill"; f.setAttribute("autocomplete", "off");
+    f.addEventListener("submit", e => e.preventDefault());
+    el.parentNode.insertBefore(f, el); f.appendChild(el); el.setAttribute("autocomplete", "off");
+    if (on) { el.focus({ preventScroll: true }); try { el.setSelectionRange(s0, s1); } catch (e) { } }
+  });
+}
+noAutofill(document.body);
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1 && n.parentNode) noAutofill(n); }))).observe(document.body, { childList: true, subtree: true });
+
 /* ================= データ ================= */
 // DB = { 形式, 版, 元請:[{id,名前}], 現場:[現場], 職種:[], 天気:[] }
 // 現場 = { id, 元請id, 名前, 担当者, 始業, 終業, 締め日, 累計:"期間"|"全体", 作業員:[{名前,職種}], 機材:[{名前,規格}], 日:{ "YYYY-MM-DD": 日 },
@@ -58,8 +76,8 @@ function aliasKou(x, A = DB.職種別名) {
   let ch = false;
   Object.values(x.日).forEach(d => {
     let c2 = false;
-    d.下.forEach(r => { if (r && A[r[3]]) { r[3] = A[r[3]]; c2 = true; } });
-    d.下.forEach(r => { if (r) [12, 13].forEach(i => { if (r[i] === OLD_SELF) { r[i] = SELF; c2 = true; } }); });
+    rowsOf(d).forEach(r => { if (r && A[r[3]]) { r[3] = A[r[3]]; c2 = true; } });
+    rowsOf(d).forEach(r => { if (r) [12, 13].forEach(i => { if (r[i] === OLD_SELF) { r[i] = SELF; c2 = true; } }); });
     (d.車 || []).forEach(r => { if (r && r[5] === OLD_SELF) { r[5] = SELF; c2 = true; } });
     d.上.forEach(r => { if (r && A[r[0]]) { r[0] = A[r[0]]; c2 = true; } });
     if (c2) { d.更新 = now(); ch = true; }
@@ -102,19 +120,19 @@ const gen = () => DB.元請.find(g => g.id === UI.gen) || null;
 const day = () => { const s = site(); return s ? s.日[UI.day] || null : null; };
 function ensureDay() {
   const s = site(); if (!s) return null;
-  if (!s.日[UI.day]) s.日[UI.day] = { 天気: "", 気温: "", 担当者: "", 上: [], 下: [], 車: [], 備考: "", サイン: "", サイン日時: "", 人員手: false, 更新: "" };
+  if (!s.日[UI.day]) s.日[UI.day] = { 天気: "", 気温: "", 担当者: "", 上: [], 下: [], 車: [], 備考: "", サイン: "", サイン日時: "", 人員手: false, 更新: "", 形態: nextForm(s) };
   return s.日[UI.day];
 }
 // 中身のある日か（空の日は保存しない）
 function hasData(d) {
   if (!d) return false;
   if (d.天気 || d.気温 || d.備考 || d.サイン) return true;
-  return [...d.上, ...d.下, ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
+  return [...d.上, ...d.下, ...(d.外注 || []), ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
 }
 function tidy(d) {
   // 後ろの空の行は持たない
   const trim = a => { while (a.length && !(a[a.length - 1] || []).some(v => v !== "" && v != null)) a.pop(); };
-  trim(d.上); trim(d.下); if (d.車) trim(d.車);
+  trim(d.上); trim(d.下); if (d.外注) trim(d.外注); if (d.車) trim(d.車);
 }
 
 /* ================= 締め期間 ================= */
@@ -218,11 +236,23 @@ const CARC = [
   { t: "メモ", w: 294, k: "txt" }                                // 9
 ];
 CARC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
-const ARR = { up: "上", dn: "下", car: "車" };   // 表 → 日のデータの名前
+const ARR = { up: "上", dn: "下", gai: "外注", car: "車" };   // 表 → 日のデータの名前
+// 外注の欄（2026-11-03 ユーザー：同じ人を作業員の欄に入れれば作業員扱い、外注の欄に入れれば外注扱い。同じ日に重ねない。昼夜がちがえばよい）。
+// 日[日付].外注 = 行（列の番号は 下 と同じ。名前・始業・終業・工種・残・会社・昼夜）。集計は両方を数える（rowsOf）。紙は 下 の続きに出す（withGai）
+function rowsOf(d) { return d ? [...(d.下 || []), ...(d.外注 || [])] : []; }
+function withGai(d) {
+  if (!d || !(d.外注 || []).some(r => r && r[0])) return d;
+  const a = [...d.下]; while (a.length && !(a[a.length - 1] || []).some(v => v !== "" && v != null)) a.pop();
+  return { ...d, 下: [...a, ...d.外注.filter(r => r && r[0])], 外注: [] };
+}
+// 常用／請負（2026-11-03 ユーザー）：現場の 形態、その日だけ変えるなら 日.形態。決めていない現場は開いたときに選ばせる（askForm）。常用でない日は金額に入れない。
+// 前回の設定を保持：選んだ区分を 現場.前回形態 に覚え、新しく書く日に入れる（日.形態）。前に書いた日は変わらない
+const formOf = (s, x) => ((s.日[x] || {}).形態) || s.形態 || "";
+const nextForm = s => s.前回形態 || s.形態 || "";
 /* 1日の入力ページ（2026-10-31 ユーザー：作業内容・人員・機械が多くて1ページに収まらない日は、入力ページを足せる）。
    ページ p は 上[p*5〜]・下[p*16〜]・車[p*3〜] の行（集計はページに関係なく全部の行）。d.頁＝ページの数（足した空のページも数える）。
    何も書いていないページは、ページ・日・現場を移るときに「消しますか」と聞く。 */
-const PG = { up: 5, dn: 16, car: 3 };
+const PG = { up: 5, dn: 16, gai: 4, car: 3 };
 function pageCount(d) { if (!d) return 1; return Math.max(1, d.頁 || 1, ...Object.entries(ARR).map(([k, a]) => Math.ceil(((d[a] || []).length) / PG[k]))); }
 const pgOff = key => (UI.pg || 0) * PG[key];
 function pageOf(d, p) { const o = { ...d }; for (const [k, a] of Object.entries(ARR)) o[a] = (d[a] || []).slice(p * PG[k], (p + 1) * PG[k]); return o; }
@@ -244,7 +274,7 @@ function askEmptyPages(only) {
   save(); toast("何も書いていないページを消しました");
 }
 function goPage(p) {
-  for (const k of ["up", "dn", "car"]) if (grids[k] && grids[k].editing()) grids[k].commit();
+  for (const k of ["up", "dn", "gai", "car"]) if (grids[k] && grids[k].editing()) grids[k].commit();
   const s = site(), d = day(), was = UI.pg || 0;
   p = Math.max(0, Math.min(pageCount(d) - 1, p));
   if (p === was) return;
@@ -257,8 +287,9 @@ function goPage(p) {
 UPC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
 // 画面の順のうち、di の無い列はデータの 0〜11 を順に当てる（会社＝12・所有者＝13 は後ろに足した列）
 { let k = 0; DNC.forEach((c, i) => { c.letter = String.fromCharCode(65 + i); if (c.di == null) c.di = k++; }); }
-const di = (key, c) => key === "dn" ? DNC[c].di : key === "up" ? (UPC[c].di ?? c) : c;   // 画面の列 → データの列
-const SECS = { up: UPC, dn: DNC, car: CARC };
+const GAIC = DNC.slice(0, 7).map(c => ({ ...c }));   // 外注の欄：作業員名〜残（使用機材・材料は作業員の表に書く）
+const di = (key, c) => key === "dn" || key === "gai" ? DNC[c].di : key === "up" ? (UPC[c].di ?? c) : c;   // 画面の列 → データの列
+const SECS = { up: UPC, dn: DNC, gai: GAIC, car: CARC };
 
 // 累計：同じ「使用機材＋規格」（品名）の数量を、締め期間（または工事の始め）からこの日まで足す
 function cumul(kind, r) {
@@ -289,14 +320,14 @@ function getCell(key, r, c) {
 // 作業員の工種（職種）ごとの人数。名簿の職種の順
 function countByShoku(d) {
   const m = new Map();
-  (d ? d.下 : []).forEach(r => { if (r && r[0]) { const k = r[3] || "（工種なし）"; m.set(k, (m.get(k) || 0) + 1); } });
+  rowsOf(d).forEach(r => { if (r && r[0]) { const k = r[3] || "（工種なし）"; m.set(k, (m.get(k) || 0) + 1); } });
   const order = [...DB.職種];
   return [...m.entries()].sort((a, b) => { const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
 }
 // 工種別の集計（右の欄・Excel・PDF）：{ rows: [{ k, n, 昼, 夜 }], 計, 夜あり }
 function kouSum(d) {
   const m = new Map();
-  (d ? d.下 : []).forEach(r => { if (r && r[0]) { const k = r[3] || "（工種なし）", x = m.get(k) || { 昼: 0, 夜: 0 }; x[shiftOf(r) === "夜" ? "夜" : "昼"]++; m.set(k, x); } });
+  rowsOf(d).forEach(r => { if (r && r[0]) { const k = r[3] || "（工種なし）", x = m.get(k) || { 昼: 0, 夜: 0 }; x[shiftOf(r) === "夜" ? "夜" : "昼"]++; m.set(k, x); } });
   const rows = countByShoku(d).map(([k, n]) => ({ k, n, ...m.get(k) }));
   return { rows, 計: rows.reduce((a, x) => a + x.n, 0), 夜あり: rows.some(x => x.夜) };
 }
@@ -338,7 +369,7 @@ function companyOf(name, s = site()) {
 function companies(s = site()) {
   const set = new Set([SELF, ...(DB.会社一覧 || [])]);
   DB.現場.forEach(x => x.作業員.forEach(w => w.会社 && set.add(w.会社)));
-  if (s) Object.values(s.日).forEach(d => d.下.forEach(r => r && r[12] && set.add(r[12])));
+  if (s) Object.values(s.日).forEach(d => rowsOf(d).forEach(r => r && r[12] && set.add(r[12])));
   MS.外注業者.forEach(n => set.add(n));
   return [...set];
 }
@@ -489,7 +520,7 @@ function compToDays(s, name, old, comp) {
   let n = 0;
   for (const d of Object.values(s.日)) {
     let ch = false;
-    d.下.forEach(r => { if (r && r[0] && nk(r[0]) === nk(name) && (!r[12] || r[12] === old) && r[12] !== comp) { while (r.length < 13) r.push(""); r[12] = comp; n++; ch = true; } });
+    rowsOf(d).forEach(r => { if (r && r[0] && nk(r[0]) === nk(name) && (!r[12] || r[12] === old) && r[12] !== comp) { while (r.length < 13) r.push(""); r[12] = comp; n++; ch = true; } });
     if (ch) d.更新 = now();
   }
   return n;
@@ -502,6 +533,7 @@ function compToDays(s, name, old, comp) {
      1字ちがい・片方がもう片方を含む → 「○○のことですか？」と聞く（そろえる／別のものとして入れる）。
    ・「現場・名簿」の「揺らぎを見つけてそろえる」で、これまでの日報の中の揺らぎをまとめて直せる。 */
 const YCOLS = { dn: { 0: "作業員名", 12: "会社", 3: "工種", 5: "使用機材", 6: "規格・形式", 13: "所有者", 9: "材料名" }, up: {} };
+YCOLS.gai = YCOLS.dn;
 const loose = v => String(v ?? "").normalize("NFKC").toLowerCase().replace(/[\s　・･()（）\[\]「」【】,，.．]/g, "").replace(/[-‐－―−ｰ]/g, "ー");
 function lev(a, b) {
   if (Math.abs(a.length - b.length) > 2) return 9;
@@ -561,12 +593,12 @@ function askYure() {
     q.map((x, i) => `<tr><td>${esc(YCOLS[x.key][x.c])}</td><td><b>${esc(x.v)}</b></td><td>${x.ask.map((w, j) => `<label class="yr"><input type="radio" name="yr${i}" value="${esc(w)}"${j === 0 ? " checked" : ""}> ${esc(w)}</label>`).join("")}<label class="yr"><input type="radio" name="yr${i}" value=""> 別のもの（このまま・もう聞かない）</label></td></tr>`).join("") + `</tbody></table>`;
   openDlg($("dYure"));
   $("yrOk").onclick = () => {
-    const ch = { up: [], dn: [] };
+    const ch = { up: [], dn: [], gai: [] };
     const s0 = site(); let nd = 0;
     q.forEach((x, i) => { const w = (document.querySelector(`input[name="yr${i}"]:checked`) || {}).value; if (w) ch[x.key].push({ r: x.r, c: x.c, v: w }); else { if (s0) nd += markDistinct(s0, [x.v, ...x.ask]); if (x.isNew && s0 && !(s0.足さない || []).includes(`${x.key}:${x.c}:${loose(x.v)}`)) NQ.push({ key: x.key, c: x.c, v: x.v, 欄: NCOLS[x.key][x.c] }); } });
     if (nd) { save(); toast("別のものとして覚えました（もう聞きません）"); }
     closeDlg($("dYure")); YQ = [];
-    for (const k of ["up", "dn"]) if (ch[k].length) applyCells(k, ch[k], true);
+    for (const k of ["up", "dn", "gai"]) if ((ch[k] || []).length) applyCells(k, ch[k], true);
     if (NQ.length) setTimeout(askNew, 50);
   };
 }
@@ -575,6 +607,7 @@ function askYure() {
    工種 → 工種（職種）の一覧（共通）／作業員名 → この現場の名簿／会社・所有者 → 会社・所有者の一覧（共通）／使用機材 → この現場の機材の一覧。
    「足さない」と答えたものは現場の 足さない に覚えて、もう聞かない。 */
 const NCOLS = { dn: { 0: "作業員名", 3: "工種", 5: "使用機材", 9: "材料名", 12: "会社", 13: "所有者" }, up: {} };
+NCOLS.gai = NCOLS.dn;
 function inMaster(key, c, v, s) {
   const k = loose(v); if (!k) return true;
   const has = list => list.some(x => loose(x) === k);
@@ -607,7 +640,7 @@ function askNew() {
       } else {
         nN++;
         (s.足さない ||= []).push(`${x.key}:${x.c}:${loose(x.v)}`);
-        if (x.c === 0 && x.key === "dn") s.作業員 = s.作業員.filter(w => nk(w.名前) !== nk(x.v) || w.会社 || Object.values(s.日).filter(d => d.下.some(r => r && nk(r[0]) === nk(x.v))).length > 1);
+        if (x.c === 0 && x.key === "dn") s.作業員 = s.作業員.filter(w => nk(w.名前) !== nk(x.v) || w.会社 || Object.values(s.日).filter(d => rowsOf(d).some(r => r && nk(r[0]) === nk(x.v))).length > 1);
         if (x.c === 5 && x.key === "dn") s.機材 = s.機材.filter(m => loose(m.名前) !== loose(x.v) || m.所有者);
         s.設定更新 = now();
       }
@@ -632,34 +665,43 @@ $("dYure").addEventListener("close", () => {
 function applyCells(key, ch, noCheck) {
   const s = site(); if (!s) { toast("先に「現場・名簿」で元請と現場を登録してください"); return; }
   if (!canEdit()) { refreshSheet(); return; }
+  const isP = key === "dn" || key === "gai", wk = key === "gai" ? "dn" : key;   // 外注の欄は作業員の欄と同じ動き
   // 揺らぎ：打つ前のこれまでの書き方と比べる（同じならそろえる・似ていれば後で聞く）
   const fixedMsg = [];
   // まとめた工種の古い名前（土工 など）は新しい名前に
-  ch = ch.map(x => { const isK = (key === "dn" && x.c === 3) || (key === "up" && x.c === 0), to = isK && x.v && DB.職種別名[String(x.v).trim()]; if (to) { fixedMsg.push(`「${x.v}」→「${to}」`); return { ...x, v: to }; } return x; });
+  ch = ch.map(x => { const isK = (isP && x.c === 3) || (key === "up" && x.c === 0), to = isK && x.v && DB.職種別名[String(x.v).trim()]; if (to) { fixedMsg.push(`「${x.v}」→「${to}」`); return { ...x, v: to }; } return x; });
   // 新しい言葉：打つ前に一覧（マスタ）に無かったもの（揺らぎで聞くものは、その答えの後で）
   const newCand = [];
-  if (!noCheck && NCOLS[key]) ch.forEach(x => { if (NCOLS[key][x.c] && x.v && !inMaster(key, x.c, x.v, s) && !(s.足さない || []).includes(`${key}:${x.c}:${loose(x.v)}`)) newCand.push(x); });
-  if (!noCheck && YCOLS[key]) {
+  if (!noCheck && NCOLS[wk]) ch.forEach(x => { if (NCOLS[wk][x.c] && x.v && !inMaster(wk, x.c, x.v, s) && !(s.足さない || []).includes(`${wk}:${x.c}:${loose(x.v)}`)) newCand.push(x); });
+  if (!noCheck && YCOLS[wk]) {
     const cns = {};
     ch = ch.map(x => {
-      if (!YCOLS[key][x.c] || !x.v) return x;
-      const r = checkWord(key, x.c, x.v, cns[x.c] ||= canon(key, x.c, s));
+      if (!YCOLS[wk][x.c] || !x.v) return x;
+      const r = checkWord(wk, x.c, x.v, cns[x.c] ||= canon(wk, x.c, s));
       if (r.fixed) fixedMsg.push(`「${r.fixed}」→「${r.v}」`);
-      if (r.ask && r.ask.length) YQ.push({ key, r: x.r, c: x.c, v: r.v, ask: r.ask, isNew: NCOLS[key] && NCOLS[key][x.c] && !inMaster(key, x.c, r.v, s) });
+      if (r.ask && r.ask.length) YQ.push({ key, r: x.r, c: x.c, v: r.v, ask: r.ask, isNew: NCOLS[wk] && NCOLS[wk][x.c] && !inMaster(wk, x.c, r.v, s) });
       return { ...x, v: r.v };
     });
   }
   pushUndo();
-  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : SECS[key].length;
+  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : SECS[key].length;
   const touched = new Set();
   for (const { r, c, v } of ch) {
     if (r >= PG[key] * pageCount(d)) continue;
     while (arr.length <= r) arr.push(Array(NC).fill(""));
     const row = arr[r]; while (row.length < NC) row.push("");
-    row[c] = key === "dn" && c === 14 ? normalize("shift", v) : key === "car" && c <= 1 ? carNorm(c, v) : v; touched.add(r);
+    row[c] = isP && c === 14 ? normalize("shift", v) : key === "car" && c <= 1 ? carNorm(c, v) : v; touched.add(r);
     if (key === "up" && c === 2) d.人員手 = true;
   }
-  if (key === "dn") {
+  // 同じ人を同じ日に重ねない（作業員の欄・外注の欄をまたいで。昼夜がちがえばよい）
+  if (isP) for (const r of touched) {
+    const row = arr[r], dup = row && row[0] && rowsOf(d).find(x => x && x !== row && x[0] && nk(x[0]) === nk(row[0]) && shiftOf(x, s) === shiftOf(row, s));
+    if (!dup) continue;
+    const sn = UNDO.pop(); if (sn.v) s.日[UI.day] = JSON.parse(sn.v); else dropDay(s, UI.day);
+    refreshSheet(); toast(`${masterName(row[0])} さんは、この日の${(d.外注 || []).includes(dup) ? "外注の欄" : "作業員の欄"}（${shiftOf(dup, s)}）に入っています。同じ日に重ねられません（昼夜がちがえば入れられます）`, 6000);
+    return;
+  }
+  if (isP) {
     for (const r of touched) {
       const row = arr[r], c0 = ch.filter(x => x.r === r).map(x => x.c);
       // 名前を入れたら：名簿の工種・定時の始業／終業
@@ -700,7 +742,7 @@ function applyCells(key, ch, noCheck) {
   newCand.forEach(x => {
     const now3 = (d[ARR[key]] || [])[x.r], v = now3 && now3[x.c];
     if (!v || inMasterBefore(x, v) || YQ.some(y => y.key === key && y.r === x.r && y.c === x.c)) return;
-    NQ.push({ key, c: x.c, v, 欄: NCOLS[key][x.c] });
+    NQ.push({ key: wk, c: x.c, v, 欄: NCOLS[wk][x.c] });
   });
   function inMasterBefore(x, v) { return loose(v) !== loose(x.v); }   // そろえて別の言葉になった＝もう一覧にある
   if (YQ.length) setTimeout(askYure, 50);
@@ -754,7 +796,7 @@ function rowOp(key, op, r, n) {
   if (key === "up" && op === "insert") { toast("作業予定・完了報告は5行です。足りないときは「＋ ページを足す」"); return; }
   r += pgOff(key);   // 表の行 → データの行（いまのページの分ずらす）
   pushUndo();
-  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : SECS[key].length;
+  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : SECS[key].length;
   if (op === "insert") { while (arr.length < r) arr.push(Array(NC).fill("")); arr.splice(r, 0, ...Array.from({ length: n }, () => Array(NC).fill(""))); if (key === "up") arr.length = Math.min(arr.length, UP_ROWS); }
   else arr.splice(r, n);
   tidy(d); if (!hasData(d)) dropDay(s, UI.day);
@@ -763,6 +805,7 @@ function rowOp(key, op, r, n) {
 
 // その列の候補（Alt+↓・打ち始めの続き）
 function colWords(key, c) {
+  if (key === "gai") return colWords("dn", c);
   const s = site(); if (!s) return [];
   const cnt = new Map(), add = (v, w = 1) => { if (v) cnt.set(v, (cnt.get(v) || 0) + w); };
   if (key === "dn" && c === 0) {
@@ -799,7 +842,7 @@ function setCur(k) {
 }
 function buildSheet() {
   $("sheet").innerHTML = `
-    <div class="ttlRow">作　業　日　報<span id="pgNo"></span></div>
+    <div class="ttlRow">作　業　日　報<span id="pgNo"></span><label class="formSel" title="この日の仕事が常用か請負か。常用でない日は金額（常用の計算）に入れません">区分 <select id="hForm"></select></label></div>
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v dpick" id="hDate" title="押すとカレンダーから日を選べます"></td><td class="v" id="hWd"></td>
@@ -820,11 +863,15 @@ function buildSheet() {
       <div class="secT"><b>作業員・使用機材・材料</b><span class="cnt" id="cntDn"></span></div>
       <div id="g_dn"></div>
     </div>
+    <div class="low sec" data-key="gai">
+      <div class="secT"><b>外注</b><span class="note">外注として来た人（会社に業者名）。作業員の欄と同じ日に重ねられません（昼夜がちがえば可）</span><span class="cnt" id="cntGai"></span></div>
+      <div id="g_gai"></div>
+    </div>
     <div class="low sec" data-key="car">
       <div class="secT"><b>高速・燃料</b><span class="note">高速＝往路・復路・往復と区間／燃料＝軽油・ガソリンと給油(L)。だれ（会社・名前・車両名・車番）も。実費を入れるとその金額</span><span class="cnt" id="cntCar"></span></div>
       <div id="g_car"></div>
     </div>`;
-  for (const key of ["up", "dn", "car"]) {
+  for (const key of ["up", "dn", "gai", "car"]) {
     const cols = SECS[key];
     grids[key] = createGrid({
       host: $("g_" + key), scroller: $("sheetWrap"), cols, headRows: 1, tabBlocks: key === "dn" /* 作業員・使用機材・材料名のまとまりごとに Tab で折り返す */, rowBase: 1, rowHeadW: 0, noLetters: true,   // 左端の番号の列は出さない（2026-10-31 ユーザー）
@@ -834,8 +881,8 @@ function buildSheet() {
       head: () => `<tr class="xlhr sh"><th class="xlrh"></th>${cols.map((c, i) => `<th data-col="${i}" class="${(c.cls || "").includes("sepL") ? "sepL" : ""}">${esc(c.t)}</th>`).join("")}</tr>`,
       get: (r, c) => getCell(key, r + pgOff(key), di(key, c)),
       deco: (r, c) => {
-        if (key !== "dn") return null;
-        const d = day(), row = d && d.下[r + pgOff("dn")];
+        if (key !== "dn" && key !== "gai") return null;
+        const d = day(), row = d && (d[ARR[key]] || [])[r + pgOff(key)];
         if (!row) return null;
         c = di(key, c);
         if (c === 12 && row[0] && !row[12]) return { cls: "nocomp", title: "会社が決まっていません（現場・名簿の「名前一覧・会社の振り分け」で決められます）" };
@@ -852,7 +899,7 @@ function buildSheet() {
       undo, redo,
       onSheet: dir => moveDay(dir),
       onEdge: (dir, c) => {
-        const ord = ["up", "dn", "car"], t = ord[ord.indexOf(key) + (dir > 0 ? 1 : -1)] || null;
+        const ord = ["up", "dn", "gai", "car"], t = ord[ord.indexOf(key) + (dir > 0 ? 1 : -1)] || null;
         if (!t) return false;
         grids[t].enter(dir, Math.min(c, SECS[t].length - 1));
         return true;
@@ -861,7 +908,7 @@ function buildSheet() {
       menu: (x, y, sel) => openMenu(key, x, y, sel),
       print: () => printDays([UI.day]),
       toast,
-      cellName: (r, c) => ({ up: "上", dn: "下", car: "高速・燃料" })[key] + (r + 1) + "・" + cols[c].t,
+      cellName: (r, c) => ({ up: "上", dn: "下", gai: "外注", car: "高速・燃料" })[key] + (r + 1) + "・" + cols[c].t,
       onSelect: (name, val, stat) => {
         if (cur !== key) return;
         $("nameBox").value = name;
@@ -916,6 +963,15 @@ function buildSheet() {
     save(); renderTabs();
   });
   $("hDate").addEventListener("click", openCal);
+  $("hForm").addEventListener("change", () => {
+    const s = site(); if (!s) return;
+    if (!canEdit()) { refreshSheet(); return; }
+    const v = $("hForm").value, d0 = day();
+    if (hasData(d0)) { pushUndo(); d0.形態 = v; d0.更新 = now(); }   // まだ書いていない日は覚えるだけ（書き始めたときに入る）
+    s.前回形態 = v; s.設定更新 = now();
+    if (!s.形態) { s.形態 = v; formShare(s); }
+    save(); renderPickers(); refreshSheet();
+  });
   hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim()));
 }
 function refreshSheet() {
@@ -923,6 +979,7 @@ function refreshSheet() {
   $("hGen").textContent = gen() ? gen().名前 : "（元請業者を選ぶ）";
   $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
+  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s); $("hForm").innerHTML = (v ? "" : `<option value="" selected>選んでください</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s; const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v); }
   const w = wd(UI.day);
   $("hWd").textContent = WD[w]; $("hWd").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
   $("hDate").className = "v" + (w === 0 ? " sun" : w === 6 ? " sat" : "");
@@ -936,7 +993,8 @@ function refreshSheet() {
   { const n = pageCount(d); if ((UI.pg || 0) > n - 1) UI.pg = n - 1;
     $("pgNo").textContent = n > 1 ? `（${(UI.pg || 0) + 1}／${n}ページ）` : "";
     $("pgBar").innerHTML = `<button class="sub" data-pg="-1" title="前のページ"${UI.pg ? "" : " disabled"}>◀</button><span class="pgn">${(UI.pg || 0) + 1}／${n}ページ</span><button class="sub" data-pg="1" title="次のページ"${(UI.pg || 0) < n - 1 ? "" : " disabled"}>▶</button><button class="sub" id="pgAdd" title="作業予定・人員・機械が1ページに収まらないとき、この日の入力ページを足す">＋ ページを足す</button>${n > 1 && UI.pg ? `<button class="sub danger" id="pgDel" title="このページの行を消す">このページを消す</button>` : ""}`; }
-  grids.up.render(); grids.dn.render(); grids.car.render();
+  grids.up.render(); grids.dn.render(); grids.gai.render(); grids.car.render();
+  { const n = ((d && d.外注) || []).filter(r => r && r[0]).length; $("cntGai").textContent = n ? `外注 ${n}名（上の作業員の計に入っています）` : ""; }
   { const C = ((d && d.車) || []).filter(r => r && r[0]), hw = C.filter(r => r[0] === "高速").length, L = k => C.filter(r => r[0] === k).reduce((a, r) => a + (Number(r[3]) || 0), 0);
     $("cntCar").textContent = [hw ? `高速 ${hw}件` : "", L("軽油") ? `軽油 ${r2(L("軽油"))}L` : "", L("ガソリン") ? `ガソリン ${r2(L("ガソリン"))}L` : ""].filter(Boolean).join("・"); }
   $("kouSum").innerHTML = kouSumHTML(d, true);
@@ -962,7 +1020,7 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-d]"
 $("tPrev").onclick = () => setDay(addD(period(UI.day)[0], -1));
 $("tNext").onclick = () => setDay(addD(period(UI.day)[1], 1));
 
-function setDay(d) { if (d !== UI.day) { askEmptyPages(); UI.pg = 0; } if (grids.dn && grids.dn.editing()) grids.dn.commit(); if (grids.up && grids.up.editing()) grids.up.commit(); if (grids.car && grids.car.editing()) grids.car.commit(); UI.day = d; saveUI(); showDayBtn(); refreshSheet(); if (!$("pSum").hidden) renderSum(); }
+function setDay(d) { if (d !== UI.day) { askEmptyPages(); UI.pg = 0; } if (grids.dn && grids.dn.editing()) grids.dn.commit(); if (grids.up && grids.up.editing()) grids.up.commit(); if (grids.gai && grids.gai.editing()) grids.gai.commit(); if (grids.car && grids.car.editing()) grids.car.commit(); UI.day = d; saveUI(); showDayBtn(); refreshSheet(); if (!$("pSum").hidden) renderSum(); }
 function moveDay(n) { setDay(addD(UI.day, n)); }
 
 /* ---------- 右クリックのメニュー ---------- */
@@ -995,7 +1053,7 @@ function findIn(s, words, col) {
     const hits = [];   // [欄, 値]
     const look = (f, v) => { v = String(v ?? "").trim(); if (v && (!col || col === f)) hits.push([f, v]); };
     d.上.forEach(r => { if (r) { look("作業", r[1]); look("備考", r[4]); } });   // 工種は下の作業員の工種だけ（作業内容から工種を数えない）
-    d.下.forEach(r => {
+    rowsOf(d).forEach(r => {
       if (!r) return;
       look("名前", r[0]); look("会社", r[12] || (r[0] ? companyOf(r[0], s) : "")); look("工種", r[3]);
       look("機材", [r[5], r[6]].filter(Boolean).join(" ")); look("所有者", r[13]); look("品名", r[9]);
@@ -1006,7 +1064,7 @@ function findIn(s, words, col) {
     if (!words.every(w => all.includes(w))) continue;
     const got = new Map();
     hits.forEach(([f, v]) => { if (words.some(w => loose(v).includes(w))) { const k = f + "\t" + v; got.set(k, (got.get(k) || 0) + 1); } });
-    out.push({ s, x, d, got: [...got.entries()].map(([k, n]) => { const [f, v] = k.split("\t"); return { f, v, n }; }), 人: d.下.filter(r => r && r[0]).length });
+    out.push({ s, x, d, got: [...got.entries()].map(([k, n]) => { const [f, v] = k.split("\t"); return { f, v, n }; }), 人: rowsOf(d).filter(r => r && r[0]).length });
   }
   return out;
 }
@@ -1047,7 +1105,7 @@ $("bCopyPrev").onclick = () => {
 function copyPreview(x) {
   const s = site(), p = s.日[x], cur = day(), T = (t, rows) => rows.length ? `<h4 class="mh">${t}</h4><table class="sm cpv">${rows.join("")}</table>` : "";
   const work = (p.上 || []).filter(r => r && r[1]).map(r => `<tr><td>${esc(r[1])}</td></tr>`);
-  const ppl = (p.下 || []).filter(r => r && r[0]).map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[12] || "")}</td><td class="c">${esc(r[3] || "")}</td><td class="c">${esc(r[14] || "")}</td><td class="c">${esc(r[1] || "")}〜${esc(r[2] || "")}</td><td class="r">${esc(r[4] || "")}</td></tr>`);
+  const ppl = rowsOf(p).filter(r => r && r[0]).map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[12] || "")}</td><td class="c">${esc(r[3] || "")}</td><td class="c">${esc(r[14] || "")}</td><td class="c">${esc(r[1] || "")}〜${esc(r[2] || "")}</td><td class="r">${esc(r[4] || "")}</td></tr>`);
   const kiz = (p.下 || []).filter(r => r && r[5]).map(r => `<tr><td>${esc(r[5])}</td><td>${esc(r[6] || "")}</td><td>${esc(r[13] || "")}</td><td class="r">${esc(r[7] || "")}</td></tr>`);
   const hin = (p.下 || []).filter(r => r && r[9]).map(r => `<tr><td>${esc(r[9])}</td><td class="r">${esc(r[10] || "")}</td><td class="r">${esc(r[15] || "")}</td></tr>`);
   $("eTtl").textContent = `${jpDate(x)}（${WD[wd(x)]}）の内容をコピーしますか？`;
@@ -1067,6 +1125,7 @@ function copyPreview(x) {
     const n = ensureDay();
     n.上 = JSON.parse(JSON.stringify(p.上 || [])).map(r => { if (r) { while (r.length < 5) r.push(""); r[4] = ""; } return r; });
     n.下 = JSON.parse(JSON.stringify(p.下 || []));
+    n.外注 = JSON.parse(JSON.stringify(p.外注 || []));
     n.頁 = pageCount(p); n.人員手 = p.人員手; n.更新 = now(); tidy(n);
     UI.pg = 0; save(); refreshSheet(); toast(`${jpDate(x)} の内容をコピーしました`);
   };
@@ -1118,7 +1177,7 @@ function bestOf(list, sc) { const m = Math.max(0, ...list.map(sc)); return m ? l
 function fromHaichi(D, 版) {
   const s = site(), d = day() || { 上: [], 下: [] };
   const rows = bestOf((D.現場 || []).filter(r => r && r.現場名), r => siteScore(s, r.現場名, r.現場コード));
-  const hasW = new Set(d.上.filter(r => r && r[1]).map(r => String(r[1]).trim())), hasP = new Set(d.下.filter(r => r && r[0]).map(r => nk(r[0])));
+  const hasW = new Set(d.上.filter(r => r && r[1]).map(r => String(r[1]).trim())), hasP = new Set(rowsOf(d).filter(r => r && r[0]).map(r => nk(r[0])));
   const work = [], ppl = [], seen = new Set();
   rows.forEach(r => {
     const sh = /夜/.test(r.区分 || "") ? "夜" : /昼/.test(r.区分 || "") ? "昼" : "";
@@ -1192,15 +1251,15 @@ function renderImport() {
   const H = IMP.hai, K = IMP.kuro, ck = (g, i, it) => `<input type="checkbox" data-g="${g}" data-i="${i}"${it.on ? " checked" : ""}>`;
   const had = it => it.had ? `<span class="imhad">もう入っています</span>` : "";
   const h = [];
-  h.push(`<h4 class="mh">配置表 → 作業予定・作業員</h4>`);
+  h.push(`<h4 class="mh">${H && H.src ? esc(H.src) : "配置表"} → 作業予定・作業員</h4>`);
   if (IMP.haiMsg) h.push(`<p class="note">${esc(IMP.haiMsg)}</p>`);
   if (H) {
     if (!H.names.length) h.push(`<p class="note ng">配置表（${H.版}）に、この現場の行が見つかりませんでした。</p>`);
     else {
-      h.push(`<p class="note">配置表（${H.版}）の「${esc(H.names.join("」「"))}」から。</p>`);
+      h.push(`<p class="note">${H.src ? esc(H.src) : `配置表（${H.版}）`}の「${esc(H.names.join("」「"))}」から。</p>`);
       h.push(H.work.length ? `<table class="sm cpv imt"><tr><th>取込</th><th>作業予定（直せます）</th></tr>${H.work.map((w, i) => `<tr><td class="c">${ck("w", i, w)}</td><td><input class="imv" data-g="w" data-i="${i}" value="${esc(w.v)}">${had(w)}</td></tr>`).join("")}</table>` : `<p class="note">作業内容は書いてありません。</p>`);
       h.push(H.ppl.length ? `<table class="sm cpv imt"><tr><th>取込</th><th>作業員名</th><th>会社</th><th>昼夜</th></tr>${H.ppl.map((p, i) => `<tr><td class="c">${ck("p", i, p)}</td><td>${esc(p.v)}${had(p)}</td><td>${esc(p.comp || "")}</td><td class="c">${esc(p.sh || "")}</td></tr>`).join("")}</table>` : `<p class="note">作業員は書いてありません。</p>`);
-      if (H.gai.length) h.push(`<p class="note">外注（配置表は員数だけで名前が無いので取り込みません）：${esc(H.gai.join("、"))}</p>`);
+      if (H.gai.length) h.push(`<p class="note">外注（人数だけで名前が無いので取り込みません）：${esc(H.gai.join("、"))}</p>`);
     }
   }
   if (!H) h.push(`<div class="btns"><button type="button" class="sub small" id="imHaiFile">配置表のファイル（.json）を選ぶ</button></div>`);
@@ -1215,7 +1274,7 @@ function renderImport() {
   }
   h.push(`<div class="btns"><button type="button" class="sub small" id="imKuro">${K ? "別の CSV を選ぶ" : "CSV を選ぶ"}</button></div>`);
   const n = imPicked().n;
-  $("eTtl").textContent = `${jpDate(IMP.x)}（${WD[wd(IMP.x)]}）に配置表・クロジカから取り込む`;
+  $("eTtl").textContent = `${jpDate(IMP.x)}（${WD[wd(IMP.x)]}）に${H && H.src ? H.src : "配置表"}・クロジカから取り込む`;
   $("eBody").innerHTML = `<div class="cpbox imbox">${h.join("")}</div>
     <p class="note">作業予定・完了報告は空いている行に、作業員は下の空いている行に足します（書いてあるものは消しません）。取り込んだあと「↶ 元に戻す」で戻せます。</p>
     <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="eOk"${n ? "" : " disabled"}>選んだものを取り込む（${n} 件）</button></div>`;
@@ -1499,7 +1558,46 @@ async function startAuth() {
   setInterval(() => loadMasters(true), 30 * 60 * 1000);
   startSync();
 }
-function startSync() { sync(); setInterval(() => syncSoon(0), 60 * 1000); LOCK.site = null; takeLock(false); setInterval(beatLock, 45 * 1000); }
+// 工事日報の請負形態（工程データ\日報\現場設定.json）と同じものにする：まだ決めていない現場は読んで入れ、ここで変えたら書く（読めない・書けないときはこの現場の決まりだけ）
+const FORM_URL = () => `${GRAPH}/drives/${CFG.kotei.driveId}/items/${CFG.kotei.itemId}:/${enc("日報/現場設定.json")}`;
+async function formGet() {
+  const res = await fetch(FORM_URL(), { headers: { Authorization: "Bearer " + await token() } });
+  if (res.status === 404) return { doc: { 形式: "工事日報の現場設定", 版: 1, 現場: {} }, eTag: null };
+  if (!res.ok) throw httpErr(res, "現場設定");
+  const m = await res.json(), b = await fetch(m["@microsoft.graph.downloadUrl"], { cache: "no-store" });
+  return { doc: await b.json(), eTag: m.eTag };
+}
+const formKey = s => s.コード ? "c:" + s.コード : "n:" + nk(s.略称 || s.名前);
+async function formLoad() {
+  if (DEMO || !signedIn()) { FORM_READY = true; askForm(); return; }
+  try { const { doc } = await formGet(); let ch = false; DB.現場.forEach(s => { const x = (doc.現場 || {})[formKey(s)]; if (!s.形態 && x && x.形態) { s.形態 = x.形態; ch = true; } }); if (ch) { save(); renderPickers(); refreshSheet(); } }
+  catch (e) { console.warn("現場設定を読めませんでした", e); }
+  finally { FORM_READY = true; askForm(); }
+}
+// 区分を決めていない現場を開いたら選ばせる（見るだけのとき・完了した現場は聞かない）
+let FORM_READY = false;
+function askForm() {
+  const s = site(), D = $("dForm");
+  if (!s || s.形態 || s.完了 || D.open || !canEdit() || (signedIn() && !FORM_READY)) return;
+  $("fmSite").textContent = siteLabel(s);
+  D.querySelectorAll("[data-form]").forEach(b => b.onclick = () => {
+    const x = site(); closeDlg(D); if (!x) return;
+    x.形態 = b.dataset.form; x.前回形態 = b.dataset.form; x.設定更新 = now(); save(); formShare(x); renderPickers(); refreshSheet();
+    toast(`${siteLabel(x)} を「${b.dataset.form}」にしました。日報の上の「区分」で日ごとに変えられます`, 5000);
+  });
+  openDlg(D);
+}
+async function formShare(s) {
+  if (DEMO || !signedIn()) return;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const { doc, eTag } = await formGet(); (doc.現場 ||= {})[formKey(s)] = { 形態: s.形態, 名前: s.略称 || s.名前, だれ: (ME && ME.名前) || "", 更新: now() };
+      const res = await fetch(FORM_URL() + ":/content", { method: "PUT", headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json", ...(eTag ? { "If-Match": eTag } : {}) }, body: JSON.stringify(doc) });
+      if (res.ok) return; if (res.status !== 412 && res.status !== 409) throw httpErr(res, "現場設定");
+    } catch (e) { console.warn("現場設定を書けませんでした", e); return; }
+  }
+}
+function startSync() { Promise.resolve(sync()).finally(formLoad); setInterval(() => syncSoon(0), 60 * 1000); LOCK.site = null; takeLock(false); setInterval(beatLock, 45 * 1000); }
 $("bSignIn").onclick = () => msalApp && msalApp.loginRedirect({ scopes: SCOPES });
 
 /* ================= 日報の共有（2026-10-31 ユーザー：Excel から取り込んだものがほかの PC で見られない） =================
@@ -1592,7 +1690,7 @@ function mergeSite(a, b) {
 }
 function syncMark(cls, text) { const el = $("sync"); el.className = "sync " + cls; el.textContent = text; }
 function syncSoon(ms = 2500) { if (!signedIn()) return; clearTimeout(SY.timer); SY.timer = setTimeout(sync, ms); }
-const busyEditing = () => (grids.up && grids.up.editing()) || (grids.dn && grids.dn.editing()) || (grids.car && grids.car.editing()) || ["hTan", "hTmp", "hBikou"].includes((document.activeElement || {}).id);
+const busyEditing = () => (grids.up && grids.up.editing()) || (grids.dn && grids.dn.editing()) || (grids.gai && grids.gai.editing()) || (grids.car && grids.car.editing()) || ["hTan", "hTmp", "hBikou"].includes((document.activeElement || {}).id);
 async function sync() {
   if (!signedIn()) return;
   if (SY.busy) { SY.again = true; return; }
@@ -1781,7 +1879,7 @@ async function removeShared(id) { if (signedIn() && SY.files[id]) { try { await 
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncSoon(300); });
 
 /* ================= 上の選ぶ欄（元請 → 現場） ================= */
-const siteLabel = s => s.略称 ? s.略称 + (s.コード ? "（" + s.コード + "）" : "") : s.名前;
+const siteLabel = s => (s.略称 ? s.略称 + (s.コード ? "（" + s.コード + "）" : "") : s.名前) + (s.形態 === "請負" ? "［請負］" : "");
 function renderPickers() {
   // 現場のある元請だけ・名前の順。現場はコードの新しい順（日報のある現場が先）
   const has = new Set(DB.現場.map(s => s.元請id));
@@ -1794,7 +1892,8 @@ function renderPickers() {
   $("inSite").innerHTML = ss.length ? ss.map(s => `<option value="${s.id}"${s.id === UI.site ? " selected" : ""} title="${esc(s.名前)}${s.工期開始 || s.工期終了 ? "　工期 " + esc((s.工期開始 || "") + "〜" + (s.工期終了 || "")) : ""}">${esc(siteLabel(s))}${s.完了 ? "（完了）" : ""}</option>`).join("") : `<option value="">${signedIn() ? "（現場なし）" : "（サインインすると出ます）"}</option>`;
   saveUI();
 }
-$("inGen").onchange = () => { askEmptyPages(); UI.pg = 0; UI.gen = $("inGen").value; UI.site = null; UNDO = []; REDO = []; renderAll(); };
+$("inGen").onchange = () => { askEmptyPages(); UI.pg = 0; UI.gen = $("inGen").value; UI.site = null; UNDO = []; REDO = []; renderAll(); askForm(); };
+$("dForm").addEventListener("cancel", e => e.preventDefault());   // 区分を選ぶまで Esc で閉じない
 function priceRemind() {
   const s = site(); if (!s || !Object.keys(s.日).length) return;
   UI.pr ||= {}; const k = s.id + ":" + ((s.単価 || []).length ? (s.単価確認 === false ? "未見直し" : "ok") : "なし");
@@ -1802,7 +1901,7 @@ function priceRemind() {
   UI.pr[k] = 1; saveUI();
   toast((s.単価 || []).length ? "この現場の単価はたたき台のまま（見直し前）です。現場・名簿 → 単価マスタで見直してください" : "この現場の単価がまだありません。現場・名簿 → 単価マスタで たたき台 を写して見直してください", 6000);
 }
-$("inSite").onchange = () => { askEmptyPages(); UI.pg = 0; UI.site = $("inSite").value; UNDO = []; REDO = []; renderAll(); priceRemind(); };
+$("inSite").onchange = () => { askEmptyPages(); UI.pg = 0; UI.site = $("inSite").value; UNDO = []; REDO = []; renderAll(); priceRemind(); askForm(); };
 /* ---------- 期間を選ぶ（2026-10-31 ユーザー：始まり・終わりの二つのカレンダー。終わりは始まりより前にできない） ---------- */
 let RG = null;   // { a, b, ya, yb, done }
 const fmtD = d => d ? `${d.slice(0, 4)}/${+d.slice(5, 7)}/${+d.slice(8)}（${WD[wd(d)]}）` : "";
@@ -1870,7 +1969,7 @@ function renderCal() {
   for (let d = 1; d <= n; d++) {
     const k = `${y}-${pad(m)}-${pad(d)}`, w = wd(k), dd = s && s.日[k], has = hasData(dd);
     if (has) cnt++;
-    const ppl = has ? dd.下.filter(r => r && r[0]).length : 0;
+    const ppl = has ? rowsOf(dd).filter(r => r && r[0]).length : 0;
     h.push(`<button type="button" data-d="${k}" class="${w === 0 ? "sun " : w === 6 ? "sat " : ""}${has ? "has " : ""}${k === UI.day ? "on " : ""}${k === today ? "today " : ""}${k >= pa && k <= pb ? "inper" : ""}" title="${jpDate(k)}${has ? "　記入済み" + (ppl ? " " + ppl + "名" : "") + (dd.サイン ? "・サインあり" : "") : ""}">` +
       `<span class="dn">${d}</span>${has ? `<span class="mk">${dd.サイン ? "✍" : "●"}</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : ""}</button>`);
   }
@@ -1923,8 +2022,10 @@ function renderAll() {
 }
 
 /* ================= 集計 ================= */
-function summarize(s, a, b) {
-  const dates = datesIn(a, b).filter(x => hasData(s.日[x]));
+// form：合計（空）／常用／請負（集計の切り替え UI.sumForm）。人数は選んだ分を数える。金額は常用の日だけ（2026-11-03 ユーザー：常用でない仕事は常用の計算に含まない）
+const inForm = (s, x, form) => hasData(s.日[x]) && (!form || formOf(s, x) === form);
+function summarize(s, a, b, form = UI.sumForm) {
+  const dates = datesIn(a, b).filter(x => inForm(s, x, form));
   const shoku = [], workers = new Map(), kizai = new Map(), hin = new Map(), comp = new Map();
   const money = { 労務: new Map(), 残業: new Map(), 機械: new Map(), 材料: new Map(), 通勤費: new Map() };
   const byShoku = new Map();
@@ -1932,8 +2033,8 @@ function summarize(s, a, b) {
   const car = [];   // 高速・燃料の行：{ date, r, A：carAmount, who：[会社, 名前, 車両名, 車番] }
   const otRows = [];   // 残業のあった行：{ date, 名前, 会社, 工種, 昼夜, 始業, 終業, 早出, 残業, 計, 金額 }
   const perDay = dates.map(x => {
-    const d = s.日[x], c = new Map(); let ot = 0, n = 0, nDay = 0, nNight = 0;
-    d.下.forEach(r => {
+    const d = s.日[x], c = new Map(), paid = formOf(s, x) === "常用"; let ot = 0, n = 0, nDay = 0, nNight = 0;
+    rowsOf(d).forEach(r => {
       if (!r) return;
       if (r[0]) {
         const sh = shiftOf(r, s), base = r[3] || "（工種なし）", k = base + (s.勤務 !== "昼" && sh === "夜" ? "（夜）" : ""); c.set(k, (c.get(k) || 0) + 1); n++;
@@ -1951,11 +2052,14 @@ function summarize(s, a, b) {
         const cp = compOfRow(r, s); w.会社.set(cp, (w.会社.get(cp) || 0) + 1);
         const C = comp.get(cp) || { 日: {}, 計: 0, 残業: 0, 金額: 0 }; C.日[x] = (C.日[x] || 0) + 1; C.計++; C.残業 += o; comp.set(cp, C);
         // 金額（労務・残業）
-        const pl = laborPrice(s, base === "（工種なし）" ? "" : base, sh, x, "日"), L = money.労務.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
-        L.数量++; if (pl) { L.金額 += +pl.単価; L.単価.add(+pl.単価); C.金額 += +pl.単価; w.金額 += +pl.単価; SK.金額 += +pl.単価; } else L.なし++; money.労務.set(k, L);
+        if (paid) {
+          const pl = laborPrice(s, base === "（工種なし）" ? "" : base, sh, x, "日"), L = money.労務.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
+          L.数量++; if (pl) { L.金額 += +pl.単価; L.単価.add(+pl.単価); C.金額 += +pl.単価; w.金額 += +pl.単価; SK.金額 += +pl.単価; } else L.なし++; money.労務.set(k, L);
+        }
         if (o) {
-          const po = laborPrice(s, base, sh, x, "残業"), O = money.残業.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
-          O.数量 += o; if (po) { O.金額 += o * po.単価; O.単価.add(+po.単価); C.金額 += o * po.単価; w.金額 += o * po.単価; SK.金額 += o * po.単価; } else O.なし++; money.残業.set(k, O);
+          const po = paid ? laborPrice(s, base, sh, x, "残業") : null;
+          if (paid) { const O = money.残業.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0 };
+            O.数量 += o; if (po) { O.金額 += o * po.単価; O.単価.add(+po.単価); C.金額 += o * po.単価; w.金額 += o * po.単価; SK.金額 += o * po.単価; } else O.なし++; money.残業.set(k, O); }
           // 残業の内訳（早出・残業）。時刻から出せないとき（手で入れた残業だけ）は全部を残業に
           const pt = otParts(r[1], r[2], s, sh), eh = pt ? Math.min(o, pt.早出 / 60) : 0;
           otRows.push({ date: x, 名前: masterName(r[0]), key: nk(r[0]), 会社: cp, 工種: base, 昼夜: sh, 始業: r[1], 終業: r[2], 早出: eh, 残業: o - eh, 計: o, 金額: po ? o * po.単価 : null });
@@ -1963,12 +2067,15 @@ function summarize(s, a, b) {
       }
       if (r[5]) {
         const sp = splitOwner(r[5]), own = r[13] || sp.所有者 || ownerOf(sp.名前, r[6], s) || "（所有者未定）"; const k = sp.名前 + (r[6] ? "（" + r[6] + "）" : "") + "\t" + own; const m = kizai.get(k) || { 日: {}, 計: 0 }; const q = Number(r[7]) || 0; m.日[x] = (m.日[x] || 0) + q; m.計 += q; kizai.set(k, m);
+        if (paid) {
         const qq = q || 1, pm = itemPrice(s, ["機械", "通勤費"], sp.名前, r[6] || "", own === "（所有者未定）" ? "" : own, x);
         const MM = pm && pm.区分 === "通勤費" ? money.通勤費 : money.機械, M = MM.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: pm ? pm.分類 : (guessMach(sp.名前) === "通勤車" ? "通勤車" : "（単価なし）") };
         M.数量 += qq; if (pm) { M.金額 += qq * pm.単価; M.単価.add(+pm.単価); M.分類 = pm.分類; } else M.なし++; MM.set(k, M);
+        }
       }
       if (r[9]) {
         const m = hin.get(r[9]) || { 日: {}, 計: 0 }; const q = Number(r[10]) || 0; m.日[x] = (m.日[x] || 0) + q; m.計 += q; hin.set(r[9], m);
+        if (paid) {
         const pz = itemPrice(s, ["材料", "通勤費"], r[9], "", "", x);
         const ZZ = pz && pz.区分 === "通勤費" ? money.通勤費 : money.材料, Z = ZZ.get(r[9]) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: pz ? pz.分類 : (/高速/.test(r[9]) ? "高速代" : "（単価なし）") };
         // 実費の欄に金額があれば、それを使う（高速代のルート違い・領収書の金額）。
@@ -1979,12 +2086,15 @@ function summarize(s, a, b) {
         else if (pz && pz.精算) { Z.数量 += 1; Z.金額 += q; Z.精算 = true; }
         else { Z.数量 += q; if (pz) { Z.金額 += q * pz.単価; Z.単価.add(+pz.単価); } else Z.なし++; }
         ZZ.set(r[9], Z);
+        }
       }
     });
     (d.車 || []).forEach(r => {
       if (!r || !r[0]) return;
       const A = carAmount(s, r, x);
+      if (!paid) A.金額 = 0;
       car.push({ date: x, r, A, who: [r[5] || "", r[6] || "", r[7] || "", r[8] || ""] });
+      if (!paid) return;
       // 金額：高速 → 通勤費（高速代・区間ごと）、燃料 → 材料（軽油・ガソリン）
       const MM = A.種 === "高速" ? money.通勤費 : money.材料, k = A.種 === "高速" ? "高速代（" + (r[2] || "区間なし") + "）" : r[0];
       const Z = MM.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: A.種 === "高速" ? "高速代" : "固定単価" };
@@ -1992,7 +2102,7 @@ function summarize(s, a, b) {
       if (A.実費) Z.実費 = (Z.実費 || 0) + 1; else if (A.単価 != null) Z.単価.add(A.単価); else Z.なし++;
       MM.set(k, Z);
     });
-    return { date: x, 天気: d.天気, 気温: d.気温, c, n, ot, 作業: workSummary(d), 昼: nDay, 夜: nNight };
+    return { date: x, 形態: formOf(s, x) || "未定", 天気: d.天気, 気温: d.気温, c, n, ot, 作業: workSummary(d), 昼: nDay, 夜: nNight };
   });
   shoku.sort((p, q) => order(p) - order(q));
   // 会社の順：自社 → 人工の多い順 → 会社未定
@@ -2018,7 +2128,7 @@ function renderSum(all) {
   const a = $("sumFrom").value, b = $("sumTo").value;
   showSumRange(); renderSumShow();
   if (!a || !b || a > b) return;
-  const S = summarize(s, a, b), SM = !UI.hideMoney;   // SM＝金額を出す（2026-10-31 ユーザー：集計表の金額を隠せる）
+  const S = summarize(s, a, b), SM = !UI.hideMoney && UI.sumForm !== "請負";   // 請負だけを見るときは金額を出さない（常用の計算に入らない）   // SM＝金額を出す（2026-10-31 ユーザー：集計表の金額を隠せる）
   if (!S.dates.length) { $("sumBody").innerHTML = `<p class="note">${jpDate(a)}〜${jpDate(b)} に書いた日報がありません</p>`; return; }
   const dl = x => `${+x.slice(5, 7)}/${+x.slice(8)}`;
   const wcls = x => { const w = wd(x); return w === 0 ? "sun" : w === 6 ? "sat" : ""; };
@@ -2026,15 +2136,15 @@ function renderSum(all) {
   // 出す表を選べる（2026-10-31 ユーザー：職種別も出せるように・残業の集計の欄は不要）。区切りの位置を覚えて、最後に選んだ表だけ出す
   const SECT = [], mark = n => SECT.push([n, h.length]);
   mark("日別");
-  h.push(`<h3 class="sh">日別（${esc(s.名前)}　${jpDate(a)}〜${jpDate(b)}）</h3>`);
+  h.push(`<h3 class="sh">日別（${esc(s.名前)}　${jpDate(a)}〜${jpDate(b)}${UI.sumForm ? "　" + esc(UI.sumForm) + "だけ" : "　常用＋請負"}）</h3>`);
   const NT = S.hasNight || s.勤務 !== "昼";
-  h.push(`<table class="sm"><thead><tr><th>日付</th><th>曜</th><th>天気</th><th>気温</th>${S.shoku.map(k => `<th>${esc(k)}</th>`).join("")}${NT ? "<th>昼</th><th>夜</th>" : ""}<th>人員計</th><th>残業計(h)</th><th>作業（作業予定の要約）</th></tr></thead><tbody>`);
+  h.push(`<table class="sm"><thead><tr><th>日付</th><th>曜</th><th>区分</th><th>天気</th><th>気温</th>${S.shoku.map(k => `<th>${esc(k)}</th>`).join("")}${NT ? "<th>昼</th><th>夜</th>" : ""}<th>人員計</th><th>残業計(h)</th><th>作業（作業予定の要約）</th></tr></thead><tbody>`);
   const tot = new Map(); let tn = 0, tot_ot = 0;
   for (const p of S.perDay) {
-    h.push(`<tr class="${wcls(p.date)}"><td><a data-go="${p.date}">${dl(p.date)}</a></td><td class="c">${WD[wd(p.date)]}</td><td class="c">${esc(p.天気)}</td><td class="r">${esc(p.気温)}</td>${S.shoku.map(k => `<td class="r">${p.c.get(k) || ""}</td>`).join("")}${NT ? `<td class="r">${p.昼 || ""}</td><td class="r night">${p.夜 || ""}</td>` : ""}<td class="r"><b>${p.n}</b></td><td class="r">${p.ot ? r2(p.ot) : ""}</td><td class="wsum" title="${esc(p.作業)}">${esc(p.作業)}</td></tr>`);
+    h.push(`<tr class="${wcls(p.date)}"><td><a data-go="${p.date}">${dl(p.date)}</a></td><td class="c">${WD[wd(p.date)]}</td><td class="c${p.形態 === "請負" ? " uke" : ""}">${esc(p.形態)}</td><td class="c">${esc(p.天気)}</td><td class="r">${esc(p.気温)}</td>${S.shoku.map(k => `<td class="r">${p.c.get(k) || ""}</td>`).join("")}${NT ? `<td class="r">${p.昼 || ""}</td><td class="r night">${p.夜 || ""}</td>` : ""}<td class="r"><b>${p.n}</b></td><td class="r">${p.ot ? r2(p.ot) : ""}</td><td class="wsum" title="${esc(p.作業)}">${esc(p.作業)}</td></tr>`);
     S.shoku.forEach(k => tot.set(k, (tot.get(k) || 0) + (p.c.get(k) || 0))); tn += p.n; tot_ot += p.ot;
   }
-  h.push(`</tbody><tfoot><tr><td colspan="4">計（${S.dates.length}日）</td>${S.shoku.map(k => `<td class="r">${tot.get(k)}</td>`).join("")}${NT ? `<td class="r">${S.perDay.reduce((a2, p) => a2 + p.昼, 0)}</td><td class="r">${S.perDay.reduce((a2, p) => a2 + p.夜, 0)}</td>` : ""}<td class="r">${tn}</td><td class="r">${r2(tot_ot)}</td><td></td></tr></tfoot></table>`);
+  h.push(`</tbody><tfoot><tr><td colspan="5">計（${S.dates.length}日）</td>${S.shoku.map(k => `<td class="r">${tot.get(k)}</td>`).join("")}${NT ? `<td class="r">${S.perDay.reduce((a2, p) => a2 + p.昼, 0)}</td><td class="r">${S.perDay.reduce((a2, p) => a2 + p.夜, 0)}</td>` : ""}<td class="r">${tn}</td><td class="r">${r2(tot_ot)}</td><td></td></tr></tfoot></table>`);
 
   mark("会社別");
   // 会社ごとの集計（日ごとの人数＝人工）
@@ -2171,11 +2281,12 @@ function dropMoneyCols(html) {
 }
 function renderSumShow() {
   const t = sumTab();
-  $("sumShow").innerHTML = `<span class="stabs">` + SUM_TABLES.filter(n => !(UI.hideMoney && n === "金額")).map(n => `<button class="stab${n === t ? " on" : ""}" data-st="${n}">${n === "職種別" ? "職種別（工種）" : n === "作業員名別" ? "作業員別" : n}</button>`).join("") + `</span>` +
+  $("sumShow").innerHTML = `<span class="stabs" title="人数などを、常用＋請負の合計・常用だけ・請負だけで切り替える（金額はいつも常用の日だけ）">` + [["", "合計"], ["常用", "常用"], ["請負", "請負"]].map(([v, n]) => `<button class="stab${(UI.sumForm || "") === v ? " on" : ""}" data-sform="${v}">${n}</button>`).join("") + `</span><span class="rsep"></span><span class="stabs">` + SUM_TABLES.filter(n => !(UI.hideMoney && n === "金額")).map(n => `<button class="stab${n === t ? " on" : ""}" data-st="${n}">${n === "職種別" ? "職種別（工種）" : n === "作業員名別" ? "作業員別" : n}</button>`).join("") + `</span>` +
     `<span class="rsep"></span><button class="sub small tg hm${UI.hideMoney ? " on" : ""}" id="sumHM" title="集計表の金額を全部隠す／表示する（画面・印刷（PDF）・Excel に反映）">${UI.hideMoney ? "金額を表示" : "金額を隠す"}</button>`;
 }
 $("sumShow").addEventListener("click", e => {
   if (e.target.closest("#sumHM")) { UI.hideMoney = !UI.hideMoney; saveUI(); renderSumShow(); renderSum(); return; }
+  const fb = e.target.closest("[data-sform]"); if (fb) { UI.sumForm = fb.dataset.sform; saveUI(); renderSumShow(); renderSum(); return; }
   const b = e.target.closest("[data-st]"); if (!b) return;
   UI.sumTab = b.dataset.st; saveUI(); renderSumShow(); renderSum(); $("sumBody").scrollTop = 0;
 });
@@ -2183,7 +2294,7 @@ $("sumBody").addEventListener("click", e => { const a = e.target.closest("[data-
 ["sumFrom", "sumTo"].forEach(id => $(id).addEventListener("change", renderSum));
 $("sumPrev").onclick = () => { const [a, b] = period(addD($("sumFrom").value, -1)); $("sumFrom").value = a; $("sumTo").value = b; renderSum(); };
 $("sumNext").onclick = () => { const [a, b] = period(addD($("sumTo").value, 1)); $("sumFrom").value = a; $("sumTo").value = b; renderSum(); };
-$("bSumXls").onclick = () => { const s = site(); if (!s) return; const a = $("sumFrom").value, b = $("sumTo").value; exportXlsx(datesIn(a, b).filter(x => hasData(s.日[x])), true, [a, b]); };
+$("bSumXls").onclick = () => { const s = site(); if (!s) return; const a = $("sumFrom").value, b = $("sumTo").value; exportXlsx(datesIn(a, b).filter(x => inForm(s, x, UI.sumForm)), true, [a, b]); };
 $("bSumPdf").onclick = () => { if (!site()) return; printDays([], [$("sumFrom").value, $("sumTo").value]); };
 
 /* ================= 現場・名簿 ================= */
@@ -2200,8 +2311,9 @@ function renderMaster() {
   h.push(`</table><div class="btns"><button id="mAddGen">＋ 元請業者を追加</button></div></div></div>`);
   if (g) {
     // 2026-10-31 ユーザー：現場の工期を決める・完了したらチェック。正式名称は日報・Excel に出る名前、社内名称は選ぶときの名前
-    h.push(`<h3 class="sh">${esc(g.名前)} の現場</h3><div class="mrow"><div class="mbox"><table class="ed sites"><tr><th>現場コード</th><th>現場名称（社内）</th><th>現場名称（正式・日報に出る名前）</th><th>工期 始まり</th><th>工期 終わり</th><th>担当者</th><th>完了</th><th>日報の日数</th><th></th></tr>`);
+    h.push(`<h3 class="sh">${esc(g.名前)} の現場</h3><div class="mrow"><div class="mbox"><table class="ed sites"><tr><th>現場コード</th><th>現場名称（社内）</th><th>現場名称（正式・日報に出る名前）</th><th title="常用＝請負とは別に使ったものを請求する／請負＝請負の範囲（常用の計算に入れない）。日報の上で日ごとに変えられます。ここで変えると、区分を決めていない日がこの区分になります">区分</th><th>工期 始まり</th><th>工期 終わり</th><th>担当者</th><th>完了</th><th>日報の日数</th><th></th></tr>`);
     for (const x of DB.現場.filter(y => y.元請id === g.id).sort((a, b) => (!!a.完了 - !!b.完了) || String(b.コード || "").localeCompare(String(a.コード || "")))) h.push(`<tr class="${x.id === UI.site ? "on" : ""}${x.完了 ? " done" : ""}"><td><input data-sid="${x.id}" data-sx="コード" value="${esc(x.コード || "")}" style="width:70px"></td><td><input data-sid="${x.id}" data-sx="略称" value="${esc(x.略称 || "")}" style="width:120px"></td><td><input data-site="${x.id}" value="${esc(x.名前)}" style="width:300px" title="印刷・Excel に出る現場名"></td>` +
+      `<td><select data-sid="${x.id}" data-sx="形態">${x.形態 ? "" : `<option value="" selected>選んでください</option>`}${["常用", "請負"].map(k => `<option${x.形態 === k ? " selected" : ""}>${k}</option>`).join("")}</select></td>` +
       `<td><input type="date" data-sid="${x.id}" data-sx="工期開始" value="${esc(x.工期開始 || "")}"></td><td><input type="date" data-sid="${x.id}" data-sx="工期終了" value="${esc(x.工期終了 || "")}"></td><td><input data-sid="${x.id}" data-sx="現場担当者" value="${esc(x.現場担当者 || "")}" style="width:100px"></td>` +
       `<td class="c"><input type="checkbox" data-sid="${x.id}" data-sx="完了"${x.完了 ? " checked" : ""} title="工事が終わったらチェック（現場を選ぶ一覧の後ろに回します）"></td><td class="r">${Object.keys(x.日).length}</td><td class="btn"><button class="sub small" data-picksite="${x.id}">選ぶ</button> <button class="sub small danger" data-delsite="${x.id}">消す</button></td></tr>`);
     h.push(`</table><div class="btns"><button id="mAddSite">＋ 現場を追加</button></div></div></div>`);
@@ -2253,6 +2365,7 @@ $("masterBody").addEventListener("change", e => {
     const f = dsx.sx === "工期開始" ? v : x.工期開始, to = dsx.sx === "工期終了" ? v : x.工期終了;
     if (f && to && to < f) { toast("工期の終わりが始まりより前です"); renderMaster(); return; }
     x[dsx.sx] = v; x.設定更新 = now(); save(); renderPickers(); renderMaster();
+    if (dsx.sx === "形態") { x.前回形態 = v; formShare(x); refreshSheet(); }
     if (dsx.sx === "完了") toast(v ? `${siteLabel(x)} を完了にしました（現場を選ぶ一覧の後ろに出ます）` : `${siteLabel(x)} の完了を外しました`);
     return;
   }
@@ -2283,11 +2396,11 @@ $("masterBody").addEventListener("change", e => {
     const i = +dsx.kn, old = DB.職種[i], v = t.value.trim();
     if (!v || v === old) { if (!v) toast("工種の名前を入れてください"); renderMaster(); return; }
     // 日報の中の古い名前の数
-    let n = 0; DB.現場.forEach(x => Object.values(x.日).forEach(d => { d.下.forEach(r => { if (r && r[3] === old) n++; }); d.上.forEach(r => { if (r && r[0] === old) n++; }); }));
+    let n = 0; DB.現場.forEach(x => Object.values(x.日).forEach(d => { rowsOf(d).forEach(r => { if (r && r[3] === old) n++; }); d.上.forEach(r => { if (r && r[0] === old) n++; }); }));
     const merge = DB.職種.includes(v);
     if (!confirm(`工種「${old}」を「${v}」${merge ? "にまとめます（「" + v + "」はもう一覧にあります）" : "に名前を変えます"}。\n全部の現場の日報の「${old}」${n} か所も「${v}」に置き換えます。\nこれから「${old}」と打ったり Excel から読んだりしても「${v}」になります。よいですか？`)) { renderMaster(); return; }
     if (!canEdit()) { renderMaster(); return; }
-    DB.現場.forEach(x => { let ch = false; Object.values(x.日).forEach(d => { let c2 = false; d.下.forEach(r => { if (r && r[3] === old) { r[3] = v; c2 = true; } }); d.上.forEach(r => { if (r && r[0] === old) { r[0] = v; c2 = true; } }); if (c2) { d.更新 = now(); ch = true; } });
+    DB.現場.forEach(x => { let ch = false; Object.values(x.日).forEach(d => { let c2 = false; rowsOf(d).forEach(r => { if (r && r[3] === old) { r[3] = v; c2 = true; } }); d.上.forEach(r => { if (r && r[0] === old) { r[0] = v; c2 = true; } }); if (c2) { d.更新 = now(); ch = true; } });
       x.作業員.forEach(w => { if (w.職種 === old) { w.職種 = v; ch = true; } }); (x.単価 || []).forEach(p => { if (p.区分 !== "機械" && p.区分 !== "材料" && p.名前 === old) { p.名前 = v; ch = true; } }); if (ch) x.設定更新 = now(); });
     if (merge) { DB.職種.splice(i, 1); if (!DB.職種単価[v] && DB.職種単価[old]) DB.職種単価[v] = DB.職種単価[old]; delete DB.職種単価[old]; }
     else { DB.職種[i] = v; if (DB.職種単価[old]) { DB.職種単価[v] = DB.職種単価[old]; delete DB.職種単価[old]; } }
@@ -2346,7 +2459,7 @@ $("masterBody").addEventListener("click", e => {
   if (s0 && t0 && (t0.id === "mSkAdd" || t0.id === "mSkInit" || t0.id === "mSkAll" || t0.dataset.skdel != null || t0.dataset.skadd != null)) {
     if (!canEdit()) return;
     const s = s0, used = [];
-    Object.values(s.日).forEach(d => d.下.forEach(r => { if (r && r[0] && r[3] && !used.includes(r[3])) used.push(r[3]); }));
+    Object.values(s.日).forEach(d => rowsOf(d).forEach(r => { if (r && r[0] && r[3] && !used.includes(r[3])) used.push(r[3]); }));
     if (t0.id === "mSkInit") { s.職種 = DB.職種.filter(k => used.includes(k)); used.forEach(k => { if (!s.職種.includes(k)) s.職種.push(k); }); if (!s.職種.length) s.職種 = [...DB.職種]; toast("日報で使っている工種で一覧を作りました。要らない工種は「外す」で外してください", 5000); }
     else if (t0.id === "mSkAll") { if (!confirm("この現場の工種の一覧をやめて、共通の一覧（全部の現場）を出しますか？")) return; s.職種 = []; }
     else if (t0.dataset.skdel != null) { const k = t0.dataset.skdel; if (s.職種.length <= 1) { toast("工種が無くなります。決めるのをやめるときは下のボタンで"); return; } s.職種 = s.職種.filter(x => x !== k); }
@@ -2385,7 +2498,7 @@ $("masterBody").addEventListener("click", e => {
   if (t.id === "mRfClr") { UI.rFilt = null; saveUI(); renderMaster(); return; }
   if ((dsx.delw != null || dsx.delm != null || t.id === "mAddW" || t.id === "mAddM" || dsx.delsite === UI.site) && !canEdit()) return;
   if (dsx.pickgen) { UI.gen = dsx.pickgen; UI.site = null; renderAll(); return; }
-  if (dsx.picksite) { UI.site = dsx.picksite; renderAll(); return; }
+  if (dsx.picksite) { UI.site = dsx.picksite; renderAll(); askForm(); return; }
   if (dsx.delgen) { if (DB.現場.some(x => x.元請id === dsx.delgen)) { toast("現場がある元請業者は消せません（先に現場を消す）"); return; } if (!confirm("この元請業者を消しますか？")) return; DB.元請 = DB.元請.filter(x => x.id !== dsx.delgen); save(); renderAll(); return; }
   if (dsx.delsite) { const x = DB.現場.find(y => y.id === dsx.delsite); if (!confirm(`「${x.名前}」と日報 ${Object.keys(x.日).length} 日分を消しますか？\n共有している日報（OneDrive）も消えます（OneDrive のごみ箱から戻せます）。\n（消す前に「保存」でファイルに出しておくと安心です）`)) return; DB.現場 = DB.現場.filter(y => y.id !== dsx.delsite); removeShared(x.id); save(); renderAll(); return; }
   if (dsx.delw != null) { s.作業員.splice(+dsx.delw, 1); s.設定更新 = now(); save(); renderMaster(); return; }
@@ -2404,7 +2517,7 @@ $("masterBody").addEventListener("click", e => {
     DB.共通更新 = now(); save(); renderMaster(); $("mNewK").focus(); return;
   }
   if (t.id === "mKFromDays") {
-    let n = 0; DB.現場.forEach(x => Object.values(x.日).forEach(d => d.下.forEach(r => { if (r && r[0] && r[3] && !DB.職種.includes(r[3])) { DB.職種.push(r[3]); n++; } })));
+    let n = 0; DB.現場.forEach(x => Object.values(x.日).forEach(d => rowsOf(d).forEach(r => { if (r && r[0] && r[3] && !DB.職種.includes(r[3])) { DB.職種.push(r[3]); n++; } })));
     if (n) DB.共通更新 = now(); save(); renderMaster(); toast(n ? `${n} 件の工種を足しました` : "足りない工種はありません"); return;
   }
   if (["mCompHint", "mCompApply", "mCompCsvIn", "mKzFix", "mKzApply"].includes(t.id) && !canEdit()) return;
@@ -2434,14 +2547,14 @@ $("masterBody").addEventListener("click", e => {
   if (t.id === "mKzFix") {
     if (!confirm("使用機材名の頭の（ハ）（真）などを外して、所有者の欄に移します（この現場の日報すべてと機材の一覧）。よいですか？")) return;
     let n = 0;
-    for (const d of Object.values(s.日)) { let ch = false; d.下.forEach(r => { if (r && r[5] && splitOwner(r[5]).所有者 && fixKizaiRow(r, s)) { n++; ch = true; } }); if (ch) d.更新 = now(); }
+    for (const d of Object.values(s.日)) { let ch = false; rowsOf(d).forEach(r => { if (r && r[5] && splitOwner(r[5]).所有者 && fixKizaiRow(r, s)) { n++; ch = true; } }); if (ch) d.更新 = now(); }
     const old = s.機材; s.機材 = [];
     old.forEach(m => { const sp = splitOwner(m.名前); const x = { 名前: sp.名前, 規格: m.規格 || "", 所有者: m.所有者 || sp.所有者 }; if (!s.機材.some(y => y.名前 === x.名前 && y.規格 === x.規格 && y.所有者 === x.所有者)) s.機材.push(x); });
     s.設定更新 = now(); UNDO = []; REDO = []; save(); refreshSheet(); renderMaster(); toast(`日報の ${n} か所を直しました`); return;
   }
   if (t.id === "mKzApply") {
     let n = 0;
-    for (const d of Object.values(s.日)) { let ch = false; d.下.forEach(r => { if (r && r[5] && !r[13]) { const o = ownerOf(r[5], r[6], s); if (o) { while (r.length < 14) r.push(""); r[13] = o; n++; ch = true; } } }); if (ch) d.更新 = now(); }
+    for (const d of Object.values(s.日)) { let ch = false; rowsOf(d).forEach(r => { if (r && r[5] && !r[13]) { const o = ownerOf(r[5], r[6], s); if (o) { while (r.length < 14) r.push(""); r[13] = o; n++; ch = true; } } }); if (ch) d.更新 = now(); }
     save(); refreshSheet(); renderMaster(); toast(n ? `日報の ${n} か所に所有者を入れました（空いている所だけ）` : "入れる所はありませんでした"); return;
   }
   if (t.id === "mCompHint") {
@@ -2449,7 +2562,7 @@ $("masterBody").addEventListener("click", e => {
     if (n) s.設定更新 = now(); save(); renderMaster(); toast(n ? `${n}名に名簿（配置表）の会社を入れました` : "名簿で決まる人はいませんでした"); return;
   }
   if (t.id === "mCompApply") {
-    const nAll = (() => { let k = 0; Object.values(s.日).forEach(d => d.下.forEach(r => { const w = r && r[0] && s.作業員.find(x => nk(x.名前) === nk(r[0])); if (w && w.会社 && r[12] !== w.会社) k++; })); return k; })();
+    const nAll = (() => { let k = 0; Object.values(s.日).forEach(d => rowsOf(d).forEach(r => { const w = r && r[0] && s.作業員.find(x => nk(x.名前) === nk(r[0])); if (w && w.会社 && r[12] !== w.会社) k++; })); return k; })();
     if (!nAll) { toast("日報の会社はもう一覧のとおりです"); return; }
     if (!confirm(`これまでの日報の会社の欄 ${nAll} か所を、この一覧の会社にします。よいですか？`)) return;
     const n = compApplyToDays(s, false); save(); refreshSheet(); renderMaster(); toast(`${n} か所に会社を入れました`); return;
@@ -2520,7 +2633,7 @@ function fixYure() {
 // 名前一覧・会社の振り分け：この現場の名簿＋日報に出てくる名前（日数・最初〜最後）。会社はえらぶ（新しい会社も足せる）
 function rosterStats(s) {
   const st = new Map();
-  for (const [dt, d] of Object.entries(s.日)) d.下.forEach(r => {
+  for (const [dt, d] of Object.entries(s.日)) rowsOf(d).forEach(r => {
     if (!r || !r[0]) return;
     const k = nk(r[0]), x = st.get(k) || { n: 0, a: dt, b: dt, 未: 0 };
     x.n++; if (dt < x.a) x.a = dt; if (dt > x.b) x.b = dt; if (!r[12]) x.未++; st.set(k, x);
@@ -2532,7 +2645,7 @@ function rosterHTML(s) {
   const st = rosterStats(s);
   for (const [k] of st) if (!s.作業員.some(w => nk(w.名前) === k)) {
     const kc = new Map(); let nm = "";
-    Object.values(s.日).forEach(d => d.下.forEach(r => { if (r && nk(r[0]) === k) { nm = nm || r[0]; kc.set(r[3] || "", (kc.get(r[3] || "") || 0) + 1); } }));
+    Object.values(s.日).forEach(d => rowsOf(d).forEach(r => { if (r && nk(r[0]) === k) { nm = nm || r[0]; kc.set(r[3] || "", (kc.get(r[3] || "") || 0) + 1); } }));
     s.作業員.push({ 名前: masterName(nm), 職種: [...kc.entries()].sort((p, q) => q[1] - p[1])[0][0] });
   }
   const cs = companies(s), hint = w => { const c = companyOf(w.名前, { 作業員: [] }); return !w.会社 && c ? c : ""; };
@@ -2636,7 +2749,7 @@ function askItemPrice(s, items) {
 }
 function siteKouHTML(s) {
   const used = new Map();
-  Object.values(s.日).forEach(d => d.下.forEach(r => { if (r && r[0] && r[3]) used.set(r[3], (used.get(r[3]) || 0) + 1); }));
+  Object.values(s.日).forEach(d => rowsOf(d).forEach(r => { if (r && r[0] && r[3]) used.set(r[3], (used.get(r[3]) || 0) + 1); }));
   const set = !!(s.職種 && s.職種.length), list = siteKou(s);
   const pr = k => { const p = laborPrice(s, k, "昼", ymd(new Date()), "日"), o = laborPrice(s, k, "昼", ymd(new Date()), "残業"); return (p ? yen(p.単価) : '<span class="ng">単価なし</span>') + (o ? `<span class="note">　残業 ${yen(o.単価)}/時</span>` : ""); };
   const out = [...used.keys()].filter(k => !list.some(x => loose(x) === loose(k)));
@@ -2675,7 +2788,7 @@ function priceFill(s) {
   let n = 0;
   const hasL = k => P.some(p => p.区分 === "労務" && nk(p.名前) === nk(k));
   const hasI = (K, nm, sp, o) => P.some(p => p.区分 === K && nk(p.名前) === nk(nm) && (nk(p.規格) === nk(sp) || !p.規格) && (nk(p.所有者) === nk(o) || !p.所有者));
-  Object.values(s.日).forEach(d => d.下.forEach(r => {
+  Object.values(s.日).forEach(d => rowsOf(d).forEach(r => {
     if (!r) return;
     if (r[0] && r[3] && !hasL(r[3])) { P.push({ 区分: "労務", 名前: r[3], 昼: "", 夜: "", 残業: "", 開始: "", 終了: "", メモ: "" }); n++; }
     if (r[5]) { const sp = splitOwner(r[5]), g = guessMach(sp.名前), K = g === "通勤車" ? "通勤費" : "機械", o = r[13] || sp.所有者 || ""; if (!hasI(K, sp.名前, r[6] || "", o)) { P.push({ 区分: K, 分類: g, 名前: sp.名前, 規格: r[6] || "", 所有者: o, 単位: "台日", 単価: "", 開始: "", 終了: "", メモ: "" }); n++; } }
@@ -2717,7 +2830,7 @@ function compApplyToDays(s, onlyEmpty) {
   let n = 0;
   for (const d of Object.values(s.日)) {
     let ch = false;
-    d.下.forEach(r => {
+    rowsOf(d).forEach(r => {
       if (!r || !r[0]) return;
       const w = s.作業員.find(x => nk(x.名前) === nk(r[0]));
       if (w && w.会社 && r[12] !== w.会社 && (!onlyEmpty || !r[12])) { while (r.length < 13) r.push(""); r[12] = w.会社; n++; ch = true; }
@@ -2852,7 +2965,7 @@ function renderXlsList(reset) {
   const keep = reset ? null : new Set([...document.querySelectorAll("#xlsList input:checked")].map(i => i.value));
   $("xlsList").innerHTML = `<table class="sm"><thead><tr><th></th><th>日付</th><th>曜</th><th>作業員</th><th>工種・作業内容</th><th>${cur ? "" : "このブラウザ"}</th></tr></thead><tbody>` +
     XLS.map((x, i) => {
-      const n = x.d.下.filter(r => r && r[0]).length, w = wd(x.date);
+      const n = rowsOf(x.d).filter(r => r && r[0]).length, w = wd(x.date);
       const on = keep ? keep.has(String(i)) : (cur ? false : x.date >= a && x.date <= b);
       const has = !cur && s && hasData(s.日[x.date]);
       return `<tr class="${w === 0 ? "sun" : w === 6 ? "sat" : ""}"><td><input type="${cur ? "radio" : "checkbox"}" name="xlsPick" value="${i}"${on ? " checked" : ""}></td><td>${+x.date.slice(5, 7)}/${+x.date.slice(8)}</td><td class="c">${WD[w]}</td><td class="r">${n}名</td>` +
@@ -2883,7 +2996,7 @@ $("xlsOk").onclick = () => {
 // 名簿・工種・機材に足す（名前は名簿の書き方にそろえる）
 function learn(s, d) {
   d.上.forEach(r => { if (r && DB.職種別名[r[0]]) r[0] = DB.職種別名[r[0]]; });
-  d.下.forEach(r => {
+  rowsOf(d).forEach(r => {
     if (r && DB.職種別名[r[3]]) r[3] = DB.職種別名[r[3]];
     if (r[5]) { fixKizaiRow(r, s); rememberKizai(s, r); }
     if (!r[0]) return;
@@ -2933,7 +3046,7 @@ const BORDER = { top: B_THIN, left: B_THIN, bottom: B_THIN, right: B_THIN };
 async function exportXlsx(dates, withSum, range) {
   const s = site(); if (!s) { toast("現場を選んでください"); return; }
   if (typeof ExcelJS === "undefined") { toast("Excel を作る部品が読めていません"); return; }
-  const wb = new ExcelJS.Workbook(); wb.creator = "常用日報";
+  const wb = new ExcelJS.Workbook(); wb.creator = "詳細日報";
   for (const x of [...dates].sort().reverse()) daySheet(wb, s, x, s.日[x] || { 上: [], 下: [] });   // 元の Excel と同じく新しい日が左
   if (withSum && range) sumSheet(wb, s, range[0], range[1]);
   const buf = await wb.xlsx.writeBuffer();
@@ -2943,7 +3056,7 @@ async function exportXlsx(dates, withSum, range) {
   toast("Excel を出しました：" + nm);
 }
 // 1日が何ページでも、ページごとに1シート（工種別の集計はその日の全部）
-function daySheet(wb, s, x, d) { const n = pageCount(d); for (let p = 0; p < n; p++) daySheetPage(wb, s, x, pageOf(d, p), d, p, n); }
+function daySheet(wb, s, x, d) { d = withGai(d); const n = pageCount(d); for (let p = 0; p < n; p++) daySheetPage(wb, s, x, pageOf(d, p), d, p, n); }
 function daySheetPage(wb, s, x, d, full, pi, pn) {
   const dt = pd(x);
   const ws = wb.addWorksheet(`作業日報${dt.getFullYear()}.${dt.getMonth() + 1}.${dt.getDate()}${pn > 1 ? "-" + (pi + 1) : ""}`, {
@@ -3115,7 +3228,7 @@ function sumSheet(wb, s, a, b) {
 }
 
 /* ================= PDF（印刷。A4 横で1日1ページ） ================= */
-function dayHTML(s, x, d) { const n = pageCount(d); return [...Array(n).keys()].map(p => dayPageHTML(s, x, pageOf(d, p), d, p, n)).join(""); }
+function dayHTML(s, x, d) { d = withGai(d); const n = pageCount(d); return [...Array(n).keys()].map(p => dayPageHTML(s, x, pageOf(d, p), d, p, n)).join(""); }
 // 字が枠からはみ出るときは横に縮める（2026-10-31 ユーザー）。幅は列の数から見積もる（1列 17.86mm）
 function fitP(v, cs = 1) {
   v = String(v ?? ""); if (!v) return "";
@@ -3171,6 +3284,31 @@ document.addEventListener("keydown", e => {
   if (e.altKey && (e.key === "PageUp" || e.key === "PageDown") && !$("pSheet").hidden) { e.preventDefault(); moveDay(e.key === "PageDown" ? 1 : -1); }
 });
 
+/* ---------- 工事日報（私の日報）の「詳しく書く」から来たとき（2026-11-01 ユーザー） ----------
+   工事日報 Vr003 が localStorage nippou_to_jouyou に { 日, 行先, コード, 始め, 終わり, 作業:[行], 人:[名前], 外注:[{業者,人数}], 書いた人, いつ } を置き、
+   ?from=nippou で開く（同じ kkodin.github.io なのでブラウザの中で渡せる）。その現場・その日を開き、取り込みの窓（配置表・クロジカと同じ）で選んで入れる。 */
+function fromNippou(retry) {
+  if (!new URLSearchParams(location.search).has("from")) return;
+  let x = null; try { x = JSON.parse(localStorage.getItem("nippou_to_jouyou")); } catch (e) { }
+  if (!x || Date.now() - (x.いつ || 0) > 30 * 60 * 1000) return;
+  const s = DB.現場.find(v => x.コード && v.コード === x.コード) || bestOf(DB.現場, v => siteScore(v, x.行先))[0];
+  if (!s) {
+    if (!retry) { setTimeout(() => fromNippou(true), 4000); return; }   // サインインして現場一覧を読んだあとにもう一度
+    toast(`「${x.行先}」の現場がまだありません。「現場・名簿」で足してから、工事日報でもう一度「詳しく書く」を押してください`, 7000); return;
+  }
+  try { localStorage.removeItem("nippou_to_jouyou"); } catch (e) { }
+  history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
+  UI.gen = s.元請id; UI.site = s.id; UI.day = x.日; UI.pg = 0; saveUI(); showTab("sheet"); renderAll();
+  const d = day() || { 上: [], 下: [] };
+  const hasW = new Set(d.上.filter(r => r && r[1]).map(r => String(r[1]).trim())), hasP = new Set(rowsOf(d).filter(r => r && r[0]).map(r => nk(r[0])));
+  const h = parseInt(String(x.始め || "").split(":")[0], 10), sh = h >= 17 || h < 5 ? "夜" : "";
+  IMP = { x: x.日, kuro: null, kuroMsg: "", haiMsg: "", hai: { src: "工事日報", 版: "工事日報", names: [`${x.行先}（${x.書いた人 || ""}${x.始め ? " " + x.始め + "〜" + (x.終わり || "") : ""}）`],
+    work: (x.作業 || []).map(v => ({ v, on: !hasW.has(v), had: hasW.has(v) })),
+    ppl: (x.人 || []).map(n => { const v = masterName(n), k = nk(v); return { v, sh, comp: companyOf(v, s), on: !hasP.has(k), had: hasP.has(k) }; }),
+    gai: (x.外注 || []).filter(g => g && g.業者).map(g => `${g.業者}${g.人数 ? " " + g.人数 + "名" : ""}`) } };
+  renderImport(); openDlg($("dEdit"));
+}
+
 /* ---------- はじめ ---------- */
 UI.day ||= ymd(new Date());
 if (kouFix()) setTimeout(save, 0);   // 工種の別名・自社名・会社の空欄を日報に当てる（開いたとき）
@@ -3181,4 +3319,5 @@ renderAll();
 showMe(); setRO(null);
 startAuth();
 if (!ME.名前) askName();
+fromNippou();
 if (!DB.現場.length) toast("「サインイン」すると現場一覧・名簿を読みます。元の作業日報の Excel は「取込」で読めます");

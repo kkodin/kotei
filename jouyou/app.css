@@ -48,7 +48,12 @@ main > section { flex: 1; min-height: 0; display: flex; flex-direction: column; 
 
 /* ---------- 日報の紙（元の Excel：A4 横・A〜P 列） ---------- */
 #sheet { width: 1130px; margin: 10px auto 40px; background: #fff; padding: 12px 16px 18px; box-shadow: 0 1px 6px rgba(0,0,0,.2); font-family: var(--font); }
-.ttlRow { text-align: center; font-size: 22px; letter-spacing: 6px; margin: 0 0 8px; font-weight: bold; }
+.ttlRow { position: relative; text-align: center; font-size: 22px; letter-spacing: 6px; margin: 0 0 8px; font-weight: bold; }
+.ttlRow .formSel { position: absolute; right: 0; top: 2px; font-size: 13px; font-weight: normal; letter-spacing: 0; }
+.ttlRow .formSel select { font-size: 13px; }
+.ttlRow .formSel.uke select { background: #fff3dc; }
+.ttlRow .formSel.must select { background: #fde8e6; border-color: #c62828; color: #c62828; font-weight: bold; }
+td.uke { background: #fff3dc; }
 table.hd { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 13px; }
 table.hd td { border: 1px solid #555; height: 30px; padding: 0 4px; text-align: center; }
 table.hd td.l { background: #f4f6f8; color: #333; }
@@ -342,3 +347,6 @@ table.imt textarea.imv { resize: vertical; }
 .imwho { font-size: 11px; color: #666; }
 .imsteps { margin: 4px 0 6px 20px; padding: 0; font-size: 13px; }
 @media (max-width: 700px) { .imbox { min-width: 0; } }
+
+/* 自動入力を出さないための form（noAutofill）。箱を作らない */
+form.nofill { display: contents; }
