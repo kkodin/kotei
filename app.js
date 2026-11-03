@@ -257,7 +257,7 @@ async function pull() {
     showSync();
   } catch (e) {
     console.error(e);
-    if (e.status === 404 || e.status === 403) toast("工程データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください");
+    if (e.status === 404 || e.status === 403) toast("工程データ フォルダを開けません。管理者に共有（編集可）を頼んでください");
     else toast("最新の読み込みに失敗：" + e.message);
   } finally { pulling = false; }
 }
@@ -266,7 +266,7 @@ async function pull() {
 const M = () => (S.files["マスタ.json"] && S.files["マスタ.json"].doc) || { 社員: [], 従業員: [], 現場: [] };
 const nk = n => String(n).replace(/[\s　]+/g, "");
 const surname = n => String(n).split(/[\s　]+/)[0];
-// 打った名前をマスタの書き方に寄せる（「吉成」→「吉成　直也」。名字が同じ人が2人いるときは寄せない）
+// 打った名前をマスタの書き方に寄せる（「山田」→「山田　太郎」。名字が同じ人が2人いるときは寄せない）
 function resolveName(n, list) {
   if (!n) return n;
   const hit = list.find(x => x === n) || list.find(x => nk(x) === nk(n));
@@ -274,7 +274,7 @@ function resolveName(n, list) {
   const c = list.filter(x => nk(x).startsWith(nk(n)));
   return c.length === 1 ? c[0] : n;
 }
-// 前の作りで「吉成　直也」が「吉成」「直也」に分かれて保存されたものを、マスタの氏名に戻す
+// 前の作りで「山田　太郎」が「山田」「太郎」に分かれて保存されたものを、マスタの氏名に戻す
 function joinSplit(names, list) {
   const out = [];
   for (let i = 0; i < names.length; i++) {
@@ -2033,7 +2033,7 @@ function siteGroups(ids, ny) {
 }
 const shownSitesOf = ids => sortSites(sites().filter(s => ids.includes(s.id)));
 const kd = (k, y) => (y ? k.slice(0, 4) + "年" : "") + `${+k.slice(5, 7)}月${+k.slice(8)}日`;
-/* 週間工程表（2026-10-13 ユーザー：Excel の週間工程表の書式でも出したい）。元：現場別\510012金沢線配水\金沢週間工程.xlsx
+/* 週間工程表（2026-10-13 ユーザー：Excel の週間工程表の書式でも出したい）。元：現場の週間工程の Excel
    1現場1ページ。開始日の週の月曜から3週間（今週・来週・再来週）。行＝作業（バーの作業名。夜間の工種は（夜間））・作業員（その日の人数の合計）・記事（バーのメモ）。
    右に現場の地図（現場の設定で貼り付けた画像）。土日祝・会社の休みの列は灰色。1500×1040px で組んで用紙に合わせて縮める */
 const COMPANY = "株式会社 ハシックス";

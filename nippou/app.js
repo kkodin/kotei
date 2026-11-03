@@ -3,7 +3,7 @@
    Vr002：入力欄を6種類（施工箇所〜作業内容／社員／作業員／外注／材料／使用機械）に分けた。上の ◀▶ は前の日・次の日。
    ・画面は GitHub Pages（kotei/nippou/）、データは会社の OneDrive。工程は 工程データ（読むだけ）、日報は 工程データ\日報\ に書く。
    ・自社機械稼働表の予約を「使用機材」の予定に、前の日の使用機材（リース品）を続きとして入れる。
-   ・変えた作業・人数・機械は予定と比べて色で出す。田村さんは「配置まとめ」で全現場の予定・報告を見て配置表に写す。
+   ・変えた作業・人数・機械は予定と比べて色で出す。配置の担当者は「配置まとめ」で全現場の予定・報告を見て配置表に写す。
    ?demo を付けて開くと、サインインせずこのブラウザの中だけで試せる（OneDrive には書かない）。 */
 "use strict";
 
@@ -278,7 +278,7 @@ async function saveFile(name) {
         break;
       } catch (e) {
         if (e.status !== 412 && e.status !== 409) throw e;
-        // ほかの人（田村さんの確認など）が先に保存した → 最新を読んで、自分の変更を重ね直す
+        // ほかの人（担当者の確認など）が先に保存した → 最新を読んで、自分の変更を重ね直す
         const fresh = await nippouStore.get(name);
         const d = fresh ? fresh.data : f.doc;
         f.pending.forEach(fn => fn(d)); d.版 = 2; stamp(d);
@@ -803,7 +803,7 @@ function openCal() {
   $("dCal").showModal();
 }
 
-/* ---------- 配置まとめ（田村さん：全現場の予定・報告を見て配置表へ） ---------- */
+/* ---------- 配置まとめ（配置の担当者：全現場の予定・報告を見て配置表へ） ---------- */
 let haichiDay = "";
 function siteActive(s, k) { return (s.バー || []).some(b => b.開始 <= k && b.終了 >= k && barWorks((s.段 || []).find(l => l.id === b.段), b, k)); }
 const haichiSites = k => sites().filter(s => !s.完了 && (siteActive(s, k) || storedDay(s.id, k)));
@@ -832,7 +832,7 @@ async function renderHaichi() {
       `<td class="wx">${esc(v.天候 || S.weather[k] || "")}</td>` +
       `<td class="ck"><label><input type="checkbox" data-ck="${esc(s.id)}" ${v.確認 ? "checked" : ""}> 配置表に入れた</label>${v.確認 ? `<div class="when">${esc(v.確認.だれ)} ${esc(v.確認.いつ)}</div>` : ""}</td></tr>`);
   }
-  $("haichi").innerHTML = list.length ? `<table class="hz"><thead><tr><th>現場</th><th>状態</th><th>作業</th><th>社員</th><th>作業員</th><th>外注</th><th>機械</th><th>天候</th><th>田村さん</th></tr></thead><tbody>${rows.join("")}</tbody>` +
+  $("haichi").innerHTML = list.length ? `<table class="hz"><thead><tr><th>現場</th><th>状態</th><th>作業</th><th>社員</th><th>作業員</th><th>外注</th><th>機械</th><th>天候</th><th>確認</th></tr></thead><tbody>${rows.join("")}</tbody>` +
     `<tfoot><tr><th>計 ${list.length}現場</th><td></td><td></td><td>${totStaff.size}人</td><td>予定 ${crewP}名 → ${crewA}名</td><td>予定 ${gaiP}名 → ${gaiA}名</td><td colspan="3"></td></tr></tfoot></table>`
     : `<p class="empty">この日に工程のある現場はありません。</p>`;
 }
@@ -929,7 +929,7 @@ async function pull() {
     }
   } catch (e) {
     console.error(e);
-    if (e.status === 404 || e.status === 403) toast("工程データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください");
+    if (e.status === 404 || e.status === 403) toast("工程データ フォルダを開けません。管理者に共有（編集可）を頼んでください");
     else toast("最新の読み込みに失敗：" + e.message);
   } finally { pulling = false; }
   if (changed && !anyEditing()) { if (S.day && S.site) refreshPlan(S.site, S.day); render(); }
@@ -1046,7 +1046,7 @@ function seedDemo() {
   put("工程/マスタ.json", { 社員: ["見本　一郎", "見本　二郎", "試験　花子"], 従業員: ["作業　三郎", "作業　四郎", "作業　五郎", "作業　六郎"], 現場: [] });
   put("工程/休日.json", { 休み: [] });
   put("工程/現場_s1.json", { id: "s1", 名前: "A現場 配水管", 担当: "見本　一郎", コード: "510001", 並び: 1,
-    段: [{ id: "l1", 区分: "夜", 名前: "管布設工", 土: false }, { id: "l2", 区分: "夜", 名前: "路面復旧工", 種別: "外注", 業者: "第一カッター興業", 人数: "1" }],
+    段: [{ id: "l1", 区分: "夜", 名前: "管布設工", 土: false }, { id: "l2", 区分: "夜", 名前: "路面復旧工", 種別: "外注", 業者: "見本カッター興業", 人数: "1" }],
     バー: [{ id: "b1", 段: "l1", 作業: "配水管布設", 開始: a(-10), 終了: a(10), 社員: ["見本　一郎"], 人数: "1+3", 色: "青" },
       { id: "b2", 段: "l2", 作業: "舗装切断工", 開始: a(-2), 終了: a(3), 社員: [], 色: "橙" }] });
   put("工程/現場_s2.json", { id: "s2", 名前: "B現場 道路改良", 担当: "見本　二郎", コード: "510002", 並び: 2,
@@ -1060,7 +1060,7 @@ function seedDemo() {
   const y = a(-1), 表 = {
     基本: [["○○町2丁目", "管布設工", "21:00", "6:00", "配水管布設 φ150 L=12m"], ["○○町2丁目", "路面復旧工", "21:00", "6:00", "舗装切断工"]],
     社員: [["見本　一郎", "管布設工"]], 作業員: [["作業　三郎", "管布設工"], ["作業　四郎", "管布設工"], ["作業　五郎", "管布設工"]],
-    外注: [["第一カッター興業", "1", "路面復旧工"]], 材料: [["ダクタイル鋳鉄管", "GX形 φ150", "3本", "○○管材", ""], ["砕石", "RC-40", "4㎥", "○○建材", ""]],
+    外注: [["見本カッター興業", "1", "路面復旧工"]], 材料: [["ダクタイル鋳鉄管", "GX形 φ150", "3本", "○○管材", ""], ["砕石", "RC-40", "4㎥", "○○建材", ""]],
     機械: [["規制車", "2t", "1", "自社（夜）"], ["バックホウ", "0.1㎥", "1", "東リース"]] };
   put("日報/" + `日報_s1_${monthOf(y)}.json`, { 形式: "工事日報", 版: 2, 現場: "s1", 月: monthOf(y),
     日: { [y]: { 天候: "晴", 表, 予定表: 表, 予定日時: "", 報告: { だれ: "見本　一郎", いつ: "" }, 確認: null } } });

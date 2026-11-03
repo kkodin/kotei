@@ -706,7 +706,7 @@ function applyCells(key, ch, noCheck) {
       const row = arr[r], c0 = ch.filter(x => x.r === r).map(x => x.c);
       // 名前を入れたら：名簿の工種・定時の始業／終業
       if (c0.includes(0) && row[0]) {
-        row[0] = masterName(row[0]);   // 名簿の書き方（「吉田　康之」）にそろえる
+        row[0] = masterName(row[0]);   // 名簿の書き方（「山田　太郎」）にそろえる
         const w = s.作業員.find(x => nk(x.名前) === nk(row[0]));
         if (!row[3] && w) row[3] = w.職種 || "";
         if (!row[14] && !c0.includes(14)) row[14] = s.勤務 === "夜" ? "夜" : "昼";
@@ -1072,7 +1072,7 @@ let FIND = { q: "", col: "", all: false };
 function renderFind() {
   const words = $("fQ").value.trim().split(/[\s　]+/).map(loose).filter(Boolean);
   FIND = { q: $("fQ").value, col: $("fCol").value, all: $("fAll").checked };
-  if (!words.length) { $("fRes").innerHTML = `<p class="note">探したい言葉を入れてください（例：吉田、真創建、U字溝、重機OP）。空白で区切ると、全部が入っている日を出します。</p>`; return; }
+  if (!words.length) { $("fRes").innerHTML = `<p class="note">探したい言葉を入れてください（例：山田、○○建設、U字溝、重機OP）。空白で区切ると、全部が入っている日を出します。</p>`; return; }
   const sites = FIND.all ? DB.現場 : site() ? [site()] : [];
   const res = sites.flatMap(s => findIn(s, words, FIND.col));
   const lab = Object.fromEntries(FIND_COLS);
@@ -1533,7 +1533,7 @@ async function loadMasters(quiet) {
     if (!quiet) toast("マスタを読みました");
   } catch (e) {
     console.warn(e);
-    toast(/40[13]/.test(e.message) ? "マスタのフォルダを開けません（工程データ・稼働データの共有を北澤さんに頼んでください）" : "マスタを読めませんでした（前に読んだ控えで動きます）：" + e.message);
+    toast(/40[13]/.test(e.message) ? "マスタのフォルダを開けません（工程データ・稼働データの共有を管理者に頼んでください）" : "マスタを読めませんでした（前に読んだ控えで動きます）：" + e.message);
   }
 }
 async function startAuth() {
@@ -1752,7 +1752,7 @@ async function sync() {
   } catch (e) {
     console.warn(e); SY.err = e.message;
     syncMark("err", "共有できません");
-    $("sync").title = (e.status === 403 || e.status === 404 ? "工程データ フォルダに書けません。北澤さんに共有（編集可）を頼んでください。" : "電波・サインインを確かめてください。") + "（" + e.message + "）このブラウザの中には残っています。";
+    $("sync").title = (e.status === 403 || e.status === 404 ? "工程データ フォルダに書けません。管理者に共有（編集可）を頼んでください。" : "電波・サインインを確かめてください。") + "（" + e.message + "）このブラウザの中には残っています。";
   } finally {
     SY.busy = false;
     if (changed) {
@@ -2593,7 +2593,7 @@ function findYure() {
       [...cn.keys()].filter(x => cn.get(x) >= 1000 && !g.includes(x) && g.some(y => similar(y, x))).forEach(x => g.push(x));
       g.forEach(x => seen.add(x));
       if (g.length < 2) continue;
-      // 日報で使っているのが1通りだけで、その書き方がマスタ（名簿）にあるなら出さない（比嘉健 と 名簿の「比嘉健　真創建」など）
+      // 日報で使っているのが1通りだけで、その書き方がマスタ（名簿）にあるなら出さない（山田太郎 と 名簿の「山田太郎　○○建設」など）
       const usedN = g.filter(x => used.has(x)).length;
       if (usedN < 2 && g.filter(x => used.has(x)).every(x => (cn.get(x) || 0) >= 1000)) continue;
       const best = [...g].sort((a, b) => (cn.get(b) || 0) - (cn.get(a) || 0))[0];

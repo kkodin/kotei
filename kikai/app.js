@@ -106,7 +106,7 @@ async function resolveFolder() {
   const f = CFG.folder || {};
   if (f.itemId) {
     folderBase = `/drives/${f.driveId}/items/${f.itemId}`;
-    /* 共有されていない人は、フォルダの中の 稼働データ.json も 404 になり「まだ機械がありません」と見えてしまう（2026-10-31 吉成さん）。
+    /* 共有されていない人は、フォルダの中の 稼働データ.json も 404 になり「まだ機械がありません」と見えてしまう（2026-10-31）。
        先にフォルダそのものを開けるか確かめ、開けなければ「共有を頼んで」を出す */
     const res = await g(folderBase + "?$select=id");
     if (!res.ok) throw httpErr(res, "稼働データ フォルダ");
@@ -239,7 +239,7 @@ async function pull() {
     }
   } catch (e) {
     console.error(e);
-    if (e.status === 404 || e.status === 403) toast("稼働データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください");
+    if (e.status === 404 || e.status === 403) toast("稼働データ フォルダを開けません。管理者に共有（編集可）を頼んでください");
     else toast("最新の読み込みに失敗：" + e.message);
   } finally { pulling = false; }
 }
@@ -1772,7 +1772,7 @@ async function start() {
     $("loading").hidden = true;
     $("signin").hidden = false; $("bSignIn").hidden = true;
     $("signinHead").textContent = "サインインは済んでいます（" + me.name + "）。";
-    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。北澤さんに 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
+    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。管理者に 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
     return;
   }
   $("loading").hidden = true;

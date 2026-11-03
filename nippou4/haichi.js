@@ -51,7 +51,7 @@ function haiPerson(n) {
   const a = nk(t), L = people().filter(p => { const b = nk(p); return b.length === a.length && [...b].filter((c, i) => c !== a[i]).length === 1; });
   return L.length === 1 ? L[0] : personName(t);
 }
-// 本社内勤の欄の書き方：本社内勤／本社内勤（金沢線配水＝本社＋現場名／有給・休み・明け休み＝休み／ほか＝本社（書いてあることを作業内容に）
+// 本社内勤の欄の書き方：本社内勤／本社内勤（○○＝本社＋現場名／有給・休み・明け休み＝休み／ほか＝本社（書いてあることを作業内容に）
 function haiHonsha(t) {
   t = String(t || "").normalize("NFKC").trim();
   if (/有給|有休|休み|^休|明け|代休|振替|忌引/.test(t)) return { off: true, work: t };
