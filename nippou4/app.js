@@ -218,14 +218,14 @@ function withRoster(M, w) {
     外注作業員: (w.外注 || []).filter(x => x && x.名前).map(x => ({ 会社: x.会社 || "", 名前: x.名前 })) };
 }
 async function loadMasters() {
-  const [m, s, w] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null), koteiStore.get("作業員名簿.json").catch(() => null), loadKotei()]);
-  if (m) S.M = withRoster({ 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] }, w && w.data);
+  const [m, s, w, ret] = await Promise.all([koteiStore.get("マスタ.json").catch(() => null), kikaiStore.get("現場一覧.json").catch(() => null), koteiStore.get("作業員名簿.json").catch(() => null), koteiStore.get("退職者.json").catch(() => null), loadKotei()]);
+  if (m) S.M = { ...withRoster({ 社員: m.data.社員 || [], 従業員: m.data.従業員 || [], 外注業者: m.data.外注業者 || [] }, w && w.data), 退職: Object.fromEntries(((ret && ret.data.人) || []).map(x => [nk(x.名前), x.最後の月])) };
   if (s) S.sites = (s.data.現場 || []).filter(x => x && (x.名前 || x.正式名));
   if (S.kikai) { const ms = (S.kikai.機械 || []).filter(m => !m.使わない); S.M.機械 = [...new Set(ms.map(machName))]; S.M.機械分類 = Object.fromEntries(ms.map(m => [machName(m), m.分類 || "その他"])); }
   if (SEP) {
     const cur = await nippouStore.get(ROSTER).catch(() => null);
     if (m) await saveRoster(cur, !!s);
-    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 外注作業員: c.外注作業員 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
+    else if (cur) { const c = cur.data; S.M = { 社員: c.社員 || [], 従業員: c.従業員 || [], 外注業者: c.外注業者 || [], 外注作業員: c.外注作業員 || [], 退職: c.退職 || {}, 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}) }; S.sites = (c.現場 || []).filter(x => x && (x.名前 || x.正式名)); }
     else if (!m) throw new Error("名簿がまだありません（工程データを読める人が一度開くと作られます）");
   }
   try { localStorage.setItem("nippou_master_v3", JSON.stringify({ M: S.M, sites: S.sites })); } catch (e) { }
@@ -233,8 +233,8 @@ async function loadMasters() {
 // 工程データを読めた人が開いたとき：名簿.json を今のマスタに合わせる（変わっていなければ書かない）。現場一覧を読めなかったら現場は前の写しのまま
 async function saveRoster(cur, gotSites) {
   const c = cur ? cur.data : {};
-  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 外注作業員: S.M.外注作業員 || [], 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
-  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 外注作業員: c.外注作業員 || [], 機械: c.機械, 機械分類: c.機械分類, 現場: c.現場 })) return;
+  const body = { 社員: S.M.社員, 従業員: S.M.従業員, 外注業者: S.M.外注業者, 外注作業員: S.M.外注作業員 || [], 退職: S.M.退職 || {}, 機械: S.kikai ? S.M.機械 : (c.機械 || []), 機械分類: S.kikai ? S.M.機械分類 : (c.機械分類 || {}), 現場: gotSites ? S.sites.map(siteMin) : (c.現場 || []) };
+  if (cur && JSON.stringify(body) === JSON.stringify({ 社員: c.社員, 従業員: c.従業員, 外注業者: c.外注業者, 外注作業員: c.外注作業員 || [], 退職: c.退職 || {}, 機械: c.機械, 機械分類: c.機械分類, 現場: c.現場 })) return;
   const doc = { 形式: "工事日報の名簿", 版: 1, 説明: "工程データのマスタ・現場一覧の名前だけの写し。工事日報が自動で作り直す（ここを直しても戻る）", ...body, 更新: nowStr() };
   try { await nippouStore.put(ROSTER, doc, cur ? cur.eTag : null); } catch (e) { console.warn("名簿の写しを保存できませんでした", e); }
 }
@@ -251,6 +251,8 @@ async function loadKotei() {
 }
 function cachedMasters() { try { const c = JSON.parse(localStorage.getItem("nippou_master_v3")); if (c) { S.M = c.M; S.sites = c.sites; } } catch (e) { } }
 const people = () => [...S.M.社員, ...S.M.従業員];
+// 退職した人（工程データ\退職者.json：{ 人: [{ 名前, 最後の月 }] }）。最後の月の次の月から、候補・人別・カレンダーの人に出さない（過去の月はそのまま）
+const isGone = (n, m) => { const g = (S.M.退職 || {})[nk(n)]; return !!g && (m || monthOf(S.day)) > g; };
 const siteName = x => x.名前 || x.正式名;
 
 /* ---------- 全体工程表から、その日・その現場の予定（作業）を作る（全体工程表・Vr002 と同じ決まり） ---------- */
@@ -344,10 +346,11 @@ function siteOf(place, code) {
 }
 
 /* ---------- 選ぶ欄（打てば絞り込み、押せば選ぶ。スマホでも押しやすい大きさ） ---------- */
-let sugBox = null;
-function closeSug() { if (sugBox) { sugBox.remove(); sugBox = null; } }
+let sugBox = null, sugFor = null;
+function closeSug() { if (sugBox) { sugBox.remove(); sugBox = null; } sugFor = null; }
 function showSug(input, items, onPick) {
   closeSug();
+  sugFor = input;
   const q = nk(input.value), hit = items.filter(x => !q || nk(x.v).includes(q) || nk(x.sub || "").includes(q)).slice(0, 40);
   if (!hit.length) return;
   sugBox = document.createElement("div"); sugBox.className = "sug";
@@ -366,7 +369,10 @@ function bindPick(input, items, onPick) {
   const open = () => showSug(input, items(), onPick);
   input.addEventListener("focus", open);
   input.addEventListener("input", open);
-  input.addEventListener("blur", () => setTimeout(closeSug, 150));
+  // 2026-11-03 ユーザー：もう一人足そうと押しても候補が出ない → 打つ欄にいるまま押しても出す。
+  // 選ぶと欄を作り直すので、前の欄の blur が新しい欄の候補を閉じないように、その欄の候補のときだけ閉じる
+  input.addEventListener("click", () => { if (sugFor !== input) open(); });
+  input.addEventListener("blur", () => setTimeout(() => { if (sugFor === input) closeSug(); }, 150));
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); const b = sugBox && sugBox.querySelector("button"); if (b && input.value.trim()) b.click(); else { closeSug(); onPick({ v: input.value.trim(), free: true }); } }
     if (e.key === "Escape") closeSug();
@@ -389,9 +395,10 @@ function personItems(place, have) {
 }
 function personItems0(place, have) {
   const hv = new Set(have.map(nk)), out = [], seen = new Set();
-  for (let i = 1; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => { if (nk(r.行先) === nk(place)) (r.人 || []).forEach(n => { const k = nk(n); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "前にこの現場に来ていた人", v: n }); } }); });
-  S.M.社員.forEach(n => { const k = nk(n); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "社員", v: n }); } });
-  S.M.従業員.forEach(n => { const k = nk(n); if (!hv.has(k) && !seen.has(k)) { seen.add(k); out.push({ grp: "従業員", v: n }); } });
+  const add = (grp, n) => { const k = nk(n); if (!hv.has(k) && !seen.has(k) && !isGone(n)) { seen.add(k); out.push({ grp, v: n }); } };
+  for (let i = 1; i <= 30; i++) rowsOf(dayAdd(S.day, -i)).forEach(r => { if (nk(r.行先) === nk(place)) (r.人 || []).forEach(n => add("前にこの現場に来ていた人", n)); });
+  S.M.社員.forEach(n => add("社員", n));
+  S.M.従業員.forEach(n => add("従業員", n));
   return out;
 }
 const gaiItems = () => S.M.外注業者.map(v => ({ v }));
@@ -508,7 +515,7 @@ function cardHTML(r, i, draft) {
       <div class="side plan"><h5>予定</h5>${side("p")}</div>
       <div class="side rep"><h5>報告${["人", "外注", "機械"].some(x => listIn(r, "p", x).length) ? `<button type="button" class="same" data-act="copyp">予定と同じにする</button>` : ""}</h5>${side("r")}</div>
     </div>`}
-    ${!off && r.行先 ? `<div class="detail">${S.view === "site" ? `<button type="button" data-act="detail" title="常用日報の形で、始業終業・工種・機械・材料などを書く">常用日報で詳しく書く →</button>` : `<button type="button" data-act="site">この現場の日報・集計（現場別）→</button>`}</div>` : ""}
+    ${!off && r.行先 ? `<div class="detail">${S.view === "site" ? `<button type="button" data-act="detail" title="詳細日報で、始業終業・工種・機械・材料などを書く">詳細日報で詳しく書く →</button>` : `<button type="button" data-act="site">この現場の日報・集計（現場別）→</button>`}</div>` : ""}
   </div>`;
 }
 // 参加者名・使用機械（チップ。打つか選んで増やす）／外注業者名＋人数（1行ずつ増やす）
@@ -676,7 +683,7 @@ async function sameAsBefore() {
   const d = dateOf(src), rows = rowsOf(src);
   const list = rows.map(r => `<li>${esc(r.行先 || "（行先なし）")} ${esc([r.始め, r.終わり].filter(Boolean).join("〜"))}${(r.人 || []).length ? `・${r.人.length}名` : ""}${(r.外注 || []).length ? "・外注" : ""}</li>`).join("");
   dlg(`<h2>${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]}) と同じにしますか？</h2><ol>${list}</ol>
-    <p style="font-size:14px;color:#5d6b7a">行先・時間・作業内容・参加者・外注・機械（予定と報告）を写します。${rowsOf().length ? "<b>この日に書いてある分は置き換わります。</b>" : ""}</p>
+    <p style="font-size:calc(14px*var(--fs));color:#5d6b7a">行先・時間・作業内容・参加者・外注・機械（予定と報告）を写します。${rowsOf().length ? "<b>この日に書いてある分は置き換わります。</b>" : ""}</p>
     <div class="btns"><button data-close>やめる</button><button class="pri" id="dOk">同じにする</button></div>`);
   $("dOk").onclick = () => { closeDlg(); const copy = JSON.parse(JSON.stringify(rows)).map(r => ({ ...r, id: uid() })); mutate(S.day, x => { x.行 = copy; x.報告 = null; }); toast("前の日と同じにしました。違う所を直してください"); };
 }
@@ -728,7 +735,7 @@ function openApps() {
     <button type="button" data-app="kikai"><b>自社機械稼働表</b><small>機械の予約・稼働</small></button>
     <button type="button" data-app="site"><b>日報（現場別）</b><small>現場を選んで、その現場の全員の日報・月の集計</small></button>
     <button type="button" data-app="person"><b>日報（人別）</b><small>人を選んで、その人の月の一覧</small></button>
-    <button type="button" data-app="jouyou"><b>常用日報</b><small>常用の現場の詳しい日報</small></button></div>`);
+    <button type="button" data-app="jouyou"><b>詳細日報</b><small>現場の詳しい日報（常用・請負）</small></button></div>`);
   $("dlgBody").querySelector(".apps").onclick = e => {
     const b = e.target.closest("[data-app]"); if (!b) return; const a = b.dataset.app;
     if (a === "site") return chooseSite();
@@ -738,7 +745,7 @@ function openApps() {
 }
 // 日報（人別）：人を選んで、その人の月の一覧
 function choosePerson() {
-  const list = [...new Set([S.me.name, ...S.M.社員, ...S.M.従業員])];
+  const list = [...new Set([S.me.name, ...S.M.社員, ...S.M.従業員])].filter(n => !isGone(n));
   const btns = () => { const q = nk($("pQ").value); return list.filter(n => !q || nk(n).includes(q)).map(n => `<button type="button" data-n="${esc(n)}">${esc(n)}</button>`).join("") || "<p>見つかりません</p>"; };
   dlg(`<h2>だれの日報を開きますか</h2><input id="pQ" placeholder="名前で絞り込み" autocomplete="off"><div class="namelist" id="pL"></div><div class="btns"><button data-close>やめる</button></div>`);
   $("pL").innerHTML = btns(); $("pQ").oninput = () => { $("pL").innerHTML = btns(); };
@@ -914,7 +921,7 @@ async function renderAll() {
         return `<div class="allsite"><h4>${esc(place)}${ppl.size ? `　<small>作業員 ${ppl.size}名</small>` : ""}${gai.length ? `　<small>外注 ${esc(gai.join("・"))}</small>` : ""}</h4>` +
           xs.map(x => `<div class="row"><span class="who">${esc(x.who)}</span><span class="t">${esc([x.r.始め, x.r.終わり].filter(Boolean).join("〜"))}${x.rep ? "" : "・書きかけ"}</span><br>${esc(x.r.作業 || "")}${(x.r.人 || []).length ? `<br><small>来ていた人：${esc(x.r.人.join("、"))}</small>` : ""}</div>`).join("") + `</div>`;
       }).join("") || `<p>この日はまだだれも書いていません。</p>`) +
-      (none.length ? `<p style="font-size:13px;color:#5d6b7a">この日をまだ書いていない人：${esc(none.join("、"))}</p>` : "");
+      (none.length ? `<p style="font-size:calc(13px*var(--fs));color:#5d6b7a">この日をまだ書いていない人：${esc(none.join("、"))}</p>` : "");
   } catch (e) { $("all").innerHTML = `<p class="ng">読めませんでした：${esc(e.message)}</p>`; }
 }
 
@@ -922,6 +929,17 @@ async function renderAll() {
 // cls：wide＝広い窓、keep＝外を押しても閉じない（書いている途中の窓）
 function dlg(html, cls) { $("dlg").className = cls || ""; $("dlgBody").innerHTML = html; const d = $("dlg"); if (!d.open) d.showModal(); }
 function closeDlg() { $("dlg").close(); }
+// 文字の大きさ（5段階。2026-11-03 ユーザー）：この端末だけ覚える。app.css の font-size は calc(… * var(--fs))
+const FS = [["とても小さい", .85], ["小さい", .93], ["標準", 1], ["大きい", 1.15], ["とても大きい", 1.3]];
+let fsNow = 2;
+try { const v = +localStorage.getItem("nippou_fs_v4"); if (localStorage.getItem("nippou_fs_v4") !== null && FS[v]) fsNow = v; } catch (e) { }
+function setFs(i) { fsNow = i; document.documentElement.style.setProperty("--fs", FS[i][1]); try { localStorage.setItem("nippou_fs_v4", i); } catch (e) { } }
+setFs(fsNow);
+const fsOptions = () => FS.map(([t], i) => `<option value="${i}"${i === fsNow ? " selected" : ""}>${t}</option>`).join("");
+function chooseFs() {
+  dlg(`<h2>文字の大きさ</h2><div class="namelist">${FS.map(([t], i) => `<button type="button" data-fs="${i}"${i === fsNow ? ` class="pri"` : ""}>${t}</button>`).join("")}</div><div class="btns"><button data-close>閉じる</button></div>`);
+  $("dlgBody").querySelectorAll("[data-fs]").forEach(b => b.onclick = () => { setFs(+b.dataset.fs); closeDlg(); render(); });
+}
 $("dlg").addEventListener("click", e => { if (e.target.closest("[data-close]") || (e.target === $("dlg") && !$("dlg").classList.contains("keep"))) closeDlg(); });
 let toastT = null;
 function toast(m, ms = 3000) { const t = $("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms); }
@@ -931,9 +949,9 @@ const ME_KEY = "nippou_me_v3";
 function savedMe(acct) { try { return (JSON.parse(localStorage.getItem(ME_KEY)) || {})[acct] || ""; } catch (e) { return ""; } }
 function askMe(acctName, first) {
   return new Promise(res => {
-    const list = people(), guess = nk(acctName);
+    const list = people().filter(n => !isGone(n, monthOf(todayKey()))), guess = nk(acctName);
     const btns = () => { const q = nk($("meQ").value); return list.filter(n => !q || nk(n).includes(q)).map(n => `<button type="button" data-n="${esc(n)}" class="${nk(n) === guess ? "hit" : ""}">${esc(n)}</button>`).join("") || "<p>名簿に見つかりません</p>"; };
-    dlg(`<h2>${first ? "あなたの名前を選んでください" : "名前を選び直す"}</h2><p style="font-size:14px">この名前で日報を書きます（サインイン：${esc(acctName)}）。次からは聞きません。</p>
+    dlg(`<h2>${first ? "あなたの名前を選んでください" : "名前を選び直す"}</h2><p style="font-size:calc(14px*var(--fs))">この名前で日報を書きます（サインイン：${esc(acctName)}）。次からは聞きません。</p>
       <input id="meQ" placeholder="名前で絞り込み" autocomplete="off"><div class="namelist" id="meL"></div>${first ? "" : `<div class="btns"><button data-close>やめる</button></div>`}`);
     $("meL").innerHTML = btns();
     $("meQ").oninput = () => { $("meL").innerHTML = btns(); };
@@ -963,8 +981,8 @@ function installGuide() {
 /* ---------- 日報のフォルダを調べる（管理者が1回だけ。?setup で開くと「…」に出る） ----------
    OneDrive の共有リンクから driveId・itemId を出し、config.js の nippou に書いてもらう（リンクそのものは config に書かない） */
 function findFolder() {
-  dlg(`<h2>日報のフォルダを調べる</h2><p style="font-size:14px">OneDrive で日報のフォルダを選び、「共有」→「リンクのコピー」で写したリンクを貼ってください。</p>
-    <input id="shUrl" placeholder="https://…sharepoint.com/…" autocomplete="off"><pre id="shOut" style="white-space:pre-wrap;font-size:14px"></pre>
+  dlg(`<h2>日報のフォルダを調べる</h2><p style="font-size:calc(14px*var(--fs))">OneDrive で日報のフォルダを選び、「共有」→「リンクのコピー」で写したリンクを貼ってください。</p>
+    <input id="shUrl" placeholder="https://…sharepoint.com/…" autocomplete="off"><pre id="shOut" style="white-space:pre-wrap;font-size:calc(14px*var(--fs))"></pre>
     <div class="btns"><button data-close>閉じる</button><button class="pri" id="shGo">調べる</button></div>`);
   $("shGo").onclick = async () => {
     const u = $("shUrl").value.trim(); if (!u) return;
@@ -1007,6 +1025,7 @@ function bind() {
   $("menu").onclick = async e => {
     const m = e.target.closest("[data-m]"); if (!m) return; $("menu").hidden = true;
     if (m.dataset.m === "all") { S.view = "all"; render(); }
+    if (m.dataset.m === "fs") chooseFs();
     if (m.dataset.m === "reload") { await loadMasters(); await loadMonth(monthOf(S.day), true); render(); toast("最新を読みました"); }
     if (m.dataset.m === "install") installGuide();
     if (m.dataset.m === "me") $("bMe").click();

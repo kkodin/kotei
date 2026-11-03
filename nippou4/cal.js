@@ -83,11 +83,13 @@ async function renderCal() {
   const ttl = CAL.mode === "week" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日〜${d1.getMonth() + 1}月${d1.getDate()}日`
     : CAL.mode === "day" ? `${d0.getFullYear()}年${d0.getMonth() + 1}月${d0.getDate()}日(${WD[d0.getDay()]})` : `${dateOf(S.day).getFullYear()}年${+monthOf(S.day).slice(5)}月`;
   $("dayHead").innerHTML = `<div class="calbar"><div class="tabs">${MODES.map(([v, t]) => `<button type="button" data-cm="${v}" class="${CAL.mode === v ? "on" : ""}">${t}</button>`).join("")}</div>
-    <b class="cttl">${ttl}</b><span class="sp"></span><button type="button" id="cHai" title="配置表（配置確定）から過去の作業内容を、作業員ひとりずつの日報に取り込む">配置表から取り込む</button><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">${esc(S.me.name)} の日報（カード）</button></div>`;
+    <b class="cttl">${ttl}</b><button type="button" id="cDiff" class="warnb" hidden title="工事日報と配置確定・常用日報・クロジカの違いを確かめて直す"></button><span class="sp"></span><label class="fsz">文字 <select id="cFs" aria-label="文字の大きさ">${fsOptions()}</select></label><button type="button" id="cHai" title="配置表（配置確定）から過去の作業内容を、作業員ひとりずつの日報に取り込む">配置表から取り込む</button><button type="button" id="cKuro" title="クロジカの CSV から過去の予定・報告を取り込む">クロジカから取り込む</button><button type="button" id="cWho">表示する人</button><button type="button" id="cCards" title="スマホと同じカードで書く">${esc(S.me.name)} の日報（カード）</button></div>`;
   $("dayHead").querySelectorAll("[data-cm]").forEach(b => b.onclick = () => { CAL.mode = b.dataset.cm; calSave(); render(); });
   $("cWho").onclick = chooseWho;
   $("cKuro").onclick = kuroOpen;
   $("cHai").onclick = haichiOpen;
+  $("cFs").onchange = () => { setFs(+$("cFs").value); fitCal(); };
+  $("cDiff").onclick = diffOpen;
   $("cCards").onclick = () => { S.view = "me"; render(); };
   if (!$("all").querySelector(".cal")) $("all").innerHTML = `<p>読んでいます…</p>`;
   let docs;
@@ -99,14 +101,23 @@ async function renderCal() {
     : CAL.mode === "person" ? personHTML(days, evs) : siteHTML(days, evs);
   $("all").innerHTML = `<div class="cal ${CAL.mode}">${html}</div>`;
   bindCal(evs);
+  fitCal();
+  diffBadge();
 }
+// 下へ送っても日付の欄が見えるように（2026-11-03 ユーザー）：表の枠を画面の残りの高さにして、枠の中で送る（thead は sticky）
+function fitCal() {
+  const w = $("all").querySelector(".cal .cwrap, .cal .gwrap"); if (!w) return;
+  const bar = $("bar") && !$("bar").hidden ? $("bar").offsetHeight : 0;
+  w.style.maxHeight = Math.max(300, window.innerHeight - (w.getBoundingClientRect().top + window.scrollY) - bar - 8) + "px";
+}
+window.addEventListener("resize", () => { if (S.view === "cal") fitCal(); });
 // 表に出す人：社員・従業員（名簿の全員）と、この期間に日報に出てくる人（「表示する人」で外した人は出さない）
 // （2026-11-02 ユーザー：社員と一部の従業員しか出ていない → 従業員も全員）
 function calNames(evs) {
   const m = new Map(), add = n => { if (n && !m.has(nk(n))) m.set(nk(n), n); };
   S.M.社員.forEach(add); add(S.me.name); S.M.従業員.forEach(add);
   [...evs.values()].flat().forEach(x => membersOf(x).forEach(add));
-  return [...m.values()].filter(n => !CAL.hide[nk(n)]);
+  return [...m.values()].filter(n => !CAL.hide[nk(n)] && !isGone(n));
 }
 const dayTh = k => `<th class="${dayCls(k)}${k === todayKey() ? " today" : ""}" data-day="${k}"><b>${+k.slice(8)}</b> <small>${WD[dow(k)]}</small>${holidayOf(k) ? `<br><small>${esc(holidayOf(k))}</small>` : ""}</th>`;
 const planCell = k => plansOn(k).map(p => `<div class="pv" draggable="true" data-plan="${k}|${esc(p.name)}|${esc(p.code)}" title="${esc(p.name + "\n" + p.lines.join("\n"))}">${esc(p.name)}</div>`).join("");
@@ -139,12 +150,12 @@ function dayHTML(k, list) {
 }
 function monthHTML(days, evs) {
   const m = monthOf(S.day);
-  return `<table class="mg"><thead><tr>${[..."日月火水木金土"].map((w, i) => `<th class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${w}</th>`).join("")}</tr></thead><tbody>` +
+  return `<div class="cwrap"><table class="mg"><thead><tr>${[..."日月火水木金土"].map((w, i) => `<th class="${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${w}</th>`).join("")}</tr></thead><tbody>` +
     Array.from({ length: days.length / 7 }, (_, w) => `<tr>${days.slice(w * 7, w * 7 + 7).map(k => {
       const list = evs.get(k).filter(x => membersOf(x).some(n => !CAL.hide[nk(n)]));
       return `<td class="${dayCls(k)}${monthOf(k) !== m ? " out" : ""}${k === todayKey() ? " today" : ""}" data-new="${k}|"><a class="dn" data-day="${k}">${+k.slice(8)}</a>${holidayOf(k) ? `<small class="hol">${esc(holidayOf(k))}</small>` : ""}` +
         list.map(x => evHTML(x, colorOf(x.r.本人 === false ? membersOf(x)[0] || x.who : x.who)).replace(/>([^<]*)<\/div>$/, `>${esc(x.r.本人 === false ? (membersOf(x)[0] || x.who) : x.who)}：$1</div>`)).join("") + `</td>`;
-    }).join("")}</tr>`).join("") + `</tbody></table>`;
+    }).join("")}</tr>`).join("") + `</tbody></table></div>`;
 }
 // 人別：人×日のます目に行先（短く）。日数・時間
 function personHTML(days, evs) {
@@ -292,8 +303,8 @@ function bindDrag(box) {
   box.addEventListener("click", e => { if (e.target.closest(".rz")) e.stopImmediatePropagation(); }, true);
 }
 function chooseWho() {
-  const all = [...new Set([...S.M.社員, ...S.M.従業員])];
-  dlg(`<h2>表示する人</h2><p style="font-size:14px">社員・従業員と、その週・月に日報に出てくる人を出します。外した人は出しません（この端末だけ）。</p>
+  const all = [...new Set([...S.M.社員, ...S.M.従業員])].filter(n => !isGone(n));
+  dlg(`<h2>表示する人</h2><p style="font-size:calc(14px*var(--fs))">社員・従業員と、その週・月に日報に出てくる人を出します。外した人は出しません（この端末だけ）。</p>
     <div class="btns" style="justify-content:flex-start;margin:0 0 6px"><button type="button" id="wAll">全部</button><button type="button" id="wNone">全部外す</button></div>
     <div class="checks">${all.map(n => `<label><input type="checkbox" value="${esc(n)}"${CAL.hide[nk(n)] ? "" : " checked"}><span class="dot" style="background:${colorOf(n)}"></span>${esc(n)}</label>`).join("")}</div>
     <div class="btns"><button data-close>やめる</button><button class="pri" id="wOk">決める</button></div>`);
@@ -382,7 +393,7 @@ function editEv(k, r0, o = {}) {
       <tr><th>日時</th><td><div class="dt"><input type="date" id="eDay" value="${day}"><label class="ck"><input type="checkbox" id="eAll"${E.終日 ? " checked" : ""}> 終日</label>
         ${kubunBox(E)}<span class="time"${E.終日 ? " hidden" : ""}><input class="tm" id="eT0" value="${esc(E.始め || "")}" placeholder="始め" inputmode="decimal"><span>〜</span><input class="tm" id="eT1" value="${esc(E.終わり || "")}" placeholder="終わり" inputmode="decimal"></span></div></td></tr>
       <tr><th>現場<span class="req">*</span></th><td><div class="pick"><input id="ePlace" value="${esc(E.行先 || "")}" placeholder="報告する現場（現場名・発注者・コードを打つと候補。本社も）" autocomplete="off"></div><div class="pinfo">${siteInfo(E.行先, E.コード)}</div>${honshaBox(E)}</td></tr>
-      ${st ? `<tr><th>請負形態</th><td>${formSel(E.行先, E.コード, "eForm")} <small class="pinfo">現場ごと（常用の現場は常用日報の形で集計）</small></td></tr>` : ""}
+      ${st ? `<tr><th>請負形態</th><td>${formSel(E.行先, E.コード, "eForm")} <small class="pinfo">現場ごと（常用の現場は詳細日報で集計。詳細日報の現場の一覧と同じ）</small></td></tr>` : ""}
       <tr><th>内容</th><td><div class="wl"><div class="wh"><span>予定</span><span>報告（したこと）</span><span></span></div>${L.map((l, j) => `<div class="wr"><textarea data-wj="${j}" data-wk="予定" rows="1" placeholder="予定">${esc(l.予定 || "")}</textarea><textarea data-wj="${j}" data-wk="報告" rows="1" placeholder="したこと">${esc(l.報告 || "")}</textarea>${L.length > 1 ? `<button type="button" data-delw="${j}" aria-label="消す">×</button>` : "<span></span>"}</div>`).join("")}</div>
         <button type="button" class="addline" data-act="addw">＋ 作業内容を追加</button></td></tr>
       <tr><th>参加者</th><td><div class="pr2"><div><small>予定</small>${chipsBox(E, "p", "人")}</div><div><small>報告</small><label class="ck me"><input type="checkbox" id="eMe"${E.本人 !== false ? " checked" : ""}> 自分（${esc(S.me.name)}）も参加</label>${chipsBox(E, "r", "人")}</div></div></td></tr>
