@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>詳細日報</title>
-<link rel="stylesheet" href="app.css?v=20261105171522">
+<link rel="stylesheet" href="app.css?v=20261105174551">
 </head>
 <body>
 <header id="top">
@@ -24,7 +24,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 11/05 17:15</span>
+    <span id="ver" class="ver">Vr000 11/05 17:45</span>
   </span>
 </header>
 
@@ -64,7 +64,7 @@
         <button id="bPrevD" class="sub paper-arrow" aria-label="前の日報">◀</button>
         <div class="paper-controls"><span>表示</span>
           <button id="bySite" class="sub" aria-pressed="true">現場ごと</button><button id="byWriter" class="sub" aria-pressed="false">記入者ごと</button>
-          <label id="writerControl" hidden>記入者 <select id="detailWriter" aria-label="表示する記入者"></select></label>
+          <span id="writerControl" hidden><button type="button" id="detailWriter" class="sub" aria-haspopup="dialog">記入者を選ぶ</button></span>
           <span id="detailContext" role="status"></span>
         </div>
         <button id="bNextD" class="sub paper-arrow" aria-label="次の日報">▶</button>
@@ -102,15 +102,28 @@
 </main>
 
 <!-- 小窓（見出しの ⠿ で動かせる・外を押しても閉じない） -->
+<dialog id="dPeople">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>記入者を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="people-tools"><div id="peopleGroups" class="filter-choices" aria-label="人の区分"></div><label>名前で絞る <input id="peopleQuery" type="search" placeholder="入力しなくても一覧から選べます"></label><button id="peopleClear" type="button" class="sub">絞り込み解除</button></div>
+    <div id="peopleResults" class="people-results"></div>
+    <p class="note">新しい方は社員・作業員マスターへ追加してから「マスターを読み直す」を押してください。この画面で名前を新規登録することはできません。</p>
+    <p id="peopleMasterStatus" class="note" role="status"></p>
+    <div class="btns"><button id="peopleReload" type="button" class="sub">マスターを読み直す</button><span class="sp"></span><button type="button" class="sub" data-close>閉じる</button></div>
+  </div>
+</dialog>
 <dialog id="dSite">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>現場名を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody">
     <p class="note">名前・工事コードや地域・元請名で絞り込み、登録済みの現場を選んでください。</p>
     <div class="site-filters">    <label>現場名 <input id="siteQuery" type="search" placeholder="現場名・工事コード" aria-label="現場名・工事コードで絞り込み"></label>
     <select id="inSite" aria-label="選択中の現場" hidden></select>
-    <label>期 <select id="sitePeriod" aria-label="期"></select></label>
-    <label>地域 <select id="siteArea" aria-label="地域"></select></label>
-    <label>元請名 <select id="inGen" aria-label="元請名"></select></label>
+    <div hidden><select id="sitePeriod"></select><select id="siteArea"></select><select id="inGen"></select></div>
+    <div id="siteFilterButtons" class="filter-groups">
+      <fieldset><legend>期</legend><div id="periodChoices" class="filter-choices"></div></fieldset>
+      <fieldset><legend>地域</legend><div id="areaChoices" class="filter-choices"></div></fieldset>
+      <fieldset><legend>元請名</legend><div id="genChoices" class="filter-choices"></div></fieldset>
+    </div>
     <button id="clearSiteFilters" class="sub">絞り込み解除</button>
     <span id="siteCount" role="status"></span>
 </div>
@@ -231,12 +244,12 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=20261105171522"></script>
+<script src="config.js?v=20261105174551"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=20261105171522"></script>
-<script src="navigation.js?v=20261105171522"></script>
-<script src="app.js?v=20261105171522"></script>
+<script src="grid.js?v=20261105174551"></script>
+<script src="navigation.js?v=20261105174551"></script>
+<script src="app.js?v=20261105174551"></script>
 </body>
 </html>

@@ -846,7 +846,7 @@ function buildSheet() {
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v dpick" id="hDate" title="押すとカレンダーから日を選べます"></td><td class="v" id="hWd"></td>
-          <td class="l">天気</td><td class="l">気温</td><td class="l" rowspan="2">記入者</td><td rowspan="2"><span class="combo"><input id="hTan" autocomplete="off" title="記入者（▾ で一覧から選ぶか、そのまま打つ）"><button type="button" class="cbtn" id="hTanBtn" tabindex="-1" title="一覧から選ぶ">▾</button></span></td></tr>
+          <td class="l">天気</td><td class="l">気温</td><td class="l" rowspan="2">記入者</td><td rowspan="2"><span class="combo"><input id="hTan" readonly autocomplete="off" title="社員・作業員マスターの一覧から記入者を選ぶ"><button type="button" class="cbtn" id="hTanBtn" tabindex="-1" title="一覧から選ぶ">▾</button></span></td></tr>
       <tr><td class="l">現場名</td><td class="v" id="hSite" colspan="4"></td>
           <td><select id="hWx" title="天気（一覧は「現場・名簿」で直せる）"></select></td>
           <td><span class="tmp"><input id="hTmp" type="text" inputmode="decimal" autocomplete="off" title="気温（数字だけ。マイナスと小数点も可）">℃</span></td></tr>
@@ -920,31 +920,10 @@ function buildSheet() {
     });
   }
   setCur("dn");
-  // 記入者：一覧から選ぶ＋自由に打てる（2026-10-31 ユーザー）。ブラウザの候補（datalist）は自動入力が混ざる・iPad で出にくいので自前の一覧
-  const tanWords = () => { const s = site(); return [...new Set([s && s.担当者, ...(s ? Object.values(s.日).map(d => d.担当者) : []), ...MS.社員, ...(s ? s.作業員.map(x => masterName(x.名前)) : [])].filter(Boolean))]; };
-  const showTan = all => {
-    const q = nk($("hTan").value), ws = tanWords().filter(x => all || !q || nk(x).includes(q));
-    if (!ws.length) { $("tanList").hidden = true; return; }
-    $("tanList").innerHTML = ws.map(x => `<div data-v="${esc(x)}">${esc(x)}</div>`).join("");
-    const r = $("hTan").closest("td").getBoundingClientRect();
-    Object.assign($("tanList").style, { left: r.left + "px", top: r.bottom + "px", minWidth: r.width + "px" });
-    $("tanList").hidden = false;
-  };
-  $("hTanBtn").addEventListener("pointerdown", e => { e.preventDefault(); if ($("tanList").hidden) { showTan(true); $("hTan").focus(); } else $("tanList").hidden = true; });
-  $("hTan").addEventListener("input", () => showTan(false));
-  $("hTan").addEventListener("keydown", e => {
-    if (e.isComposing) return;
-    if (e.key === "ArrowDown" && (e.altKey || $("tanList").hidden)) { e.preventDefault(); showTan(true); }
-    else if (e.key === "Escape") $("tanList").hidden = true;
-    else if (e.key === "Enter") { $("tanList").hidden = true; $("hTan").blur(); }
-  });
-  $("hTan").addEventListener("blur", () => setTimeout(() => { $("tanList").hidden = true; }, 150));
-  $("tanList").addEventListener("pointerdown", e => {
-    const d = e.target.closest("[data-v]"); if (!d) return;
-    e.preventDefault(); $("hTan").value = d.dataset.v; $("tanList").hidden = true;
-    $("hTan").dispatchEvent(new Event("change"));
-  });
-  $("sheetWrap").addEventListener("scroll", () => { $("tanList").hidden = true; });
+  // 記入者は共通の社員・作業員マスターから、クリックして選ぶ。
+  $("hTan").onclick = () => detailOpenPeople("entry");
+  $("hTanBtn").onclick = () => detailOpenPeople("entry");
+  $("hTan").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenPeople("entry"); } };
   // 気温は数字だけ：打つたびに数字・小数点・マイナス以外を外す（日本語入力中は確定してから）
   const tmpOnly = v => { v = han(v).replace(/[ー−‐―]/g, "-").replace(/[^\d.\-]/g, ""); return v.replace(/(?!^)-/g, "").replace(/(\..*)\./g, "$1"); };
   let tmpIme = false;

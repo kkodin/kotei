@@ -381,3 +381,32 @@ form.nofill { display: contents; }
   .site-filters { gap: 8px; }
 }
 @media print { .paper-nav, .detail-empty, .sheet-actions, #dSite { display: none !important; } }
+
+/* マウスで選ぶ現場・社員・作業員の一覧 */
+#dSite, #dPeople { width: min(1060px, calc(100vw - 24px)); }
+.filter-groups { flex-basis: 100%; display: grid; gap: 8px; }
+.filter-groups fieldset { margin: 0; padding: 6px 8px 8px; border: 1px solid #d6e0e8; border-radius: 5px; }
+.filter-groups legend { padding: 0 5px; font-size: 12px; color: #526779; }
+.filter-choices { display: flex; flex-wrap: wrap; gap: 5px; max-height: 100px; overflow: auto; }
+.filter-choices button { min-height: 32px; padding: 4px 12px; }
+.filter-choices button[aria-pressed="true"] { color: white; background: var(--head); }
+.site-results { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 42vh; }
+.site-choice { min-height: 80px; align-content: start; }
+.people-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.people-tools label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.people-results { max-height: 54vh; overflow: auto; }
+.people-results h4 { margin: 12px 0 8px; color: var(--head); }
+.people-results h4 small { font-weight: normal; color: #666; }
+.people-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.person-choice { min-height: 64px; padding: 12px; text-align: left; background: white; color: var(--head); border-color: #cbd7e2; display: grid; align-content: center; gap: 5px; }
+.person-choice b { font-size: 16px; }
+.person-choice small { color: #697784; font-size: 11px; }
+.person-choice:hover, .person-choice:focus-visible, .person-choice[aria-pressed="true"] { background: #eaf3fc; border-color: var(--head); box-shadow: inset 0 0 0 1px var(--head); }
+#hTan[readonly] { cursor: pointer; }
+@media (max-width: 760px) {
+  .site-results { grid-template-columns: 1fr; max-height: 38vh; }
+  .people-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-choices { max-height: 90px; }
+  .people-results { max-height: 45vh; }
+}
+@media print { #dPeople { display: none !important; } }
