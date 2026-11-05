@@ -350,3 +350,24 @@ table.imt textarea.imv { resize: vertical; }
 
 /* 自動入力を出さないための form（noAutofill）。箱を作らない */
 form.nofill { display: contents; }
+
+/* 現場を選ぶ入口・記入者別表示 */
+#siteQuery { width: 180px; }
+#inSite { max-width: 340px; }
+.detail-view label, header .grp label { display: inline-flex; align-items: center; gap: 4px; }
+.detail-view button[aria-pressed="true"] { background: var(--head); color: white; }
+#detailContext { font-size: 12px; }
+.writer-reports { flex: none; max-height: 34vh; overflow: auto; padding: 6px 10px; border-bottom: 1px solid #ccc; }
+.detail-list { width: 100%; border-collapse: collapse; font-size: 13px; }
+.detail-list th, .detail-list td { text-align: left; padding: 6px; border: 1px solid #ddd; }
+.detail-list th { position: sticky; top: 0; background: #eef3f8; }
+.detail-list td:first-child, .detail-list td:last-child { white-space: nowrap; }
+.detail-list .selected { background: #e7f3e9; }
+@media (max-width: 760px) {
+  #siteQuery { width: 145px; }
+  #inSite { max-width: 250px; }
+  header .grp label, .detail-view label { font-size: 12px; }
+  .writer-reports { max-height: 30vh; }
+  .detail-list { min-width: 600px; }
+}
+@media print { .detail-view, .writer-reports { display: none !important; } }

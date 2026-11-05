@@ -113,7 +113,7 @@ function save() {
 }
 // 日を消す（ほかの端末にも消したことが伝わるように時刻を残す）
 function dropDay(s, d) { delete s.日[d]; s.消した日[d] = now(); }
-function saveUI() { try { localStorage.setItem(UIKEY, JSON.stringify(UI)); } catch (e) {} }
+function saveUI() { if (site()) UI.lastSite = UI.site; try { localStorage.setItem(UIKEY, JSON.stringify(UI)); } catch (e) {} }
 
 const site = () => DB.現場.find(s => s.id === UI.site) || null;
 const gen = () => DB.元請.find(g => g.id === UI.gen) || null;
@@ -960,7 +960,7 @@ function buildSheet() {
     $(id).value = v; d[f] = v; d.更新 = now();
     if (f === "担当者" && v) s.担当者 = v;
     if (!hasData(d)) dropDay(s, UI.day);
-    save(); renderTabs();
+    save(); renderTabs(); detailRenderBrowse();
   });
   $("hDate").addEventListener("click", openCal);
   $("hForm").addEventListener("change", () => {
@@ -975,8 +975,9 @@ function buildSheet() {
   hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim()));
 }
 function refreshSheet() {
+  detailRenderBrowse();
   const s = site(), d = day();
-  $("hGen").textContent = gen() ? gen().名前 : "（元請業者を選ぶ）";
+  $("hGen").textContent = gen() ? gen().名前 : "（現場名から選んでください）";
   $("hSite").textContent = s ? s.名前 : signedIn() ? "（現場を選ぶ）" : "（右上の「サインイン」をすると現場が出ます）";
   $("hDate").textContent = jpDate(UI.day);
   { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s); $("hForm").innerHTML = (v ? "" : `<option value="" selected>選んでください</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = !s; const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !!s && !v); }
@@ -1880,19 +1881,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) sync
 
 /* ================= 上の選ぶ欄（元請 → 現場） ================= */
 const siteLabel = s => (s.略称 ? s.略称 + (s.コード ? "（" + s.コード + "）" : "") : s.名前) + (s.形態 === "請負" ? "［請負］" : "");
-function renderPickers() {
-  // 現場のある元請だけ・名前の順。現場はコードの新しい順（日報のある現場が先）
-  const has = new Set(DB.現場.map(s => s.元請id));
-  const gs = DB.元請.filter(g => has.has(g.id)).sort((a, b) => nk(a.名前).localeCompare(nk(b.名前), "ja"));
-  if (!gen() && gs.length) UI.gen = (DB.現場.find(s => Object.keys(s.日).length) || {}).元請id || gs[0].id;
-  $("inGen").innerHTML = gs.length ? gs.map(g => `<option value="${g.id}"${g.id === UI.gen ? " selected" : ""}>${esc(g.名前)}</option>`).join("") : `<option value="">${signedIn() ? "（元請業者なし）" : "（サインインすると出ます）"}</option>`;
-  const nDays = s => Object.keys(s.日).length;
-  const ss = DB.現場.filter(s => s.元請id === UI.gen).sort((a, b) => (!!a.完了 - !!b.完了) || (nDays(b) > 0) - (nDays(a) > 0) || String(b.コード || "").localeCompare(String(a.コード || "")));
-  if (!ss.some(s => s.id === UI.site)) UI.site = ss.length ? ss[0].id : null;
-  $("inSite").innerHTML = ss.length ? ss.map(s => `<option value="${s.id}"${s.id === UI.site ? " selected" : ""} title="${esc(s.名前)}${s.工期開始 || s.工期終了 ? "　工期 " + esc((s.工期開始 || "") + "〜" + (s.工期終了 || "")) : ""}">${esc(siteLabel(s))}${s.完了 ? "（完了）" : ""}</option>`).join("") : `<option value="">${signedIn() ? "（現場なし）" : "（サインインすると出ます）"}</option>`;
-  saveUI();
-}
-$("inGen").onchange = () => { askEmptyPages(); UI.pg = 0; UI.gen = $("inGen").value; UI.site = null; UNDO = []; REDO = []; renderAll(); askForm(); };
+function renderPickers() { detailRenderPickers(); }
+$("inGen").onchange = () => detailFilterChange("gen", $("inGen").value);
 $("dForm").addEventListener("cancel", e => e.preventDefault());   // 区分を選ぶまで Esc で閉じない
 function priceRemind() {
   const s = site(); if (!s || !Object.keys(s.日).length) return;
@@ -1901,7 +1891,7 @@ function priceRemind() {
   UI.pr[k] = 1; saveUI();
   toast((s.単価 || []).length ? "この現場の単価はたたき台のまま（見直し前）です。現場・名簿 → 単価マスタで見直してください" : "この現場の単価がまだありません。現場・名簿 → 単価マスタで たたき台 を写して見直してください", 6000);
 }
-$("inSite").onchange = () => { askEmptyPages(); UI.pg = 0; UI.site = $("inSite").value; UNDO = []; REDO = []; renderAll(); priceRemind(); askForm(); };
+$("inSite").onchange = () => detailSelectSite($("inSite").value);
 /* ---------- 期間を選ぶ（2026-10-31 ユーザー：始まり・終わりの二つのカレンダー。終わりは始まりより前にできない） ---------- */
 let RG = null;   // { a, b, ya, yb, done }
 const fmtD = d => d ? `${d.slice(0, 4)}/${+d.slice(5, 7)}/${+d.slice(8)}（${WD[wd(d)]}）` : "";
@@ -3313,11 +3303,12 @@ function fromNippou(retry) {
 UI.day ||= ymd(new Date());
 if (kouFix()) setTimeout(save, 0);   // 工種の別名・自社名・会社の空欄を日報に当てる（開いたとき）
 buildSheet();
-showTab(DB.現場.length ? (UI.tab || "sheet") : "master");
+detailInit();
+showTab("sheet");
 syncMasterSites();
 renderAll();
 showMe(); setRO(null);
 startAuth();
 if (!ME.名前) askName();
 fromNippou();
-if (!DB.現場.length) toast("「サインイン」すると現場一覧・名簿を読みます。元の作業日報の Excel は「取込」で読めます");
+if (!DB.現場.length) toast("「サインイン」で現場一覧を読み、現場名から選んでください。Excel は「取込」で読めます");

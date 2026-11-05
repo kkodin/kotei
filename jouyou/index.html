@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>詳細日報</title>
-<link rel="stylesheet" href="app.css?v=202611031037">
+<link rel="stylesheet" href="app.css?v=20261105164941">
 </head>
 <body>
 <header id="top">
@@ -15,8 +15,13 @@
     <button data-tab="master" title="元請・現場・作業員名簿・職種・機材">現場・名簿</button>
   </nav>
   <span class="grp">
-    <select id="inGen" title="元請業者"></select>
-    <select id="inSite" title="現場（元請業者ごと）"></select>
+    <label>現場名 <input id="siteQuery" type="search" placeholder="現場名・工事コード" aria-label="現場名・工事コードで絞り込み"></label>
+    <select id="inSite" aria-label="現場名"></select>
+    <label>期 <select id="sitePeriod" aria-label="期"></select></label>
+    <label>地域 <select id="siteArea" aria-label="地域"></select></label>
+    <label>元請名 <select id="inGen" aria-label="元請名"></select></label>
+    <button id="clearSiteFilters" class="sub">絞り込み解除</button>
+    <span id="siteCount" role="status"></span>
     <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
     <button id="inDay" class="sub daybtn" title="押すとカレンダー（記入済みの日に印）から日を選べます"></button>
     <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
@@ -32,13 +37,20 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 11/03 10:37</span>
+    <span id="ver" class="ver">Vr000 11/05 16:49</span>
   </span>
 </header>
 
 <main id="app">
   <!-- 日報 -->
   <section id="pSheet">
+    <div class="ribbon detail-view">
+      <span>表示</span><button id="bySite" class="sub" aria-pressed="true">現場別</button><button id="byWriter" class="sub" aria-pressed="false">記入者別</button>
+      <label id="writerControl" hidden>記入者 <select id="detailWriter" aria-label="記入者"></select></label>
+      <label id="monthControl" hidden>月 <input id="detailMonth" type="month" aria-label="記入月"></label>
+      <span id="detailContext" role="status"></span>
+    </div>
+    <div id="writerReports" class="writer-reports" hidden></div>
     <div class="ribbon">
       <button id="bCopyPrev" class="sub" title="カレンダーで日報の入っている日を選び、中身を見てからこの日に写す">選択した日からコピー</button>
       <button id="bImport" class="sub" title="配置表（確定があれば確定、なければ予定）の作業内容・作業員と、クロジカの CSV の内容（完了報告）を、一覧で選んでからこの日に入れる">配置表・クロジカから取り込む…</button>
@@ -209,11 +221,12 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=202611031037"></script>
+<script src="config.js?v=20261105164941"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202611031037"></script>
-<script src="app.js?v=202611031037"></script>
+<script src="grid.js?v=20261105164941"></script>
+<script src="navigation.js?v=20261105164941"></script>
+<script src="app.js?v=20261105164941"></script>
 </body>
 </html>
