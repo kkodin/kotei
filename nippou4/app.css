@@ -363,3 +363,17 @@ table.dift td.dact button { min-height: 32px; padding: 2px 8px; margin: 0 4px 4p
 .polall { font-size: calc(13px * var(--fs)); margin: 6px 0; }
 table.list.pol td { vertical-align: middle; } table.list.pol select, .polall select { font-size: calc(14px * var(--fs)); padding: 4px 6px; }
 table.list.askt td { font-size: calc(13px * var(--fs)); } table.list.askt .ch3 { white-space: nowrap; } table.list.askt .ck { display: block; }
+
+.rc-table .rc-option { display: flex; gap: 6px; align-items: start; padding: 8px; border: 1px solid #d8e0e8; border-radius: 5px; min-height: 60px; cursor: pointer; }
+.rc-table .rc-option:has(input:checked) { background: #e8f3ff; border-color: #367ab0; }
+.rc-table .different { background: #fff5e5; }
+.rc-table input[type=radio], .rc-table input[type=checkbox] { min-width: 20px; min-height: 20px; }
+.rc-common { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 0; }
+.rc-admin { margin: 16px 0; color: #617182; font-size: 12px; }
+.rc-admin summary { cursor: pointer; }
+dialog.reconcile { width: min(1200px, 96vw); }
+.rc-table { min-width: 1000px; }
+.rc-table th { white-space: nowrap; }
+.rc-table td:nth-child(2) { min-width: 115px; }
+.rc-table .rc-option span { min-width: 105px; }
+@media (max-width:759px) { dialog.reconcile { width: 100vw; } }

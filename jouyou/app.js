@@ -876,7 +876,7 @@ function buildSheet() {
     grids[key] = createGrid({
       host: $("g_" + key), scroller: $("sheetWrap"), cols, headRows: 1, tabBlocks: key === "dn" /* 作業員・使用機材・材料名のまとまりごとに Tab で折り返す */, rowBase: 1, rowHeadW: 0, noLetters: true,   // 左端の番号の列は出さない（2026-10-31 ユーザー）
      
-      formula: $("fx"), isCur: () => cur === key, onFocus: () => setCur(key),
+      formula: null, isCur: () => cur === key, onFocus: () => setCur(key),
       rows: () => PG[key],   // 1ページの行数。足りなければページを足す
       head: () => `<tr class="xlhr sh"><th class="xlrh"></th>${cols.map((c, i) => `<th data-col="${i}" class="${(c.cls || "").includes("sepL") ? "sepL" : ""}">${esc(c.t)}</th>`).join("")}</tr>`,
       get: (r, c) => getCell(key, r + pgOff(key), di(key, c)),
@@ -911,11 +911,8 @@ function buildSheet() {
       cellName: (r, c) => ({ up: "上", dn: "下", gai: "外注", car: "高速・燃料" })[key] + (r + 1) + "・" + cols[c].t,
       onSelect: (name, val, stat) => {
         if (cur !== key) return;
-        $("nameBox").value = name;
-        if (document.activeElement !== $("fx")) $("fx").value = val ?? grids[key]?.editText() ?? "";
         $("stat").textContent = stat || "";
       },
-      onEditText: t => { if (document.activeElement !== $("fx")) $("fx").value = t; },
       onMode: m => { $("mode").textContent = m === "edit" ? "編集" : m ? "入力" : "準備完了"; }
     });
   }
@@ -1076,11 +1073,7 @@ $("fRes").addEventListener("click", e => {
 
 /* ---------- ボタン ---------- */
 // 選択した日からコピー（2026-10-31 ユーザー：カレンダーで日報の入っている日を選び、中身を見せてからコピーしてよいか聞く）
-$("bCopyPrev").onclick = () => {
-  const s = site(); if (!s || !canEdit()) return;
-  if (!Object.keys(s.日).some(x => x !== UI.day && hasData(s.日[x]))) { toast("ほかに日報の入っている日がありません"); return; }
-  openCal("copy");
-};
+$("bCopyPrev").onclick = () => dayCopyOpen();
 // 写すもの：作業予定（完了報告は写さない）・作業員と使用機材・材料の行・ページの数。天気・気温・記入者・高速・燃料は写さない
 function copyPreview(x) {
   const s = site(), p = s.日[x], cur = day(), T = (t, rows) => rows.length ? `<h4 class="mh">${t}</h4><table class="sm cpv">${rows.join("")}</table>` : "";
@@ -1920,8 +1913,12 @@ let calYM = "";
 // mode "copy"：写す日を選ぶ（日報が入っている日だけ選べる）
 let calMode = "", calSel = new Set();   // mode "del"：消す日を選ぶ（いくつでも）
 function openCal(mode) {
+  detailCommit();
+  if (mode === "copy") { dayCopyOpen(); return; }
   calMode = mode === "copy" || mode === "del" ? mode : ""; calSel = new Set();
   $("calDelBar").hidden = calMode !== "del";
+  $("calDeleteMode").hidden = $("calCopyMode").hidden = calMode === "del";
+  $("calNormalMode").hidden = calMode !== "del";
   calYM = UI.day.slice(0, 7);
   $("calH").textContent = calMode === "copy" ? "コピーする日を選ぶ（● の日）" : calMode === "del" ? "消す日を選ぶ（押すたびに選ぶ／外す）" : "日を選ぶ";
   $("calBtns").hidden = !!calMode;
@@ -1939,8 +1936,8 @@ function renderCal() {
     const k = `${y}-${pad(m)}-${pad(d)}`, w = wd(k), dd = s && s.日[k], has = hasData(dd);
     if (has) cnt++;
     const ppl = has ? rowsOf(dd).filter(r => r && r[0]).length : 0;
-    h.push(`<button type="button" data-d="${k}" class="${w === 0 ? "sun " : w === 6 ? "sat " : ""}${has ? "has " : ""}${k === UI.day ? "on " : ""}${k === today ? "today " : ""}${k >= pa && k <= pb ? "inper" : ""}" title="${jpDate(k)}${has ? "　記入済み" + (ppl ? " " + ppl + "名" : "") + (dd.サイン ? "・サインあり" : "") : ""}">` +
-      `<span class="dn">${d}</span>${has ? `<span class="mk">${dd.サイン ? "✍" : "●"}</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : ""}</button>`);
+    h.push(`<button type="button" data-d="${k}" class="${w === 0 ? "sun " : w === 6 ? "sat " : ""}${has ? "has " : ""}${k === UI.day ? "on " : ""}${k === today ? "today " : ""}${k >= pa && k <= pb ? "inper" : ""}" title="${jpDate(k)}${has ? "　記入済み" + (ppl ? " " + ppl + "名" : "") + "" : ""}">` +
+      `<span class="dn">${d}</span>${has ? `<span class="mk">●</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : ""}</button>`);
   }
   $("calGrid").innerHTML = h.join("");
   if (calMode === "del") { calSel.forEach(k => { const b = $("calGrid").querySelector(`[data-d="${k}"]`); if (b) b.classList.add("delsel"); }); $("calDelN").textContent = calSel.size ? `${calSel.size} 日を選んでいます：${[...calSel].sort().map(k => +k.slice(5, 7) + "/" + +k.slice(8)).join("・")}` : "日報の入っている日（●）を押して選んでください"; }

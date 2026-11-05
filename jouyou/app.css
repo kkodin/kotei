@@ -410,3 +410,11 @@ form.nofill { display: contents; }
   .people-results { max-height: 45vh; }
 }
 @media print { #dPeople { display: none !important; } }
+
+#dDayCopy { width: min(960px, calc(100vw - 24px)); }
+.copy-calendars { display: flex; gap: 20px; align-items: center; overflow-x: auto; padding-bottom: 8px; }
+.copy-calendars section { flex: 0 0 388px; }
+.copy-calendars h4 { text-align: center; margin: 5px 0 12px; color: var(--head); }
+.copy-direction { font-size: 28px; color: var(--head); }
+.cal-actions { margin-bottom: 12px; }
+@media print { #dDayCopy { display: none !important; } }

@@ -170,6 +170,7 @@ function detailOpenSites() {
   setTimeout(() => $("siteQuery").focus(), 0);
 }
 function detailInit() {
+  dayToolsInit();
   UI.site = UI.lastSite || UI.site;
   $("siteQuery").oninput = () => detailFilterChange("query", $("siteQuery").value);
   $("sitePeriod").onchange = () => detailFilterChange("period", $("sitePeriod").value);
