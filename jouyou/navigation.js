@@ -34,6 +34,10 @@ function detailRenderPickers() {
     ss.map(s => `<option value="${esc(s.id)}"${s.id === UI.site ? " selected" : ""}>${esc(siteLabel(s))}${s.完了 ? "（完了）" : ""}</option>`).join("");
   if (!chosen) $("inSite").value = "";
   $("siteCount").textContent = ss.length + "件" + (!ss.length ? "（条件に合う現場はありません）" : "");
+  $("siteResults").innerHTML = ss.length ? ss.map(s => {
+    const m = detailMeta(s), g = DB.元請.find(x => x.id === s.元請id);
+    return `<button type="button" class="site-choice${s.id === UI.site ? " selected" : ""}" data-select-site="${esc(s.id)}"><b>${esc(s.略称 || s.名前)}</b><span>${esc(s.名前)}</span><small>${esc([s.コード, m.period ? m.period + "期" : "", m.area, g && g.名前].filter(Boolean).join(" ／ "))}</small></button>`;
+  }).join("") : '<p>条件に合う現場はありません。絞り込み条件を変えてください。</p>';
   saveUI(); detailRenderBrowse();
 }
 function detailFilterChange(key, value) {
@@ -52,32 +56,70 @@ function detailSelectSite(id, date) {
   saveUI(); renderAll(); priceRemind(); askForm();
 }
 function detailReports() {
-  const month = UI.detailMonth || UI.day.slice(0, 7), out = [];
-  for (const s of detailSites()) for (const [date, d] of Object.entries(s.日)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !date.startsWith(month + "-") || !hasData(d)) continue;
-    // 現場の既定担当者を代用しない。記入者のない過去の日は「未記入」に分ける。
+  const out = [];
+  for (const s of DB.現場) for (const [date, d] of Object.entries(s.日)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !hasData(d)) continue;
     out.push({ s, date, d, writer: String(d.担当者 || "").trim() || "（記入者未記入）" });
   }
-  return out.sort((a, b) => b.date.localeCompare(a.date) || siteLabel(a.s).localeCompare(siteLabel(b.s), "ja"));
+  return out.sort((a, b) => a.date.localeCompare(b.date) || siteLabel(a.s).localeCompare(siteLabel(b.s), "ja", { numeric: true }));
+}
+function detailSequence() {
+  return detailReports().filter(r => UI.detailView === "writer" ? !!UI.detailWriter && nk(r.writer) === nk(UI.detailWriter) : r.s.id === UI.site);
+}
+function detailAdjacent(n) {
+  const rows = detailSequence(), i = rows.findIndex(r => r.s.id === UI.site && r.date === UI.day);
+  if (i >= 0) return rows[i + n] || null;
+  return n > 0 ? rows.find(r => r.date >= UI.day) || null : rows.slice().reverse().find(r => r.date <= UI.day) || null;
+}
+function detailStep(n) {
+  detailCommit();
+  const r = detailAdjacent(n);
+  if (!r) { toast(n > 0 ? "次の日報はありません" : "前の日報はありません"); return; }
+  detailSelectSite(r.s.id, r.date);
+}
+function detailWriterNames() {
+  const names = new Map();
+  detailReports().forEach(r => { if (!names.has(nk(r.writer))) names.set(nk(r.writer), r.writer); });
+  return [...names.values()];
+}
+function detailSetMode(mode) {
+  detailCommit(); UI.detailView = mode;
+  if (mode === "writer") {
+    const names = detailWriterNames(), current = day() && String(day().担当者 || "").trim();
+    if (!UI.detailWriter) UI.detailWriter = names.find(n => nk(n) === nk(current || ME.名前)) || names[0] || "";
+    const rows = detailSequence(), r = rows.find(x => x.s.id === UI.site && x.date === UI.day) || rows.find(x => x.date >= UI.day) || rows[rows.length - 1];
+    if (r) { detailSelectSite(r.s.id, r.date); return; }
+  } else if (!site() && UI.lastSite) { detailSelectSite(UI.lastSite); return; }
+  saveUI(); refreshSheet();
+}
+function detailWriterDate(date) {
+  const r = detailSequence().find(x => x.date === date && x.s.id === UI.site) || detailSequence().find(x => x.date === date);
+  detailSelectSite(r ? r.s.id : "", date);
 }
 function detailRenderBrowse() {
-  if (!$("writerReports")) return;
+  if (!$("paperNav")) return;
   const byWriter = UI.detailView === "writer";
   $("bySite").setAttribute("aria-pressed", String(!byWriter));
   $("byWriter").setAttribute("aria-pressed", String(byWriter));
-  $("writerControl").hidden = $("monthControl").hidden = $("writerReports").hidden = !byWriter;
-  $("detailContext").textContent = site() ? "選択中：" + siteLabel(site()) : "現場名を選ぶと、この日の日報を開きます";
-  if (!byWriter) return;
-  $("detailMonth").value = UI.detailMonth || UI.day.slice(0, 7);
-  const reports = detailReports(), names = new Map();
-  reports.forEach(r => { if (!names.has(nk(r.writer))) names.set(nk(r.writer), r.writer); });
-  detailOptions("detailWriter", [...names.values()], UI.detailWriter, "全員");
-  const shown = reports.filter(r => !UI.detailWriter || nk(r.writer) === nk(UI.detailWriter));
-  $("writerReports").innerHTML = `<p class="note">${shown.length}件。日報を開くと、下の入力欄で内容を確認・編集できます。</p>` +
-    (shown.length ? `<table class="detail-list"><thead><tr><th>日付</th><th>記入者</th><th>現場名</th><th>作業予定・完了報告</th><th></th></tr></thead><tbody>${shown.map(r => {
-      const work = (r.d.上 || []).map(row => row && [row[1], row[4]].filter(Boolean).join(" → ")).filter(Boolean).join(" ／ ");
-      return `<tr${r.s.id === UI.site && r.date === UI.day ? ' class="selected"' : ""}><td>${esc(r.date)}</td><td>${esc(r.writer)}</td><td>${esc(siteLabel(r.s))}</td><td>${esc(work)}</td><td><button type="button" class="sub" data-report-site="${esc(r.s.id)}" data-report-day="${r.date}">日報を開く</button></td></tr>`;
-    }).join("")}</tbody></table>` : '<p>この月・絞り込み条件に合う日報はありません。</p>');
+  $("writerControl").hidden = !byWriter;
+  detailOptions("detailWriter", detailWriterNames(), UI.detailWriter, "記入者を選ぶ");
+  const rows = detailSequence(), i = rows.findIndex(r => r.s.id === UI.site && r.date === UI.day);
+  const mismatch = byWriter && i < 0;
+  $("sheet").hidden = mismatch;
+  document.querySelector(".sheet-actions").hidden = mismatch;
+  const fxbar = document.querySelector("#pSheet .fbar"); if (fxbar) fxbar.hidden = mismatch;
+  $("detailEmpty").hidden = !mismatch;
+  $("detailEmptyText").textContent = UI.detailWriter ? UI.day + " の「" + UI.detailWriter + "」の日報はありません。矢印で前後の日報を開くか、現場名から選んでください。" : "記入者を選んでください。日報の記入者欄が空のものは「記入者未記入」で確認できます。";
+  $("detailContext").textContent = (byWriter ? "記入者の日報" : "この現場の日報") + (rows.length ? ` ${i >= 0 ? i + 1 : "—"} / ${rows.length}件` : " 0件");
+  for (const [id, n] of [["bPrevD", -1], ["bNextD", 1]]) {
+    const r = detailAdjacent(n), el = $(id);
+    el.disabled = !r;
+    el.title = r ? `${n < 0 ? "前" : "次"}の日報：${r.date} ${siteLabel(r.s)}（${r.writer}）` : `${n < 0 ? "前" : "次"}の日報はありません`;
+  }
+}
+function detailOpenSites() {
+  detailCommit(); detailRenderPickers(); openDlg($("dSite"));
+  setTimeout(() => $("siteQuery").focus(), 0);
 }
 function detailInit() {
   UI.site = UI.lastSite || UI.site;
@@ -85,12 +127,21 @@ function detailInit() {
   $("sitePeriod").onchange = () => detailFilterChange("period", $("sitePeriod").value);
   $("siteArea").onchange = () => detailFilterChange("area", $("siteArea").value);
   $("clearSiteFilters").onclick = () => { UI.siteFilters = {}; saveUI(); renderPickers(); };
-  $("bySite").onclick = () => { UI.detailView = "site"; saveUI(); detailRenderBrowse(); };
-  $("byWriter").onclick = () => { UI.detailView = "writer"; saveUI(); detailRenderBrowse(); };
-  $("detailWriter").onchange = () => { UI.detailWriter = $("detailWriter").value; saveUI(); detailRenderBrowse(); };
-  $("detailMonth").onchange = () => { if (!/^\d{4}-\d{2}$/.test($("detailMonth").value)) return; UI.detailMonth = $("detailMonth").value; saveUI(); detailRenderBrowse(); };
-  $("writerReports").onclick = e => {
-    const b = e.target.closest("[data-report-site]");
-    if (b) detailSelectSite(b.dataset.reportSite, b.dataset.reportDay);
+  $("bySite").onclick = () => detailSetMode("site");
+  $("byWriter").onclick = () => detailSetMode("writer");
+  $("detailWriter").onchange = () => { UI.detailWriter = $("detailWriter").value; detailSetMode("writer"); };
+  for (const id of ["hGen", "hSite"]) for (const el of [$(id), $(id).previousElementSibling]) {
+    el.classList.add("site-trigger"); el.tabIndex = 0; el.setAttribute("role", "button"); el.title = "現場名を選ぶ";
+    el.onclick = detailOpenSites;
+    el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenSites(); } };
+  }
+  $("detailChooseSite").onclick = detailOpenSites;
+  $("hDate").tabIndex = 0; $("hDate").setAttribute("role", "button");
+  $("hDate").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCal(); } };
+  $("bPrevD").onclick = () => detailStep(-1); $("bNextD").onclick = () => detailStep(1);
+  $("siteResults").onclick = e => {
+    const b = e.target.closest("[data-select-site]"); if (!b) return;
+    UI.detailView = "site"; closeDlg($("dSite")); detailSelectSite(b.dataset.selectSite);
   };
+  if (!site()) setTimeout(detailOpenSites, 0);
 }

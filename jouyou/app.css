@@ -351,23 +351,33 @@ table.imt textarea.imv { resize: vertical; }
 /* 自動入力を出さないための form（noAutofill）。箱を作らない */
 form.nofill { display: contents; }
 
-/* 現場を選ぶ入口・記入者別表示 */
-#siteQuery { width: 180px; }
-#inSite { max-width: 340px; }
-.detail-view label, header .grp label { display: inline-flex; align-items: center; gap: 4px; }
-.detail-view button[aria-pressed="true"] { background: var(--head); color: white; }
-#detailContext { font-size: 12px; }
-.writer-reports { flex: none; max-height: 34vh; overflow: auto; padding: 6px 10px; border-bottom: 1px solid #ccc; }
-.detail-list { width: 100%; border-collapse: collapse; font-size: 13px; }
-.detail-list th, .detail-list td { text-align: left; padding: 6px; border: 1px solid #ddd; }
-.detail-list th { position: sticky; top: 0; background: #eef3f8; }
-.detail-list td:first-child, .detail-list td:last-child { white-space: nowrap; }
-.detail-list .selected { background: #e7f3e9; }
+/* 日報内で現場を選ぶ・余白で表示切替と前後移動 */
+.site-trigger { cursor: pointer; }
+.site-trigger:hover, .site-trigger:focus-visible { background: #eef5fc; outline: 2px solid #367ab0; outline-offset: -2px; }
+#dSite { width: min(820px, calc(100vw - 24px)); }
+.site-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 12px; }
+.site-filters label { display: inline-flex; align-items: center; gap: 6px; }
+#siteQuery { width: min(300px, 65vw); }
+.site-results { max-height: 52vh; overflow: auto; display: grid; gap: 6px; }
+.site-choice { width: 100%; padding: 10px 12px; background: #fff; color: #222; text-align: left; display: grid; gap: 3px; border-color: #ccd6df; }
+.site-choice b { color: var(--head); font-size: 15px; }
+.site-choice span, .site-choice small { font-size: 12px; color: #555; }
+.site-choice:hover, .site-choice:focus-visible, .site-choice.selected { background: #eaf3fc; border-color: var(--head); }
+.paper-nav { position: sticky; top: 0; left: 0; z-index: 4; display: flex; gap: 12px; align-items: center; justify-content: space-between; width: min(1226px, 100%); margin: 0 auto; padding: 8px 10px; background: #e9ebee; }
+.paper-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; align-items: center; font-size: 13px; }
+.paper-controls label { display: inline-flex; gap: 5px; align-items: center; }
+.paper-controls button[aria-pressed="true"] { color: white; background: var(--head); }
+.paper-arrow { flex: none; width: 40px; min-height: 38px; font-size: 18px; }
+#detailContext { flex-basis: 100%; text-align: center; font-size: 12px; color: #536270; }
+.detail-empty { margin: 24px; padding: 20px; background: white; text-align: center; }
+.sheet-actions { flex: none; background: #f8f9fa; border-bottom: 1px solid #ddd; }
+.sheet-actions > summary { cursor: pointer; padding: 5px 12px; color: var(--head); font-size: 12px; }
 @media (max-width: 760px) {
-  #siteQuery { width: 145px; }
-  #inSite { max-width: 250px; }
-  header .grp label, .detail-view label { font-size: 12px; }
-  .writer-reports { max-height: 30vh; }
-  .detail-list { min-width: 600px; }
+  .paper-nav { gap: 5px; padding: 5px; }
+  .paper-controls { gap: 4px; }
+  .paper-controls select { max-width: 170px; }
+  .paper-controls label { flex-basis: 100%; justify-content: center; }
+  .paper-arrow { width: 34px; }
+  .site-filters { gap: 8px; }
 }
-@media print { .detail-view, .writer-reports { display: none !important; } }
+@media print { .paper-nav, .detail-empty, .sheet-actions, #dSite { display: none !important; } }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>詳細日報</title>
-<link rel="stylesheet" href="app.css?v=20261105164941">
+<link rel="stylesheet" href="app.css?v=20261105171522">
 </head>
 <body>
 <header id="top">
@@ -14,19 +14,6 @@
     <button data-tab="sum" title="締め期間の集計（日別・作業員別・機材別）">集計</button>
     <button data-tab="master" title="元請・現場・作業員名簿・職種・機材">現場・名簿</button>
   </nav>
-  <span class="grp">
-    <label>現場名 <input id="siteQuery" type="search" placeholder="現場名・工事コード" aria-label="現場名・工事コードで絞り込み"></label>
-    <select id="inSite" aria-label="現場名"></select>
-    <label>期 <select id="sitePeriod" aria-label="期"></select></label>
-    <label>地域 <select id="siteArea" aria-label="地域"></select></label>
-    <label>元請名 <select id="inGen" aria-label="元請名"></select></label>
-    <button id="clearSiteFilters" class="sub">絞り込み解除</button>
-    <span id="siteCount" role="status"></span>
-    <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
-    <button id="inDay" class="sub daybtn" title="押すとカレンダー（記入済みの日に印）から日を選べます"></button>
-    <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
-    <button id="bToday" class="sub">今日</button>
-  </span>
   <span class="grp right">
     <span id="sync" class="sync"></span>
     <span id="mstat" class="mstat" title="マスタ（現場一覧・名簿・自社機械）を読んだ時刻"></span>
@@ -37,20 +24,14 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 11/05 16:49</span>
+    <span id="ver" class="ver">Vr000 11/05 17:15</span>
   </span>
 </header>
 
 <main id="app">
   <!-- 日報 -->
   <section id="pSheet">
-    <div class="ribbon detail-view">
-      <span>表示</span><button id="bySite" class="sub" aria-pressed="true">現場別</button><button id="byWriter" class="sub" aria-pressed="false">記入者別</button>
-      <label id="writerControl" hidden>記入者 <select id="detailWriter" aria-label="記入者"></select></label>
-      <label id="monthControl" hidden>月 <input id="detailMonth" type="month" aria-label="記入月"></label>
-      <span id="detailContext" role="status"></span>
-    </div>
-    <div id="writerReports" class="writer-reports" hidden></div>
+    <details class="sheet-actions"><summary>日報の操作（コピー・取込・出力など）</summary>
     <div class="ribbon">
       <button id="bCopyPrev" class="sub" title="カレンダーで日報の入っている日を選び、中身を見てからこの日に写す">選択した日からコピー</button>
       <button id="bImport" class="sub" title="配置表（確定があれば確定、なければ予定）の作業内容・作業員と、クロジカの CSV の内容（完了報告）を、一覧で選んでからこの日に入れる">配置表・クロジカから取り込む…</button>
@@ -71,6 +52,7 @@
       <button id="bClearDay" class="sub danger" title="カレンダーで日を選んで（いくつでも）日報をまとめて消す">日報を消す…</button>
       <span id="status" class="rstatus"></span>
     </div>
+    </details>
     <div id="roBar" class="robar" hidden></div>
     <div class="fbar">
       <input id="nameBox" class="namebox" readonly>
@@ -78,6 +60,16 @@
       <input id="fx" class="fx" autocomplete="off" title="数式バー（選んだセルの中身。ここでも直せる）">
     </div>
     <div id="sheetWrap">
+      <div class="paper-nav" id="paperNav" aria-label="日報の表示と前後移動">
+        <button id="bPrevD" class="sub paper-arrow" aria-label="前の日報">◀</button>
+        <div class="paper-controls"><span>表示</span>
+          <button id="bySite" class="sub" aria-pressed="true">現場ごと</button><button id="byWriter" class="sub" aria-pressed="false">記入者ごと</button>
+          <label id="writerControl" hidden>記入者 <select id="detailWriter" aria-label="表示する記入者"></select></label>
+          <span id="detailContext" role="status"></span>
+        </div>
+        <button id="bNextD" class="sub paper-arrow" aria-label="次の日報">▶</button>
+      </div>
+      <div id="detailEmpty" class="detail-empty" hidden><p id="detailEmptyText"></p><button id="detailChooseSite" class="sub">現場名を選ぶ</button></div>
       <div id="sheet"></div>
     </div>
     <div class="tabbar">
@@ -110,6 +102,24 @@
 </main>
 
 <!-- 小窓（見出しの ⠿ で動かせる・外を押しても閉じない） -->
+<dialog id="dSite">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>現場名を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note">名前・工事コードや地域・元請名で絞り込み、登録済みの現場を選んでください。</p>
+    <div class="site-filters">    <label>現場名 <input id="siteQuery" type="search" placeholder="現場名・工事コード" aria-label="現場名・工事コードで絞り込み"></label>
+    <select id="inSite" aria-label="選択中の現場" hidden></select>
+    <label>期 <select id="sitePeriod" aria-label="期"></select></label>
+    <label>地域 <select id="siteArea" aria-label="地域"></select></label>
+    <label>元請名 <select id="inGen" aria-label="元請名"></select></label>
+    <button id="clearSiteFilters" class="sub">絞り込み解除</button>
+    <span id="siteCount" role="status"></span>
+</div>
+    <div id="siteResults" class="site-results"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>閉じる</button></div>
+  </div>
+</dialog>
+<div hidden><button id="inDay"></button><button id="bToday"></button></div>
+
 <dialog id="dSign">
   <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>元請サイン</h3><button type="button" class="sub x" data-close>×</button></div>
   <div class="dbody">
@@ -221,12 +231,12 @@
 <div id="printArea"></div>
 <div id="toast" class="toast"></div>
 
-<script src="config.js?v=20261105164941"></script>
+<script src="config.js?v=20261105171522"></script>
 <script src="lib/msal-browser.min.js"></script>
 <script src="lib/exceljs.min.js"></script>
 <script src="lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=20261105164941"></script>
-<script src="navigation.js?v=20261105164941"></script>
-<script src="app.js?v=20261105164941"></script>
+<script src="grid.js?v=20261105171522"></script>
+<script src="navigation.js?v=20261105171522"></script>
+<script src="app.js?v=20261105171522"></script>
 </body>
 </html>

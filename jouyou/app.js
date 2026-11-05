@@ -1021,8 +1021,8 @@ $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-d]"
 $("tPrev").onclick = () => setDay(addD(period(UI.day)[0], -1));
 $("tNext").onclick = () => setDay(addD(period(UI.day)[1], 1));
 
-function setDay(d) { if (d !== UI.day) { askEmptyPages(); UI.pg = 0; } if (grids.dn && grids.dn.editing()) grids.dn.commit(); if (grids.up && grids.up.editing()) grids.up.commit(); if (grids.gai && grids.gai.editing()) grids.gai.commit(); if (grids.car && grids.car.editing()) grids.car.commit(); UI.day = d; saveUI(); showDayBtn(); refreshSheet(); if (!$("pSum").hidden) renderSum(); }
-function moveDay(n) { setDay(addD(UI.day, n)); }
+function setDay(d) { if (UI.detailView === "writer") { detailWriterDate(d); return; } if (d !== UI.day) { askEmptyPages(); UI.pg = 0; } if (grids.dn && grids.dn.editing()) grids.dn.commit(); if (grids.up && grids.up.editing()) grids.up.commit(); if (grids.gai && grids.gai.editing()) grids.gai.commit(); if (grids.car && grids.car.editing()) grids.car.commit(); UI.day = d; saveUI(); showDayBtn(); refreshSheet(); if (!$("pSum").hidden) renderSum(); }
+function moveDay(n) { detailStep(n); }
 
 /* ---------- 右クリックのメニュー ---------- */
 function openMenu(key, x, y, sel) {
