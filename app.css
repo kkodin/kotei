@@ -257,7 +257,6 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 #sLanes .ln .lind { flex: none; width: calc(var(--d, 0) * 1.5em); }
 #sLanes .ln[data-depth="0"] input.wk { font-weight: bold; }
 #sLanes .ln:not([data-depth="0"]) input.wk { background: #f7f9fc; }
-#sLanes .ln.lifting { opacity: .45; }
 .lnhead .h0 { display: inline-block; width: 22px; }
 #ldLine { display: none; position: fixed; height: 3px; background: #1565c0; z-index: 1000; pointer-events: none; border-radius: 2px; }
 #sLanes .ln input.hn { flex: none; width: 2.6em; min-width: 0; text-align: right; padding-left: 2px; padding-right: 4px; } .lnhead .h3 { width: 8em; } .lnhead .h4 { width: 12.5em; }
@@ -437,7 +436,7 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .llab .ltg:hover { color: #fff; background: var(--head); border-color: var(--head); }
 .lane.lparent > .llab { font-weight: bold; }
 .llab .kn { font-weight: normal; color: #888; }
-.lane.lifting { opacity: .45; }
+
 .lane.lfold { height: 16px !important; }
 .lane.lfold .llab { line-height: 16px; font-size: calc(11px * var(--lfz, 1)); color: #666; cursor: pointer; }
 .lane.lfold .llab:hover { color: var(--head); }
@@ -466,3 +465,8 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .lane.lfold .llab .ltg { height: 14px; line-height: 12px; font-size: 10px; width: 18px; }
 .lnhead .h5 { width: 25em !important; } .lnhead .h4 { width: 15em !important; }
 @media print { .llab .lhandle { display: none; } .llab .ltg { border: none; background: none; } }
+/* ハンドルでつかんでいる間（2026-11-11 ユーザー：手がグーにならない・行が入れ替わって見えない） */
+body.ldragging, body.ldragging * { cursor: grabbing !important; user-select: none !important; }
+#sLanes .ln.lifting, .lane.lifting { position: relative; z-index: 30; background: #fff; box-shadow: 0 6px 18px rgba(20, 40, 70, .28); outline: 2px solid #1565c0; outline-offset: -2px; }
+#sLanes .ln.ldslide, .lane.ldslide { position: relative; transition: transform .15s ease; }
+.lane.lifting > .llab { background: #e8f1fb; }

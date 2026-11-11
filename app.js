@@ -1568,6 +1568,9 @@ function ldRows(box, inDlg) {
   return rows.map((r, i) => { let j = i + 1; while (j < rows.length && dep(rows[j]) > dep(r)) j++; return { r, d: dep(r), blk: rows.slice(i, j) }; })
     .map((x, i, all) => { let p = null; for (let k = i - 1; k >= 0; k--) if (all[k].d < x.d) { p = all[k].r; break; } return { ...x, p }; });
 }
+/* 2026-11-11 ユーザー（試して）：つかんでも手がグーにならない／つかんだ行が上へ動き、上の行が下へ下がるように見えない
+   → つかんでいる間は手をグー（body.ldragging）。つかんだ行（と下位）は指・マウスについて動き、ほかの兄弟の行は空いた所へ滑って入れ替わって見える。離すと決まる */
+const ldShift = (x, px) => x.blk.forEach(r => { r.style.transform = px ? `translateY(${px}px)` : ""; });
 document.addEventListener("pointerdown", e => {
   const hd = e.target.closest(".lhandle");
   if (!hd || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -1577,37 +1580,41 @@ document.addEventListener("pointerdown", e => {
   if (!me) return;
   e.preventDefault(); e.stopPropagation();
   const sibs = all.filter(x => x.p === me.p && x.d === me.d);
-  ldrag = { inDlg, me, sibs, id: inDlg ? row.dataset.id : row.dataset.lane, site: !inDlg && row.closest(".site").dataset.site, slot: null, pid: e.pointerId };
+  const rect = x => { const a = x.blk[0].getBoundingClientRect(), z = x.blk[x.blk.length - 1].getBoundingClientRect(); return { top: a.top, bottom: z.bottom }; };
+  sibs.forEach(x => { const r = rect(x); x.top = r.top; x.h = r.bottom - r.top; x.mid = (r.top + r.bottom) / 2; });
+  ldrag = { inDlg, me, sibs, i0: sibs.indexOf(me), y0: e.clientY, id: inDlg ? row.dataset.id : row.dataset.lane, site: !inDlg && row.closest(".site").dataset.site, slot: null, pid: e.pointerId };
   me.blk.forEach(r => r.classList.add("lifting"));
-  let line = $("ldLine");
-  if (!line) { line = document.createElement("div"); line.id = "ldLine"; document.body.appendChild(line); }
+  sibs.forEach(x => { if (x !== me) x.blk.forEach(r => r.classList.add("ldslide")); });
+  document.body.classList.add("ldragging");
   try { hd.setPointerCapture(e.pointerId); } catch (x) { }
 }, true);
 window.addEventListener("pointermove", e => {
   if (!ldrag || e.pointerId !== ldrag.pid) return;
   e.stopPropagation(); e.preventDefault();
-  const others = ldrag.sibs.filter(x => x !== ldrag.me);
-  const rect = x => { const a = x.blk[0].getBoundingClientRect(), z = x.blk[x.blk.length - 1].getBoundingClientRect(); return { top: a.top, bottom: z.bottom, left: a.left, width: a.width }; };
-  let slot = others.length;
-  for (let i = 0; i < others.length; i++) { const r = rect(others[i]); if (e.clientY < (r.top + r.bottom) / 2) { slot = i; break; } }
-  ldrag.slot = slot;
-  const ref = others[slot] ? rect(others[slot]) : others.length ? rect(others[others.length - 1]) : rect(ldrag.me);
-  const y = others[slot] ? ref.top : ref.bottom, line = $("ldLine");
-  line.style.cssText = `display:block;top:${y - 1}px;left:${ref.left}px;width:${Math.min(ref.width, ldrag.inDlg ? ref.width : 600)}px`;
+  const d = ldrag, me = d.me, others = d.sibs.filter(x => x !== me);
+  // 動かせる範囲は兄弟の中だけ（いちばん上の兄弟の上・いちばん下の兄弟の下まで）
+  const first = d.sibs[0], last = d.sibs[d.sibs.length - 1];
+  const minDy = first.top - me.top, maxDy = (last.top + last.h) - (me.top + me.h);
+  const dy = Math.max(minDy, Math.min(maxDy, e.clientY - d.y0));
+  ldShift(me, dy);
+  const c = me.mid + dy;
+  let slot = 0;
+  others.forEach(x => { if (x.mid < c) slot++; });
+  d.slot = slot;
+  // 空いた所へほかの行を滑らせる：もとより上の行で新しい位置より下になるものは下へ、もとより下の行で上になるものは上へ
+  others.forEach((x, j) => ldShift(x, j < d.i0 && j >= slot ? me.h : j >= d.i0 && j < slot ? -me.h : 0));
 }, true);
 function ldEnd(e, cancel) {
   if (!ldrag || e.pointerId !== ldrag.pid) return;
   e.stopPropagation();
   const d = ldrag; ldrag = null;
-  $("ldLine").style.display = "none";
-  d.me.blk.forEach(r => r.classList.remove("lifting"));
-  if (cancel || d.slot == null) return;
-  const others = d.sibs.filter(x => x !== d.me), i0 = d.sibs.indexOf(d.me);
-  if (d.slot === i0) return;   // 同じ所
-  const target = others[d.slot] || null;
+  document.body.classList.remove("ldragging");
+  d.sibs.forEach(x => x.blk.forEach(r => { r.classList.remove("lifting", "ldslide"); r.style.transform = ""; }));
+  if (cancel || d.slot == null || d.slot === d.i0) return;   // 動かしていない・同じ所
+  const others = d.sibs.filter(x => x !== d.me), target = others[d.slot] || null;
   if (d.inDlg) {
     if (target) target.blk[0].before(...d.me.blk);
-    else { const last = others[others.length - 1]; last.blk[last.blk.length - 1].after(...d.me.blk); }
+    else { const lastO = others[others.length - 1]; lastO.blk[lastO.blk.length - 1].after(...d.me.blk); }
   } else {
     const before = target ? target.r.dataset.lane : null, id = d.id;
     mutate(fileOfSite(d.site), doc => moveLaneBlock(doc, id, before));
