@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr001 11/11 20:33">
+<link rel="stylesheet" href="app.css?v=Vr001 11/11 20:46">
 </head>
 <body>
 <header id="top">
@@ -56,7 +56,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 11/11 20:33</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 11/11 20:46</span>
   </span>
 </header>
 
@@ -77,6 +77,7 @@
 <main id="pFlow" hidden>
   <div class="listbar">
     <label title="表示している期間に作業する日が1日も無い現場も出す（自分の画面だけ）"><input type="checkbox" id="inFlowIdle"> 作業の無い現場も出す</label>
+    <label title="ふだんは1現場1行（工種をたたむ）。チェックすると工種ごとに行を分けて出す"><input type="checkbox" id="inFlowLanes"> 工種ごとに分ける</label>
     <label title="社員1人ずつの行き先の表を下に出す（2現場以上の日は赤）"><input type="checkbox" id="inFlowPeople"> 社員の行き先も出す</label>
     <span class="note">最下行の人数を超えた日は赤。「〇名」を押すと人数を変えられます（全員で共有）</span>
   </div>
@@ -283,9 +284,9 @@
 <div id="updBar" class="updbar" hidden>新しい版（<span id="updVer"></span>）が出ています。<button type="button" id="bUpd">更新する</button></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 11/11 20:33"></script>
-<script src="app.js?v=Vr001 11/11 20:33"></script>
-<script src="weekxlsx.js?v=Vr001 11/11 20:33"></script>
-<script src="chartxlsx.js?v=Vr001 11/11 20:33"></script>
+<script src="config.js?v=Vr001 11/11 20:46"></script>
+<script src="app.js?v=Vr001 11/11 20:46"></script>
+<script src="weekxlsx.js?v=Vr001 11/11 20:46"></script>
+<script src="chartxlsx.js?v=Vr001 11/11 20:46"></script>
 </body>
 </html>

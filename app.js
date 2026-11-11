@@ -760,8 +760,8 @@ function setCap(field) {
   mutate(REST_FILE, d => { d.人数枠 = Object.assign({}, d.人数枠 || {}, { [field]: n }); });
   toast(`${field}の人数を ${n}名 にしました`);
 }
-let flowIdle = false, flowPeople = false;
-try { flowIdle = localStorage.getItem("kotei_flowIdle") === "1"; flowPeople = localStorage.getItem("kotei_flowPeople") === "1"; } catch (e) { }
+let flowIdle = false, flowPeople = false, flowLanes = false;   // flowLanes：工種ごとに行を分ける（ふだんは1現場1行）
+try { flowIdle = localStorage.getItem("kotei_flowIdle") === "1"; flowPeople = localStorage.getItem("kotei_flowPeople") === "1"; flowLanes = localStorage.getItem("kotei_flowLanes") === "1"; } catch (e) { }
 // 現場の 元請（マスタの現場から。コード → 略称 → 名前 の順で探す）
 function masterOf(s) {
   const L = M().現場 || [];
@@ -798,7 +798,7 @@ function renderFlow() {
   // 1. 現場ごと：工程の流れ（工程線）＋ 労務人数（従業員）・労務人数（社員）
   list.forEach((s, i) => {
     const bars = s.バー.filter(b => b.終了 >= from && b.開始 <= end);
-    const pk = packLane(bars), rows = pk.rows;
+    const pk = packLane(bars), rows = flowLanes ? pk.rows : 1;
     const laneIds = [...new Set(bars.sort((a, b) => a.開始.localeCompare(b.開始)).map(b => b.段))];
     const T = treeInfo(s.段), used = new Set(laneIds);
     // 工程のある工種（と、その親）を 段 の並び（下位は親の後ろ・字下げ）で
@@ -809,8 +809,27 @@ function renderFlow() {
     const siteTh = `<th class="nm sc" rowspan="${rows + 2}"><span class="sno">${i + 1}</span><div class="sbody">` +
       `<div class="scode">${esc(s.コード || "")}</div><div class="snm">${esc(nm(s))}${kb ? `<small>（${kb}）</small>` : ""}${s.完了 ? ` <small class="donemk">完了</small>` : ""}</div>` +
       `<div class="smeta">${esc(moto)}${s.担当 ? `　担当：${esc(s.担当)}` : ""}</div></div></th>`;
-    const kindTh = `<th class="nm kc" rowspan="${rows}">` + lanes.map(l => `<div class="${isGai(l) ? "gai" : ""} ${isNight(l) && mixed ? "night" : ""}" style="padding-left:${(T.depth[l.id] || 0)}em">${esc(mixed ? laneName(l) : (laneWork(l) || laneName(l)))}${hasGai(l) ? `<small>（${isGai(l) ? "" : "＋"}${esc(gaiName(l))}）</small>` : ""}</div>`).join("") + `</th>`;
-    for (let r = 0; r < rows; r++) {
+    const laneTxt = l => (mixed ? laneName(l) : (laneWork(l) || laneName(l))) + (hasGai(l) ? "（" + (isGai(l) ? "" : "＋") + gaiName(l) + "）" : "");
+    // ふだんは1現場1行：工種名は1行につなげて（入りきらなければ …）、全部はマウスを載せると出る
+    const kindTh = !flowLanes ? `<th class="nm kc one" title="${esc(lanes.map(l => "　".repeat(T.depth[l.id] || 0) + laneTxt(l)).join("\n"))}"><div>${esc(lanes.filter(l => !T.depth[l.id] || lanes.length <= 3).map(laneTxt).join("・") || lanes.map(laneTxt).join("・"))}${lanes.length > 1 ? `<small class="kcn">${lanes.length}工種</small>` : ""}</div></th>` :
+      `<th class="nm kc" rowspan="${rows}">` + lanes.map(l => `<div class="${isGai(l) ? "gai" : ""} ${isNight(l) && mixed ? "night" : ""}" style="padding-left:${(T.depth[l.id] || 0)}em">${esc(mixed ? laneName(l) : (laneWork(l) || laneName(l)))}${hasGai(l) ? `<small>（${isGai(l) ? "" : "＋"}${esc(gaiName(l))}）</small>` : ""}</div>`).join("") + `</th>`;
+    if (!flowLanes) {
+      /* 1現場1行（2026-11-11 ユーザー：人の流れは工種をたたんで1現場1行に。1ページに収めて印刷したいので優先）。
+         重なる工程線は、行の中で細い線を縦に並べる（packLane の段の順。本数が多いほど細く） */
+      const R = pk.rows, lh = R <= 2 ? 6 : R <= 3 ? 5 : R <= 4 ? 4 : Math.max(2, Math.floor(18 / R));
+      h.push(`<tr class="fb one stop">` + siteTh + kindTh);
+      for (const k of days) {
+        const on = bars.filter(x => k >= x.開始 && k <= x.終了).sort((a, b) => pk.pos[a.id] - pk.pos[b.id]);
+        if (!on.length) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
+        const tip = md(k) + " " + nm(s) + "\n" + on.map(b => { const ln = s.段.find(l => l.id === b.段); return (ln ? laneWork(ln) || laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (barWorks(ln, b, k) ? "" : "（休工）"); }).join("\n");
+        h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(on[0].id)}" title="${esc(tip)}">` + on.map(b => {
+          const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
+          return `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)};height:${lh}px;margin-top:${((pk.pos[b.id] - R / 2) * (lh + 1)).toFixed(1)}px"></i>`;
+        }).join("") + `</td>`);
+      }
+      h.push(`</tr>`);
+    }
+    for (let r = 0; flowLanes && r < rows; r++) {
       h.push(`<tr class="fb${r === 0 ? " stop" : ""}">` + (r === 0 ? siteTh + kindTh : ""));
       for (const k of days) {
         const b = bars.find(x => pk.pos[x.id] === r && k >= x.開始 && k <= x.終了);
@@ -2053,7 +2072,8 @@ $("inSort").value = sortBy;
 $("inSort").onchange = e => { sortBy = e.target.value; try { localStorage.setItem("kotei_sort", sortBy); } catch (x) { } render(); };
 $("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
 $("inListRange").onchange = renderList;
-$("inFlowIdle").checked = flowIdle; $("inFlowPeople").checked = flowPeople;
+$("inFlowIdle").checked = flowIdle; $("inFlowPeople").checked = flowPeople; $("inFlowLanes").checked = flowLanes;
+$("inFlowLanes").onchange = e => { flowLanes = e.target.checked; try { localStorage.setItem("kotei_flowLanes", flowLanes ? "1" : "0"); } catch (x) { } render(); };
 $("inFlowIdle").onchange = e => { flowIdle = e.target.checked; try { localStorage.setItem("kotei_flowIdle", flowIdle ? "1" : "0"); } catch (x) { } render(); };
 $("inFlowPeople").onchange = e => { flowPeople = e.target.checked; try { localStorage.setItem("kotei_flowPeople", flowPeople ? "1" : "0"); } catch (x) { } render(); };
 $("inListQ").oninput = renderList;

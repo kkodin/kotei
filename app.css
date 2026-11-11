@@ -473,3 +473,11 @@ body.ldragging, body.ldragging * { cursor: grabbing !important; user-select: non
 /* たたんだ親の行に出す下位の工種の工程線（2026-11-11） */
 .lfbar.kidbar { height: 5px; border-radius: 2px; opacity: .85; cursor: pointer; }
 .lfbar.kidbar:hover { opacity: 1; outline: 1px solid #333; }
+/* 人の流れ 1現場1行（2026-11-11）：工程線の行は普通の高さ、線は縦に並べる。現場名・工種名は1行で … */
+table.fl.pdf tr.fb.one td { height: var(--fh, 26px); }
+table.fl.pdf tr.fb.one i.fbar { top: 50%; }
+table.fl.pdf th.kc.one { vertical-align: middle; }
+table.fl.pdf th.kc.one div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(var(--kcw) - 12px); }
+table.fl.pdf th.kc .kcn { color: #888; margin-left: 4px; }
+table.fl.pdf th.sc .sbody > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.fl.pdf th.sc .sbody { line-height: 1.3; }
