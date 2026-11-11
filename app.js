@@ -620,8 +620,25 @@ function renderChart() {
       // 2行の文字があれば、この工種の行だけ高くする（--rh をこの行で上書き）
       const lrh = bars.some(b => lbl[b.id].two) ? rh + 14 : rh;
       const kf = nk && laneFold.has(ln.id);
-      h.push(`<div class="lane ${nk ? "lparent" : ""}" ${ldata} style="height:${rows * lrh}px;${lrh !== rh ? `--rh:${lrh}px` : ""}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" style="--ind:${dep}" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : "") + (nk ? "\n下位の工種 " + nk + "つ" : ""))}">${handle}` +
-        `<span class="ltg" data-act="lanefold" title="${nk ? (kf ? "下位の工種を出す" : "下位の工種をたたむ") : "この工種をたたむ"}">${kf ? "▸" : "▾"}</span><span class="lnm">${esc(dep && laneKubun(ln) === laneKubun(s.段.find(l => l.id === T.parent[ln.id])) ? laneWork(ln) || laneName(ln) : laneName(ln))}${kf ? `<small class="kn">（${nk}）</small>` : ""}</span></div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      /* 親をたたんだときは、下位の工種の工程線を親の行の下に細い線で出す（2026-11-11 ユーザー指定）。押すと下位をひらく */
+      let kidH = 0, kidHtml = "";
+      if (kf) {
+        const desc = laneBlockIds(s.段, ln.id); desc.delete(ln.id);
+        const kb = s.バー.filter(b => desc.has(b.段) && b.終了 >= from && b.開始 <= end);
+        if (kb.length) {
+          // 親に自分の工程線が無ければ、行の真ん中に出して行を高くしない
+          const kp = packLane(kb), need = kp.rows * 7 + 4, own = bars.length > 0;
+          const base = own ? rows * lrh : Math.max(2, (lrh - kp.rows * 7) / 2) - 1;
+          kidH = own ? need : Math.max(0, need - lrh);
+          kidHtml = kb.map(b => {
+            const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了, kl = s.段.find(l => l.id === b.段);
+            return `<div class="lfbar kidbar" data-act="lanefold" style="left:${dayDiff(from, a) * dw}px;width:${(dayDiff(a, z) + 1) * dw}px;top:${base + 1 + kp.pos[b.id] * 7}px;background:${colorOf(b.色)}" ` +
+              `title="${esc((kl ? laneWork(kl) || laneName(kl) : "") + "\n" + barTitle(s, b) + "\n押すと下位の工種をひらく")}"></div>`;
+          }).join("");
+        }
+      }
+      h.push(`<div class="lane ${nk ? "lparent" : ""}" ${ldata} style="height:${rows * lrh + kidH}px;${lrh !== rh ? `--rh:${lrh}px` : ""}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" style="--ind:${dep}" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : "") + (nk ? "\n下位の工種 " + nk + "つ" : ""))}">${handle}` +
+        `<span class="ltg" data-act="lanefold" title="${nk ? (kf ? "下位の工種を出す" : "下位の工種をたたむ") : "この工種をたたむ"}">${kf ? "▸" : "▾"}</span><span class="lnm">${esc(dep && laneKubun(ln) === laneKubun(s.段.find(l => l.id === T.parent[ln.id])) ? laneWork(ln) || laneName(ln) : laneName(ln))}${kf ? `<small class="kn">（${nk}）</small>` : ""}</span></div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">` + kidHtml);
       // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
@@ -929,7 +946,7 @@ $("wrap").addEventListener("pointerdown", e => {
   if (e.pointerType !== "mouse") return touchDown(e);
   if (e.button !== 0) return;
   const barEl = e.target.closest(".bar"), track = e.target.closest(".track");
-  if (!track || track.classList.contains("sum")) return;
+  if (!track || track.classList.contains("sum") || e.target.closest(".kidbar")) return;
   if (barEl) {
     const mode = e.target.classList.contains("l") ? "l" : e.target.classList.contains("r") ? "r" : "move";
     startBarDrag(e, barEl, track, mode, e.clientX);
@@ -1020,7 +1037,7 @@ function touchDown(e) {
   lastTouchAt = Date.now();
   if (fingers.size > 1) { if (tp) clearTimeout(tp.timer); tp = null; cancelDrag(); return; }
   const track = e.target.closest(".track"), barEl = e.target.closest(".bar");
-  tp = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, target: e.target, track: track && !track.classList.contains("sum") ? track : null,
+  tp = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, target: e.target, track: track && !track.classList.contains("sum") && !e.target.closest(".kidbar") ? track : null,
     barEl: barEl && !barEl.classList.contains("sumbar") ? barEl : null, moved: false, long: false, pan: false, sl: $("wrap").scrollLeft, st: $("wrap").scrollTop };
   tp.timer = setTimeout(touchLong, LONG_MS);
 }

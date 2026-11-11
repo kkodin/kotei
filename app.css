@@ -470,3 +470,6 @@ body.ldragging, body.ldragging * { cursor: grabbing !important; user-select: non
 #sLanes .ln.lifting, .lane.lifting { position: relative; z-index: 30; background: #fff; box-shadow: 0 6px 18px rgba(20, 40, 70, .28); outline: 2px solid #1565c0; outline-offset: -2px; }
 #sLanes .ln.ldslide, .lane.ldslide { position: relative; transition: transform .15s ease; }
 .lane.lifting > .llab { background: #e8f1fb; }
+/* たたんだ親の行に出す下位の工種の工程線（2026-11-11） */
+.lfbar.kidbar { height: 5px; border-radius: 2px; opacity: .85; cursor: pointer; }
+.lfbar.kidbar:hover { opacity: 1; outline: 1px solid #333; }
