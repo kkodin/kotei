@@ -332,8 +332,8 @@ header .zoom #bZoom { min-width: 3.6em; }
   body.printing #printPages { display: block !important; }
   .ppage { break-after: page; page-break-after: always; overflow: hidden; }
   .ppage:last-child { break-after: auto; page-break-after: auto; }
-  .ptitle { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; height: 26px; padding: 0 0 4px; }
-  .ptitle b { font-size: 19px; }
+  .ptitle { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; height: 22px; padding: 0 0 2px; box-sizing: border-box; }
+  .ptitle b { font-size: 15px; }
   .pchart { position: relative; display: block; min-width: 0; }
   .hrow, .corner, .sname, .llab, table.fl thead th, table.fl th.nm, table.fl tr.sec th, #list th { position: static !important; }
   #printPages .addsite, #printPages .corner .fold { display: none !important; }
@@ -481,3 +481,6 @@ table.fl.pdf th.kc.one div { overflow: hidden; text-overflow: ellipsis; white-sp
 table.fl.pdf th.kc .kcn { color: #888; margin-left: 4px; }
 table.fl.pdf th.sc .sbody > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.fl.pdf th.sc .sbody { line-height: 1.3; }
+/* 人の流れの行を低くしたとき（1ページに収める）、現場の欄の字が行からはみ出さないように少し小さく */
+table.fl.pdf th.sc .sbody { font-size: 11px; } table.fl.pdf th.sc .snm { font-size: 12px; } table.fl.pdf th.sc .scode, table.fl.pdf th.sc .smeta { font-size: 10px; }
+table.fl.pdf th.sc { padding: 1px 4px; }

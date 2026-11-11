@@ -2242,21 +2242,21 @@ function fitChart(W, H) {
   }
   return z;
 }
+/* 人の流れを1ページに収める（2026-11-11 ユーザー：10現場で1ページに収まらなかった。部会資料の PDF は11現場で収まっていた）
+   幅：日の幅を用紙の横に合わせる（22〜120px。入らなければ縮める）。高さ：行の高さ --fh を、ちょうど用紙の縦に収まる高さにする（14〜70px）。
+   それでも入らなければ全体を縮める。用紙の端で切れて2ページ目に回らないよう、縦は 5% 控える */
 function fitFlow(W, H) {
   const tb = () => $("flow").querySelector("table"), n = range().days.length;
+  H *= 0.95;
   root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
-  const nameW = () => tb().querySelector("thead th.nm").offsetWidth;
-  let z = Math.min(1.6, H / tb().offsetHeight);
-  let fw = (W / z - nameW()) / n;
-  if (fw < 26) fw = Math.max(26, Math.min(46, fw));
-  if (fw > 120) fw = 120;
-  root.setProperty("--fw", fw + "px"); renderFlow();
-  z = Math.min(W / tb().offsetWidth, H / tb().offsetHeight);
-  if (tb().offsetHeight * z < H) {
-    let lo = 26, hi = 70;
-    for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
-    root.setProperty("--fh", lo + "px"); renderFlow();
-  }
+  const nameW = tb().querySelector("thead th.nm").offsetWidth;
+  root.setProperty("--fw", Math.max(22, Math.min(120, Math.floor((W - nameW - 4) / n * 100) / 100)) + "px");
+  renderFlow();
+  let z = Math.min(1.6, W / tb().offsetWidth);
+  let lo = 14, hi = 70;
+  for (let i = 0; i < 14; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
+  root.setProperty("--fh", lo + "px"); renderFlow();
+  if (tb().offsetHeight * z > H) z = H / tb().offsetHeight;
   return z;
 }
 // 期間を nx ページに分ける。期間がちょうど nか月で nx で割り切れるなら月の切れ目で、そうでなければ日数で等分
@@ -2359,7 +2359,7 @@ function preparePrint() {
   const [w, h] = PAPER[size];
   root.setProperty("--z", 1); root.setProperty("--lz", 1); root.setProperty("--lfz", 1);
   const W = ((w - PAGE_MM * 2) * 96 / 25.4) * 0.985;          // 用紙の中の幅（px）。少し控える
-  const H = ((h - PAGE_MM * 2) * 96 / 25.4 - 30) * 0.97;      // 上の題の行の分を引き、少し控える（はみ出して2ページになるのを防ぐ）
+  const H = ((h - PAGE_MM * 2) * 96 / 25.4 - 24) * 0.97;      // 上の題の行（22px）の分を引き、少し控える（はみ出して2ページになるのを防ぐ）
   const view = range();
   const P = S.print || { from: view.from, end: view.end, sites: shownSites().map(s => s.id), nx: 1, ny: 1 };
   const tabName = { chart: "全体工程表", flow: "人の流れ", list: "工程の一覧" }[S.tab];
