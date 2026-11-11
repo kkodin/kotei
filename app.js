@@ -307,8 +307,10 @@ function addMonths(k, n) {
 }
 /* 表示の長さ（2026-10-30 ユーザー：単位を 1日・1週間・2週間・1か月〜4か月に）。S.view.span＝"1d"／"1w"／"2w"／"1m"〜"4m"。
    前の版の S.view.months（数）は「○か月」とみなす */
-const spanOf = () => /^\d+[dwm]$/.test(S.view.span || "") ? S.view.span : (S.view.months || 2) + "m";
+/* 2026-11-11 ユーザー：表示する期間を選べるように → 「期間を指定」（S.view.span＝"c"、終わりの日は S.view.to） */
+const spanOf = () => S.view.span === "c" && S.view.to ? "c" : /^\d+[dwm]$/.test(S.view.span || "") ? S.view.span : (S.view.months || 2) + "m";
 function spanEnd(from, sp) {
+  if (sp === "c") return S.view.to < from ? from : S.view.to;
   const n = parseInt(sp, 10), u = sp.slice(-1);
   return u === "d" ? dayAdd(from, n - 1) : u === "w" ? dayAdd(from, n * 7 - 1) : dayAdd(addMonths(from, n), -1);
 }
@@ -385,13 +387,63 @@ const dayHeads = b => Object.keys(b.人数日 || {}).sort();
 /* 工種は 作業員（自社）か 外注（2026-10-14 ユーザー：作業名の横で 外注 or 作業員(自社)。外注は業者名＋人数、作業員は〇人＋〇人）
    段.種別＝"外注"（無ければ自社）、段.業者＝業者名、段.人数＝"3" */
 const isGai = ln => !!ln && ln.種別 === "外注";
-const gaiName = ln => isGai(ln) ? (ln.業者 || "外注") : "";
-// バーに出す人数：ふだんの人数。日ごとに変えた日があれば ※。外注の工種は業者名を前に
+/* 作業員と外注の共同作業（2026-11-11 ユーザー：作業員 何名 の隣に 外注 業者名 人数。両方入れられる）
+   外注だけの工種は前のまま（段.種別＝"外注"・段.人数＝外注の人数）。両方のときは 段.人数＝作業員、段.業者・段.外注人数＝外注（種別は付けない）。
+   バーの人数は、外注だけの工種なら外注の人数、それ以外は作業員の人数。共同の工種の外注の人数は工種の人数を使う */
+const jointGai = ln => !!ln && !isGai(ln) && !!(ln.業者 || ln.外注人数) ? { 業者: ln.業者 || "外注", 人数: ln.外注人数 || "" } : null;
+const gaiName = ln => isGai(ln) ? (ln.業者 || "外注") : jointGai(ln) ? jointGai(ln).業者 : "";
+const hasGai = ln => isGai(ln) || !!jointGai(ln);
+// その日の人数：作業員（自社）・外注
+const ownAt = (b, k, ln) => isGai(ln) ? 0 : headAt(b, k, ln);
+const gaiAt = (b, k, ln) => isGai(ln) ? headAt(b, k, ln) : jointGai(ln) ? ((parseHead(jointGai(ln).人数) || {}).total || 0) : 0;
+// バーに出す人数：ふだんの人数。日ごとに変えた日があれば ※。外注の工種は業者名を前に。共同なら「3名 ＋ 業者 2名」
 const headLabel = (b, ln) => {
   let t = fmtHead(headTxt(b, ln));
   if (dayHeads(b).length) t = (t || "0名") + "※";
-  return isGai(ln) ? [gaiName(ln), t].filter(Boolean).join(" ") : t;
+  if (isGai(ln)) return [gaiName(ln), t].filter(Boolean).join(" ");
+  const g = jointGai(ln);
+  return g ? [t, [g.業者, fmtHead(g.人数)].filter(Boolean).join(" ")].filter(Boolean).join(" ＋ ") : t;
 };
+
+/* 下位の工種（2026-11-11 ユーザー：工種の中に下位の工種を作れるように。例：基礎工 ＞ 掘削床付・基礎工 ＞ グラウンドセル工）
+   段.親＝親の工種の id（無ければいちばん上）。並びは 段 の並び（親のすぐ後ろに子）。親の無い・見つからない工種はいちばん上とみなす */
+function treeInfo(lanes) {
+  const ids = new Set(lanes.map(l => l.id));
+  const par = l => l.親 && l.親 !== l.id && ids.has(l.親) ? l.親 : "";
+  const order = [], depth = {}, parent = {}, kids = {}, seen = new Set();
+  const walk = (p, d) => lanes.forEach(l => {
+    if (seen.has(l.id) || par(l) !== p) return;
+    seen.add(l.id); order.push(l); depth[l.id] = d; parent[l.id] = p; (kids[p] = kids[p] || []).push(l.id);
+    walk(l.id, d + 1);
+  });
+  walk("", 0);
+  lanes.forEach(l => { if (!seen.has(l.id)) { order.push(l); depth[l.id] = 0; parent[l.id] = ""; (kids[""] = kids[""] || []).push(l.id); } });   // 親がめぐっているとき
+  return { order, depth, parent, kids, anc: id => { const a = []; for (let p = parent[id]; p; p = parent[p]) { if (a.includes(p)) break; a.push(p); } return a; } };
+}
+const treeOrder = lanes => treeInfo(lanes).order;
+// 工種とその下位ぜんぶの id（段 の並びのまま）
+function laneBlockIds(lanes, id) {
+  const T = treeInfo(lanes), out = new Set([id]);
+  T.order.forEach(l => { if (T.anc(l.id).includes(id)) out.add(l.id); });
+  return out;
+}
+/* 工種（と下位）を、同じ親の中で動かす。beforeId＝この兄弟の前へ（null＝兄弟のいちばん後ろへ） */
+function moveLaneBlock(doc, id, beforeId) {
+  const L = treeOrder(doc.段), blk = laneBlockIds(L, id);
+  if (beforeId && blk.has(beforeId)) return;
+  const T = treeInfo(L), p = T.parent[id];
+  const moving = L.filter(l => blk.has(l.id)), rest = L.filter(l => !blk.has(l.id));
+  let at;
+  if (beforeId) at = rest.findIndex(l => l.id === beforeId);
+  else {
+    const sibs = (T.kids[p] || []).filter(x => !blk.has(x));
+    if (sibs.length) { const lb = laneBlockIds(L, sibs[sibs.length - 1]); at = Math.max(...rest.map((l, i) => lb.has(l.id) ? i : -1)) + 1; }
+    else at = p ? rest.findIndex(l => l.id === p) + 1 : rest.length;
+  }
+  if (at < 0) at = rest.length;
+  rest.splice(at, 0, ...moving);
+  doc.段 = rest;
+}
 
 function dayClass(k) {
   if (isRest(k)) return "rest";
@@ -438,7 +490,7 @@ function barTitle(s, b) {
   for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
   return `${nm(s)}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
     (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (isGai(ln) ? "\n外注：" + gaiName(ln) + (headTxt(b, ln) ? " " + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") :
-      headTxt(b, ln) ? "\n作業員：" + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") +
+      headTxt(b, ln) ? "\n作業員：" + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") + (jointGai(ln) ? "\n外注：" + jointGai(ln).業者 + " " + fmtHead(jointGai(ln).人数) + "（工種の人数）" : "") +
     (dayHeads(b).length ? "\n日ごとの人数：" + dayHeads(b).map(k => md(k) + " " + (fmtHead(b.人数日[k]) || "0名")).join("、") : "") + (b.メモ ? "\n" + b.メモ : "");
 }
 
@@ -490,7 +542,7 @@ function fitDayWidth(n) {
 function fitFlowWidth(n) {
   const w = $("flow");
   if (S.print || !w || !w.clientWidth) return;
-  const nameW = (w.querySelector("th.nm") || {}).offsetWidth || 130;
+  const nameW = (w.querySelector("thead th.nm") || {}).offsetWidth || 130;
   const avail = w.clientWidth / ZOOM - nameW - 4;
   root.setProperty("--fw", Math.max(46, Math.floor(avail / n)) + "px");
 }
@@ -528,17 +580,20 @@ function renderChart() {
         h.push(`<div class="bar sumbar" data-act="fold" style="left:${x}px;width:${w}px" title="${esc(md(p.a) + "〜" + md(p.z) + "\n" + works.join("・") + "\n押すとひらく")}">${esc(works.join("・"))}</div>`);
       }
       h.push(`</div></div>`);
-    } else for (const ln of visibleLanes(s)) {
+    } else { const T = treeInfo(s.段); for (const ln of visibleLanes(s)) {
       if (ln === DONE_ROW) {
         // 完了した工種をたたんだ行（押すと出す／たたむ。その人のブラウザに覚える）
-        const n = s.段.filter(l => l.完了).length, open = showLanes.has(s.id);
+        const T0 = treeInfo(s.段), n = T0.order.filter(l => laneDoneTree(T0, l)).length, open = showLanes.has(s.id);
         h.push(`<div class="lane donerow"><div class="llab" data-act="donelanes" title="${open ? "完了した工種をたたむ" : "完了した工種を出す"}">${open ? "▾" : "▸"} 完了 ${n}工種</div><div class="track sum" style="width:${width}px" data-act="donelanes"></div></div>`);
         continue;
       }
       const bars = s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end);
-      if (laneFold.has(ln.id)) {
+      const dep = T.depth[ln.id] || 0, nk = (T.kids[ln.id] || []).length;
+      const ldata = `data-lane="${esc(ln.id)}" data-par="${esc(T.parent[ln.id] || "")}" data-dep="${dep}"`;
+      const handle = `<span class="lhandle" title="つかんで上下に動かすと順番を入れ替え（下位の工種も一緒に動く）">⠿</span>`;
+      if (laneFold.has(ln.id) && !nk) {
         // たたんだ工種：細い1行に色の線だけ（押すとひらく）
-        h.push(`<div class="lane lfold" data-lane="${esc(ln.id)}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="lanefold" title="押すとひらく">▸ ${esc(laneName(ln))}</div><div class="track sum" data-act="lanefold" style="width:${width}px">` +
+        h.push(`<div class="lane lfold" ${ldata}><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="lanefold" title="押すとひらく" style="--ind:${dep}">${handle}<span class="ltg">▸</span><span class="lnm">${esc(laneName(ln))}</span></div><div class="track sum" data-act="lanefold" style="width:${width}px">` +
           bars.map(b => { const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了; return `<div class="lfbar" style="left:${dayDiff(from, a) * dw}px;width:${(dayDiff(a, z) + 1) * dw}px;background:${colorOf(b.色)}" title="${esc(barTitle(s, b))}"></div>`; }).join("") + `</div></div>`);
         continue;
       }
@@ -564,7 +619,9 @@ function renderChart() {
       }
       // 2行の文字があれば、この工種の行だけ高くする（--rh をこの行で上書き）
       const lrh = bars.some(b => lbl[b.id].two) ? rh + 14 : rh;
-      h.push(`<div class="lane" data-lane="${esc(ln.id)}" style="height:${rows * lrh}px;${lrh !== rh ? `--rh:${lrh}px` : ""}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : ""))}"><span class="ltg" data-act="lanefold" title="この工種をたたむ">▾</span>${esc(laneName(ln))}</div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
+      const kf = nk && laneFold.has(ln.id);
+      h.push(`<div class="lane ${nk ? "lparent" : ""}" ${ldata} style="height:${rows * lrh}px;${lrh !== rh ? `--rh:${lrh}px` : ""}"><div class="llab ${isNight(ln) ? "night" : ""} ${ln.完了 ? "ldone" : ""}" data-act="site" style="--ind:${dep}" title="${esc(laneName(ln) + "\n" + laneRuleText(ln) + (ln.完了 ? "\n完了した工種" : "") + (nk ? "\n下位の工種 " + nk + "つ" : ""))}">${handle}` +
+        `<span class="ltg" data-act="lanefold" title="${nk ? (kf ? "下位の工種を出す" : "下位の工種をたたむ") : "この工種をたたむ"}">${kf ? "▸" : "▾"}</span><span class="lnm">${esc(dep && laneKubun(ln) === laneKubun(s.段.find(l => l.id === T.parent[ln.id])) ? laneWork(ln) || laneName(ln) : laneName(ln))}${kf ? `<small class="kn">（${nk}）</small>` : ""}</span></div><div class="track" data-site="${esc(s.id)}" data-lane="${esc(ln.id)}" style="width:${width}px">`);
       // 工種の休みの日（土曜休みなど）の斜線はやめた（2026-10-13 ユーザー：斜線は日付を押した会社の休みの列だけ）。バーの中の白抜きは残す
       for (const b of bars) {
         const a = b.開始 < from ? from : b.開始, z = b.終了 > end ? end : b.終了;
@@ -583,7 +640,7 @@ function renderChart() {
           `<span class="h l"></span><span class="lbl ${lbl[b.id].two ? "two" : ""}" style="max-width:${avail[b.id]}px${rAl[b.id] ? `;left:auto;right:${w - rAl[b.id]}px;text-align:right` : ""}">${lbl[b.id].html}</span><span class="h r"></span></div>`);
       }
       h.push(`</div></div>`);
-    }
+    } }
     h.push(`</div></div>`);
   }
   h.push(`</div><div class="addsite"><button id="bAddSite" class="sub">＋ 現場を追加</button></div>`);
@@ -601,10 +658,13 @@ function renderChart() {
 const DONE_ROW = {};
 let showLanes = new Set();
 try { showLanes = new Set(JSON.parse(localStorage.getItem("kotei_showLanes")) || []); } catch (e) { }
+// 親が完了なら下位も完了とみなす。親をたたんでいれば下位は出さない（2026-11-11）
+const laneDoneTree = (T, l) => !!l.完了 || T.anc(l.id).some(id => (T.order.find(x => x.id === id) || {}).完了);
 function visibleLanes(s) {
-  const done = s.段.filter(l => l.完了);
-  if (!done.length) return s.段;
-  return [...(showLanes.has(s.id) ? s.段 : s.段.filter(l => !l.完了)), DONE_ROW];
+  const T = treeInfo(s.段);
+  const done = T.order.filter(l => laneDoneTree(T, l));
+  const live = T.order.filter(l => (showLanes.has(s.id) || !laneDoneTree(T, l)) && !T.anc(l.id).some(id => laneFold.has(id)));
+  return done.length ? [...live, DONE_ROW] : live;
 }
 /* 工種を1つずつたたむ／ひらく（2026-10-13 ユーザー指定）。その人のブラウザだけに覚える（kotei_laneFold）。工種名の左の ▾／▸ */
 let laneFold = new Set();
@@ -631,9 +691,10 @@ function fitLaneWidth() {
   let w = 0;
   document.querySelectorAll("#chart .llab").forEach(el => {
     measureCtx.font = (el.classList.contains("night") ? "bold " : "") + '13px "Yu Gothic UI", Meiryo, sans-serif';
-    w = Math.max(w, measureCtx.measureText(el.textContent).width);
+    const t = el.querySelector(".lnm"), ind = (+el.style.getPropertyValue("--ind") || 0) * 12;
+    w = Math.max(w, measureCtx.measureText((t || el).textContent).width + (t ? ind + 40 : 0));   // ハンドル・たたむボタン・字下げの分
   });
-  $("chart").style.setProperty("--lw", Math.min(280, Math.max(56, Math.ceil(w) + 12)) + "px");
+  $("chart").style.setProperty("--lw", Math.min(320, Math.max(56, Math.ceil(w) + 12)) + "px");
 }
 
 /* ---------- 一覧 ---------- */
@@ -658,81 +719,140 @@ function renderList() {
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
 
-/* ---------- 人の流れ（工程表のバーから、社員の行き先と作業員の日ごとの人数を出す） ---------- */
+/* ---------- 人の流れ ----------
+   2026-11-11 ユーザー：工事部会資料（PDF）のように、現場ごとに 工程の流れ と 労務人数（従業員／社員）を出し、
+   最下行に全体の労務人数（従業員／社員）。従業員 10名・社員 7名 の中でやりくりするので、その人数を超えた日は赤。
+   外注の人数は出さない（工程線は外注の工種も出す）。
+   - 人数枠は 休日.json の 人数枠：{ 従業員, 社員 }（全員で共有。無ければ 10・7）。最下行の「〇名」を押して変える。
+   - 「作業の無い現場も出す」：表示している期間に作業する日が1日も無い現場は、ふだんは出さない（kotei_flowIdle）。
+   - 「社員の行き先も出す」：前の版の 社員×日 の表を下に出す（2現場以上の日は赤。kotei_flowPeople）。
+   - 最下行の合計は、隠している現場（完了・現場の絞り込み・作業の無い現場）も数える（人のやりくりは全部の現場で決まるため） */
 const shortOf = nm;
 const isNight = ln => laneKubun(ln) === "夜";
+const CAP_DEF = { 従業員: 10, 社員: 7 };
+function capOf() {
+  const f = S.files[REST_FILE], c = (f && f.doc && f.doc.人数枠) || {};
+  return { 従業員: +c.従業員 > 0 ? +c.従業員 : CAP_DEF.従業員, 社員: +c.社員 > 0 ? +c.社員 : CAP_DEF.社員 };
+}
+function setCap(field) {
+  const t = prompt(`${field}の人数（この人数を超えた日は赤くなります。全員で共有）`, capOf()[field]);
+  if (t == null) return;
+  const n = parseInt(String(t).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)), 10);
+  if (!(n > 0)) { toast("1 以上の数を入れてください"); return; }
+  if (!S.files[REST_FILE]) S.files[REST_FILE] = { doc: { 休み: [] }, eTag: null, pending: [], saving: false, timer: null, err: null };
+  mutate(REST_FILE, d => { d.人数枠 = Object.assign({}, d.人数枠 || {}, { [field]: n }); });
+  toast(`${field}の人数を ${n}名 にしました`);
+}
+let flowIdle = false, flowPeople = false;
+try { flowIdle = localStorage.getItem("kotei_flowIdle") === "1"; flowPeople = localStorage.getItem("kotei_flowPeople") === "1"; } catch (e) { }
+// 現場の 元請（マスタの現場から。コード → 略称 → 名前 の順で探す）
+function masterOf(s) {
+  const L = M().現場 || [];
+  return (s.コード && L.find(x => x.コード && String(x.コード) === String(s.コード))) || L.find(x => x.略称 && x.略称 === nm(s)) || L.find(x => x.名前 === nm(s)) || null;
+}
+// 現場の昼夜（自社・外注を問わず、完了していない工種の区分から）
+function siteKubun(s) {
+  const ks = new Set(s.段.filter(l => !l.完了).map(laneKubun));
+  return ks.size === 2 ? "昼夜" : ks.has("夜") ? "夜間" : ks.size ? "昼間" : "";
+}
 
 function renderFlow() {
   const { from, end, days } = range();
-  // 日ごとに、その日にかかっているバーを集める
+  // 日ごとに、その日に作業する工程（バー）を集める（全部の現場）
   const at = {};   // day -> [{s, b, ln}]
   for (const s of sites()) for (const b of s.バー) {
     if (b.終了 < from || b.開始 > end) continue;
     const ln = s.段.find(l => l.id === b.段);
     for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) (at[k] = at[k] || []).push({ s, b, ln });
   }
-  const staff = namesFor("社員"), emps = namesFor("従業員");
-  const head = `<thead><tr><th class="nm"></th>` +
-    days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
-    `</tr><tr><th class="nm"></th>` + days.map(k => `<th class="${dayClass(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
-  const cols = days.length + 1;
-  const h = [`<table class="fl">`, head, `<tbody>`];
+  const working = new Set(Object.values(at).flat().map(x => x.s.id));
+  const all = shownSites(), list = S.print || flowIdle ? all : all.filter(s => working.has(s.id));
+  const cap = capOf();
+  const empAt = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + ownAt(x.b, k, x.ln), 0);
+  const stfAt = (k, f) => new Set((at[k] || []).filter(f).flatMap(x => x.b.社員 || [])).size;
 
-  // 1. 社員・従業員の行き先（1人1行。マスタの全員を出すので、空いている人も分かる）
-  const personRows = (field, list) => { for (const n of list) {
-    h.push(`<tr><th class="nm">${esc(n)}</th>`);
-    for (const k of days) {
-      const hits = (at[k] || []).filter(x => (x.b[field] || []).includes(n));
-      const siteIds = [...new Set(hits.map(x => x.s.id))];
-      if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
-      else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
-      else { const x = hits[0];
-        h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + nm(x.s) + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+  const head = `<thead><tr><th class="nm corner" colspan="2" rowspan="2"><span>月日</span><span>工種</span></th>` +
+    days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
+    `</tr><tr>` + days.map(k => `<th class="${dayClass(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
+  const cols = days.length + 2;
+  const h = [`<table class="fl pdf">`, head, `<tbody>`];
+  const cell = (k, v, extra = "") => `<td class="${v ? "" : "n0"} ${dayClass(k)} ${extra}">${v || ""}</td>`;
+
+  // 1. 現場ごと：工程の流れ（工程線）＋ 労務人数（従業員）・労務人数（社員）
+  list.forEach((s, i) => {
+    const bars = s.バー.filter(b => b.終了 >= from && b.開始 <= end);
+    const pk = packLane(bars), rows = pk.rows;
+    const laneIds = [...new Set(bars.sort((a, b) => a.開始.localeCompare(b.開始)).map(b => b.段))];
+    const T = treeInfo(s.段), used = new Set(laneIds);
+    // 工程のある工種（と、その親）を 段 の並び（下位は親の後ろ・字下げ）で
+    T.order.forEach(l => { if (used.has(l.id)) T.anc(l.id).forEach(a => used.add(a)); });
+    const lanes = laneIds.length ? T.order.filter(l => used.has(l.id)) : T.order.filter(l => !laneDoneTree(T, l));
+    const kb = siteKubun(s), mx = masterOf(s), moto = mx ? (mx.元請 || mx.発注者 || "") : "";
+    const mixed = kb === "昼夜";
+    const siteTh = `<th class="nm sc" rowspan="${rows + 2}"><span class="sno">${i + 1}</span><div class="sbody">` +
+      `<div class="scode">${esc(s.コード || "")}</div><div class="snm">${esc(nm(s))}${kb ? `<small>（${kb}）</small>` : ""}${s.完了 ? ` <small class="donemk">完了</small>` : ""}</div>` +
+      `<div class="smeta">${esc(moto)}${s.担当 ? `　担当：${esc(s.担当)}` : ""}</div></div></th>`;
+    const kindTh = `<th class="nm kc" rowspan="${rows}">` + lanes.map(l => `<div class="${isGai(l) ? "gai" : ""} ${isNight(l) && mixed ? "night" : ""}" style="padding-left:${(T.depth[l.id] || 0)}em">${esc(mixed ? laneName(l) : (laneWork(l) || laneName(l)))}${hasGai(l) ? `<small>（${isGai(l) ? "" : "＋"}${esc(gaiName(l))}）</small>` : ""}</div>`).join("") + `</th>`;
+    for (let r = 0; r < rows; r++) {
+      h.push(`<tr class="fb${r === 0 ? " stop" : ""}">` + (r === 0 ? siteTh + kindTh : ""));
+      for (const k of days) {
+        const b = bars.find(x => pk.pos[x.id] === r && k >= x.開始 && k <= x.終了);
+        if (!b) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
+        const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
+        h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(b.id)}" title="${esc(md(k) + " " + nm(s) + "／" + (ln ? laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (w ? "" : "（休工）"))}">` +
+          `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)}"></i></td>`);
+      }
+      h.push(`</tr>`);
     }
-    h.push(`</tr>`);
-  } };
-  h.push(`<tr class="sec"><th colspan="${cols}">社員の行き先（${staff.length}人）</th></tr>`);
-  if (!staff.length) h.push(`<tr><th class="nm note">（社員がいません）</th></tr>`);
-  personRows("社員", staff);
-  // 社員の入っていない工程
-  h.push(`<tr><th class="nm" style="color:#c62828">社員 未定</th>`);
+    h.push(`<tr class="cnt"><th class="nm kc lb">労務人数（従業員）</th>` + days.map(k => cell(k, empAt(k, x => x.s === s))).join("") + `</tr>`);
+    h.push(`<tr class="cnt send"><th class="nm kc lb">労務人数（社員）</th>` + days.map(k => cell(k, stfAt(k, x => x.s === s))).join("") + `</tr>`);
+  });
+  if (!list.length) h.push(`<tr><th class="nm note" colspan="2">（この期間に作業する現場はありません）</th>${days.map(k => `<td class="${dayClass(k)}"></td>`).join("")}</tr>`);
+  const idle = all.length - list.length;
+  if (idle) h.push(`<tr class="sec"><th colspan="${cols}">この期間に作業の無い現場 ${idle} 件を隠しています（上の「作業の無い現場も出す」で表示）</th></tr>`);
+
+  // 2. 最下行：全体の労務人数（隠している現場も数える）。人数枠を超えた日は赤
+  const totTitle = "全部の現場の合計（完了・絞り込み・作業の無い現場で隠している現場も数える）";
+  h.push(`<tr class="tot ttop"><th class="nm" colspan="2" title="${totTitle}">労務人数（従業員 <a class="cap" data-cap="従業員" title="押して人数を変える">${cap.従業員}名</a>）</th>` +
+    days.map(k => { const v = empAt(k, () => true); return cell(k, v, v > cap.従業員 ? "over" : ""); }).join("") + `</tr>`);
+  h.push(`<tr class="tot"><th class="nm" colspan="2" title="${totTitle}">労務人数（社員 <a class="cap" data-cap="社員" title="押して人数を変える">${cap.社員}名</a>）</th>`);
   for (const k of days) {
-    const un = (at[k] || []).filter(x => !(x.b.社員 || []).length);
-    const ss = [...new Set(un.map(x => shortOf(x.s)))];
-    h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
+    const v = stfAt(k, () => true);
+    // 同じ人が同じ日に2現場以上
+    const by = {};
+    (at[k] || []).forEach(x => (x.b.社員 || []).forEach(n => (by[n] = by[n] || new Set()).add(nm(x.s))));
+    const dup = Object.entries(by).filter(([, ss]) => ss.size > 1);
+    h.push(dup.length ? `<td class="${dayClass(k)} ${v > cap.社員 ? "over" : ""} dupx" title="${esc(md(k) + " 2現場以上：" + dup.map(([n, ss]) => n + "（" + [...ss].join("・") + "）").join("、"))}">${v || ""}<sup>!</sup></td>` : cell(k, v, v > cap.社員 ? "over" : ""));
   }
-  h.push(`</tr><tr class="tot"><th class="nm">社員 計</th>`);
-  for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.社員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
   h.push(`</tr>`);
 
-  if (SHOW_EMP) {
-    h.push(`<tr class="sec"><th colspan="${cols}">従業員の行き先（${emps.length}人）</th></tr>`);
-    personRows("従業員", emps);
-    h.push(`<tr class="tot"><th class="nm">従業員 計</th>`);
-    for (const k of days) { const c = new Set((at[k] || []).flatMap(x => x.b.従業員 || [])).size; h.push(`<td class="${c ? "" : "n0"} ${dayClass(k)}">${c || ""}</td>`); }
+  // 3. 社員の行き先（「社員の行き先も出す」のとき。マスタの全員を出すので、空いている人も分かる）
+  if (flowPeople) {
+    const staff = namesFor("社員");
+    h.push(`<tr class="sec"><th colspan="${cols}">社員の行き先（${staff.length}人）</th></tr>`);
+    for (const n of staff) {
+      h.push(`<tr><th class="nm" colspan="2">${esc(n)}</th>`);
+      for (const k of days) {
+        const hits = (at[k] || []).filter(x => (x.b.社員 || []).includes(n));
+        const siteIds = [...new Set(hits.map(x => x.s.id))];
+        if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
+        else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
+        else { const x = hits[0];
+          h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + nm(x.s) + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+      }
+      h.push(`</tr>`);
+    }
+    h.push(`<tr><th class="nm" colspan="2" style="color:#c62828">社員 未定</th>`);
+    for (const k of days) {
+      const un = (at[k] || []).filter(x => !(x.b.社員 || []).length);
+      const ss = [...new Set(un.map(x => shortOf(x.s)))];
+      h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
+    }
     h.push(`</tr>`);
-  }
-
-  // 2. 作業員の人数（現場ごと・昼夜）
-  // 自社の作業員と外注は分けて数える（外注は業者ごと）
-  h.push(`<tr class="sec"><th colspan="${cols}">作業員（自社）の人数（工程表のバーの「作業員」の合計。区分が夜なら夜間）</th></tr>`);
-  const sum = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + headAt(x.b, k, x.ln), 0);
-  const own = x => !isGai(x.ln);
-  const hasHead = (s, f) => s.バー.some(b => { const ln = s.段.find(l => l.id === b.段); return f(ln) && (headTxt(b, ln) || dayHeads(b).length) && b.終了 >= from && b.開始 <= end; });
-  const numRow = (cls, label, f) => h.push(`<tr${cls ? ` class="${cls}"` : ""}><th class="nm">${esc(label)}</th>` + days.map(k => { const v = sum(k, f); return `<td class="${v ? "" : "n0"} ${dayClass(k)}">${v || ""}</td>`; }).join("") + `</tr>`);
-  for (const s of shownSites()) if (hasHead(s, ln => !isGai(ln))) numRow("", nm(s), x => own(x) && x.s === s);
-  numRow("tot", "昼間 計", x => own(x) && !isNight(x.ln));
-  numRow("tot", "夜間 計", x => own(x) && isNight(x.ln));
-  numRow("tot", "作業員 計", own);
-  const gyo = [...new Set(Object.values(at).flat().filter(x => isGai(x.ln)).map(x => gaiName(x.ln)))].sort((a, b) => a.localeCompare(b, "ja"));
-  if (gyo.length) {
-    h.push(`<tr class="sec"><th colspan="${cols}">外注の人数（業者ごと）</th></tr>`);
-    for (const g of gyo) numRow("", g, x => isGai(x.ln) && gaiName(x.ln) === g);
-    numRow("tot", "外注 計", x => isGai(x.ln));
   }
   h.push(`</tbody></table>`);
   $("flow").innerHTML = h.join("");
-  // 表示の長さが短いときは画面の幅いっぱいに（名前の列の幅を測ってから合わせ直す）
+  // 表示の長さが短いときは画面の幅いっぱいに（左の2列の幅を測ってから合わせ直す）
   if (!S.print) { const before = root.getPropertyValue("--fw"); fitFlowWidth(days.length); if (root.getPropertyValue("--fw") !== before) $("flow").innerHTML = h.join(""); }
 }
 
@@ -1094,6 +1214,7 @@ kpad.addEventListener("click", e => {
 });
 $("wrap").addEventListener("scroll", hideCtx);
 $("wrap").addEventListener("click", e => {
+  if (e.target.closest(".lhandle")) return;
   const fb = e.target.closest("[data-fold]");
   if (fb) { setFold(shownSites().map(s => s.id), fb.dataset.fold === "all"); return; }
   const hd = e.target.closest(".hd[data-day]");
@@ -1130,7 +1251,8 @@ function openBar(site, b, init) {
   const v = b || { 段: init.段, 開始: init.開始, 終了: init.終了, 作業: "", 社員: [], 人数: "", 色: lastColor, メモ: "" };
   $("dBarTtl").textContent = b ? "工程を直す" : "工程を足す";
   $("dBarSite").textContent = nm(site);
-  $("bLane").innerHTML = site.段.map(l => `<option value="${esc(l.id)}">${esc(laneName(l))}${l.完了 ? "（完了）" : ""}</option>`).join("");
+  const T = treeInfo(site.段);
+  $("bLane").innerHTML = T.order.map(l => `<option value="${esc(l.id)}">${"　".repeat(T.depth[l.id] || 0)}${esc(T.depth[l.id] ? laneWork(l) || laneName(l) : laneName(l))}${l.完了 ? "（完了）" : ""}</option>`).join("");
   $("bLane").value = v.段;
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
@@ -1322,7 +1444,7 @@ $("bNum").addEventListener("input", e => { const t = toHalf(e.target.value).repl
 /* ---------- 日ごとの人数（2026-10-14 ユーザー：工種の作業員の人数を日ごとに変えたい） ----------
    作業する日ごとに欄。空＝ふだんの人数（バーの小窓の「作業員」）。決めると barCtx.人数日 に入り、バーの「保存」で決まる */
 // 作業員の欄の薄い字：工種の人数があればそれ（空ならその人数になる）
-function numPlaceholder() { const ln = calLane(), t = ln && ln.人数; $("bNum").placeholder = isGai(ln) ? (t || "") + "（外注 " + gaiName(ln) + "）" : t ? t + "（工種）" : "例：1+3"; }
+function numPlaceholder() { const ln = calLane(), t = ln && ln.人数, g = jointGai(ln); $("bNum").placeholder = isGai(ln) ? (t || "") + "（外注 " + gaiName(ln) + "）" : (t ? t + "（工種）" : "例：1+3") + (g ? "　＋外注 " + g.業者 + " " + (g.人数 || "") : ""); }
 $("bLane").addEventListener("change", numPlaceholder);
 function showHeadInfo() {
   let a = $("bFrom").value, z = $("bTo").value;
@@ -1437,28 +1559,95 @@ Object.entries(PICK).forEach(([field, [inp, box]]) => {
   $(inp).addEventListener("input", () => { drawPick(field); afterPick(field); });
 });
 
+/* ---------- ハンドルで順番を入れ替える（2026-11-11 ユーザー指定） ----------
+   工程表の工種の行・現場の設定の工種の行の左の ⠿ をつかんで上下に動かす。同じ親の中（兄弟）だけで動き、下位の工種も一緒に動く */
+let ldrag = null;
+function ldRows(box, inDlg) {
+  const rows = [...box.children].filter(r => inDlg ? r.classList.contains("ln") : r.dataset.lane && r.dataset.dep != null);
+  const dep = r => inDlg ? dDep(r) : +r.dataset.dep || 0;
+  return rows.map((r, i) => { let j = i + 1; while (j < rows.length && dep(rows[j]) > dep(r)) j++; return { r, d: dep(r), blk: rows.slice(i, j) }; })
+    .map((x, i, all) => { let p = null; for (let k = i - 1; k >= 0; k--) if (all[k].d < x.d) { p = all[k].r; break; } return { ...x, p }; });
+}
+document.addEventListener("pointerdown", e => {
+  const hd = e.target.closest(".lhandle");
+  if (!hd || (e.pointerType === "mouse" && e.button !== 0)) return;
+  const inDlg = !!hd.closest("#sLanes"), row = hd.closest(inDlg ? ".ln" : ".lane");
+  const box = inDlg ? $("sLanes") : row.parentNode;
+  const all = ldRows(box, inDlg), me = all.find(x => x.r === row);
+  if (!me) return;
+  e.preventDefault(); e.stopPropagation();
+  const sibs = all.filter(x => x.p === me.p && x.d === me.d);
+  ldrag = { inDlg, me, sibs, id: inDlg ? row.dataset.id : row.dataset.lane, site: !inDlg && row.closest(".site").dataset.site, slot: null, pid: e.pointerId };
+  me.blk.forEach(r => r.classList.add("lifting"));
+  let line = $("ldLine");
+  if (!line) { line = document.createElement("div"); line.id = "ldLine"; document.body.appendChild(line); }
+  try { hd.setPointerCapture(e.pointerId); } catch (x) { }
+}, true);
+window.addEventListener("pointermove", e => {
+  if (!ldrag || e.pointerId !== ldrag.pid) return;
+  e.stopPropagation(); e.preventDefault();
+  const others = ldrag.sibs.filter(x => x !== ldrag.me);
+  const rect = x => { const a = x.blk[0].getBoundingClientRect(), z = x.blk[x.blk.length - 1].getBoundingClientRect(); return { top: a.top, bottom: z.bottom, left: a.left, width: a.width }; };
+  let slot = others.length;
+  for (let i = 0; i < others.length; i++) { const r = rect(others[i]); if (e.clientY < (r.top + r.bottom) / 2) { slot = i; break; } }
+  ldrag.slot = slot;
+  const ref = others[slot] ? rect(others[slot]) : others.length ? rect(others[others.length - 1]) : rect(ldrag.me);
+  const y = others[slot] ? ref.top : ref.bottom, line = $("ldLine");
+  line.style.cssText = `display:block;top:${y - 1}px;left:${ref.left}px;width:${Math.min(ref.width, ldrag.inDlg ? ref.width : 600)}px`;
+}, true);
+function ldEnd(e, cancel) {
+  if (!ldrag || e.pointerId !== ldrag.pid) return;
+  e.stopPropagation();
+  const d = ldrag; ldrag = null;
+  $("ldLine").style.display = "none";
+  d.me.blk.forEach(r => r.classList.remove("lifting"));
+  if (cancel || d.slot == null) return;
+  const others = d.sibs.filter(x => x !== d.me), i0 = d.sibs.indexOf(d.me);
+  if (d.slot === i0) return;   // 同じ所
+  const target = others[d.slot] || null;
+  if (d.inDlg) {
+    if (target) target.blk[0].before(...d.me.blk);
+    else { const last = others[others.length - 1]; last.blk[last.blk.length - 1].after(...d.me.blk); }
+  } else {
+    const before = target ? target.r.dataset.lane : null, id = d.id;
+    mutate(fileOfSite(d.site), doc => moveLaneBlock(doc, id, before));
+  }
+}
+window.addEventListener("pointerup", e => ldEnd(e, false), true);
+window.addEventListener("pointercancel", e => ldEnd(e, true), true);
+
 /* ---------- 現場の小窓 ---------- */
 let siteCtx = null;
 const laneRuleText = ln => "作業：平日" + (ln.土 !== false ? "・土" : "") + (ln.日 === true ? "・日" : "") + (ln.祝 === true ? "・祝" : "");
-function laneRow(l) {
+/* 工種の行（2026-11-11 ユーザー指定で作り替え）：左のハンドルで並べ替え、◀▶ で階層（下位の工種）、✕ の横の ＋ で下に空の行。
+   作業員 〇人＋〇人 と 外注 業者名 〇人 を両方入れられる（共同作業） */
+function laneRow(l, dep = 0) {
   const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
-  const kb = laneKubun(l), gai = isGai(l);
-  return `<div class="ln ${gai ? "gai" : ""}" data-id="${esc(l.id)}"><select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
+  const kb = laneKubun(l), gai = isGai(l), jg = jointGai(l);
+  const own = gai ? "" : l.人数, gy = gai ? l.業者 || "" : jg ? l.業者 || "" : "", gn = gai ? l.人数 : jg ? l.外注人数 : "";
+  return `<div class="ln" data-id="${esc(l.id)}" data-depth="${dep}" style="--d:${dep}"><span class="lhandle" title="つかんで上下に動かすと順番を入れ替え（下位の工種も一緒に動く）">⠿</span><span class="lind"></span>` +
+    `<select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
     `<input type="text" class="wk" value="${esc(laneWork(l))}" placeholder="作業名（例：立坑工）">` +
-    `<select class="sb" title="自社の作業員か外注か"><option value="" ${gai ? "" : "selected"}>作業員</option><option value="外注" ${gai ? "selected" : ""}>外注</option></select>` +
-    `<span class="lhd" title="この工種のふだんの作業員の人数（バーで人数を入れなければこの人数）"><input type="text" class="hn" data-h="0" inputmode="numeric" value="${gai ? "" : headPart(l.人数, 0)}">人＋` +
-    `<input type="text" class="hn" data-h="1" inputmode="numeric" value="${gai ? "" : headPart(l.人数, 1)}">人</span>` +
-    `<span class="lgai" title="外注の業者名とふだんの人数（バーで人数を入れなければこの人数）"><input type="text" class="gy" list="gyoList" value="${esc(l.業者 || "")}" placeholder="業者名">` +
-    `<input type="text" class="hn" data-h="g" inputmode="numeric" value="${gai ? esc(String(parseHead(l.人数 || "")?.total ?? "")) : ""}">人</span>` +
+    `<span class="lhd" title="自社の作業員のふだんの人数（バーで人数を入れなければこの人数）"><b>作業員</b><input type="text" class="hn" data-h="0" inputmode="numeric" value="${headPart(own, 0)}">人＋` +
+    `<input type="text" class="hn" data-h="1" inputmode="numeric" value="${headPart(own, 1)}">人</span>` +
+    `<span class="lgai" title="外注の業者名とふだんの人数（作業員と両方入れると共同作業）"><b>外注</b><input type="text" class="gy" list="gyoList" value="${esc(gy)}" placeholder="業者名">` +
+    `<input type="text" class="hn" data-h="g" inputmode="numeric" value="${gn ? esc(String(parseHead(gn)?.total ?? "")) : ""}">人</span>` +
     ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
-    `<label class="dw ldn" title="終わった工種。工程表ではたたんで隠す"><input type="checkbox" data-done ${l.完了 ? "checked" : ""}>完了</label>` +
-    `<button type="button" class="sub small" data-mv="-1" title="上へ">▲</button><button type="button" class="sub small" data-mv="1" title="下へ">▼</button>` +
-    `<button type="button" class="danger small" data-del>✕</button></div>`;
+    `<label class="dw ldn" title="終わった工種。工程表ではたたんで隠す（下位の工種も）"><input type="checkbox" data-done ${l.完了 ? "checked" : ""}>完了</label>` +
+    `<button type="button" class="sub small" data-ind="-1" title="上の階層へ（親の工種と同じ並びに出す）">◀</button><button type="button" class="sub small" data-ind="1" title="下位の工種にする（すぐ上の同じ階層の工種の下へ）">▶</button>` +
+    `<button type="button" class="danger small" data-del title="この工種を消す（下位の工種も）">✕</button><button type="button" class="sub small" data-add title="下に空の行を足す">＋</button></div>`;
 }
+// 現場の設定の工種の行：階層（data-depth）で親子を決める。親＝上にある、1つ浅い行
+const dRows = () => [...$("sLanes").children];
+const dDep = r => +r.dataset.depth || 0;
+const setDep = (r, d) => { r.dataset.depth = d; r.style.setProperty("--d", d); };
+function dBlock(r) { const rows = dRows(), i = rows.indexOf(r), d = dDep(r), out = [r]; for (let j = i + 1; j < rows.length && dDep(rows[j]) > d; j++) out.push(rows[j]); return out; }
+function dParent(r) { const rows = dRows(), d = dDep(r); for (let j = rows.indexOf(r) - 1; j >= 0; j--) if (dDep(rows[j]) < d) return rows[j]; return null; }
+function dPrevSib(r) { const rows = dRows(), d = dDep(r); for (let j = rows.indexOf(r) - 1; j >= 0; j--) { const x = dDep(rows[j]); if (x < d) return null; if (x === d) return rows[j]; } return null; }
+const LANE_DEPTH_MAX = 4;
 // 工種の行の 〇人＋〇人。片方だけなら1つの数（"3"）、両方なら "1+3"
 function headPart(t, i) { const p = parseHead(t || ""); return p && p.parts[i] != null ? p.parts[i] : ""; }
 function laneHeadOf(r) {
-  if (r.querySelector("select.sb").value === "外注") { const g = toHalf(r.querySelector('input.hn[data-h="g"]').value).trim(); return g ? String(parseInt(g, 10) || 0) : ""; }
   const [a, b] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
   if (!a && !b) return "";
   const x = parseInt(a || "0", 10) || 0, y = parseInt(b || "0", 10) || 0;
@@ -1479,10 +1668,10 @@ function openSite(id) {
   siteCtx.map = undefined;   // undefined＝変えない／mapCrop＝新しい画像・切り取りを直した／null＝外す
   showMapBox(null);
   if (s && s.地図) loadMap(s).then(u => { if (siteCtx && siteCtx.id === s.id && siteCtx.map === undefined) showMapBox(u); });
-  const lanes = s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }];
-  $("sLanes").innerHTML = lanes.map(laneRow).join("");
+  const T = treeInfo(s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }]);
+  $("sLanes").innerHTML = T.order.map(l => laneRow(l, T.depth[l.id])).join("");
   // 業者名の候補：どの現場でも前に入れた業者名
-  $("gyoList").innerHTML = [...new Set(Object.values(S.files).flatMap(f => (f.doc && f.doc.段 || []).filter(isGai).map(l => l.業者).filter(Boolean)))]
+  $("gyoList").innerHTML = [...new Set(Object.values(S.files).flatMap(f => (f.doc && f.doc.段 || []).filter(hasGai).map(l => l.業者).filter(Boolean)))]
     .sort((a, b) => a.localeCompare(b, "ja")).map(g => `<option value="${esc(g)}">`).join("");
   $("bSiteDel").hidden = !s; $("bSiteUp").parentElement.hidden = !s;
   // ▲▼ は「設定順」の並びを変える。ほかの並びで見ているときは、その旨を出す
@@ -1496,26 +1685,38 @@ $("bHelp").onclick = () => {
   const w = window.open("help.html?v=" + encodeURIComponent($("ver").textContent) + (touch ? "#sp" : "#pc"), "kotei_help", touch ? "" : "width=820,height=900");
   if (w) w.focus();
 };
-$("sLanes").addEventListener("change", e => {
-  if (!e.target.classList.contains("sb")) return;
-  const row = e.target.closest(".ln"), gai = e.target.value === "外注";
-  row.classList.toggle("gai", gai);
-  (gai ? row.querySelector("input.gy") : row.querySelector('.lhd input.hn')).focus();
-});
 $("sLanes").addEventListener("input", e => { if (e.target.classList.contains("hn")) { const t = toHalf(e.target.value).replace(/[^\d]/g, ""); if (t !== e.target.value) e.target.value = t; } });
 $("sLanes").addEventListener("click", e => {
-  const row = e.target.closest(".ln");
-  if (!row) return;
-  if (e.target.dataset.mv) {
-    const sib = e.target.dataset.mv === "-1" ? row.previousElementSibling : row.nextElementSibling;
-    if (sib) e.target.dataset.mv === "-1" ? row.parentNode.insertBefore(row, sib) : row.parentNode.insertBefore(sib, row);
-  } else if ("del" in e.target.dataset) {
-    if ($("sLanes").children.length <= 1) { alert("工種は1つ以上要ります。"); return; }
-    // バーのある工種も消せる（2026-10-13 ユーザー指定）。バーも一緒に消える。決まるのは「保存」のとき
-    const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
-    const n = s ? s.バー.filter(b => b.段 === row.dataset.id).length : 0;
-    if (n && !confirm(`この工種のバー ${n} 本も一緒に消えます（「保存」を押したとき）。よろしいですか？\n残しておくなら「完了」にチェックすると、たたんで隠せます。`)) return;
-    row.remove();
+  const row = e.target.closest(".ln"), btn = e.target.closest("button");
+  if (!row || !btn) return;
+  if (btn.dataset.ind) {
+    const blk = dBlock(row), d = dDep(row);
+    if (btn.dataset.ind === "1") {
+      // ▶ 下位にする：すぐ上の同じ階層の工種の、いちばん下の子になる（いまの場所のまま）
+      if (!dPrevSib(row)) { toast("すぐ上に同じ階層の工種が無いので、下位にできません"); return; }
+      if (Math.max(...blk.map(dDep)) >= LANE_DEPTH_MAX) { toast(`下位は ${LANE_DEPTH_MAX} 段までです`); return; }
+      blk.forEach(r => setDep(r, dDep(r) + 1));
+    } else {
+      // ◀ 上の階層へ：親の工種（とその下位）のすぐ後ろへ出て、親と同じ階層になる
+      if (!d) { toast("いちばん上の階層です"); return; }
+      const p = dParent(row), rest = dBlock(p).filter(x => !blk.includes(x));
+      rest[rest.length - 1].after(...blk);
+      blk.forEach(r => setDep(r, dDep(r) - 1));
+    }
+  } else if ("add" in btn.dataset) {
+    // ＋：この工種（と下位）のすぐ下に、同じ階層の空の行
+    const blk = dBlock(row);
+    blk[blk.length - 1].insertAdjacentHTML("afterend", laneRow({ id: newId("l"), 区分: row.querySelector("select.kb").value, 名前: "" }, dDep(row)));
+    blk[blk.length - 1].nextElementSibling.querySelector("input.wk").focus();
+  } else if ("del" in btn.dataset) {
+    const blk = dBlock(row);
+    if (dRows().length - blk.length < 1) { alert("工種は1つ以上要ります。"); return; }
+    // バーのある工種も消せる（2026-10-13 ユーザー指定）。バーも一緒に消える。下位の工種も一緒（2026-11-11）。決まるのは「保存」のとき
+    const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc, ids = blk.map(r => r.dataset.id);
+    const n = s ? s.バー.filter(b => ids.includes(b.段)).length : 0;
+    const msg = (blk.length > 1 ? `下位の工種 ${blk.length - 1} つも一緒に消えます。` : "") + (n ? `工種のバー ${n} 本も一緒に消えます。` : "");
+    if (msg && !confirm(msg + "（「保存」を押したとき）よろしいですか？\n残しておくなら「完了」にチェックすると、たたんで隠せます。")) return;
+    blk.forEach(r => r.remove());
   }
 });
 $("sName").addEventListener("change", () => {
@@ -1533,23 +1734,6 @@ $("sName").addEventListener("change", () => {
    一覧は完了でない工種ぜんぶ。終わった工種は「たたむ」、まだの工種は「そのまま」をはじめに選んでおく */
 const LANE_MAX = 3;
 function addLaneRow() { $("sLanes").insertAdjacentHTML("beforeend", laneRow({ id: newId("l"), 区分: "昼", 名前: "" })); $("sLanes").lastElementChild.querySelector("input.wk").focus(); }
-$("bLaneAdd").onclick = () => {
-  const s = siteCtx.id && S.files[fileOfSite(siteCtx.id)].doc;
-  const live = [...$("sLanes").children].filter(r => !r.querySelector("input[data-done]").checked);
-  const rows = s ? live.filter(r => s.段.some(x => x.id === r.dataset.id)) : [];
-  const fin = rows.filter(r => laneFinished(s, s.段.find(x => x.id === r.dataset.id)));
-  if (!fin.length && (live.length < LANE_MAX || !rows.length)) { addLaneRow(); return; }
-  $("dOldTtl").textContent = fin.length ? "終わった工種があります" : `工種が ${live.length} つあります`;
-  $("oldBody").innerHTML = rows.map(r => {
-    const l = s.段.find(x => x.id === r.dataset.id), bs = s.バー.filter(b => b.段 === l.id);
-    const last = bs.map(b => b.終了).sort().pop(), done = laneFinished(s, l);
-    const note = !bs.length ? "バーなし" : done ? `バー ${bs.length} 本・${md(last)} に終了` : `バー ${bs.length} 本・${md(last)} まで（まだ終わっていない）`;
-    const def = done ? 0 : 1;
-    return `<div class="oldrow ${done ? "fin" : ""}" data-id="${esc(l.id)}"><div class="onm"><b>${esc(laneName(l))}</b><span class="note">${note}</span></div>` +
-      ["たたむ", "そのまま", "消す"].map((v, i) => `<label class="${i === 2 ? "del" : ""}"><input type="radio" name="o_${esc(l.id)}" value="${v}" ${i === def ? "checked" : ""}>${v}</label>`).join("") + `</div>`;
-  }).join("");
-  openDlg($("dOld"));
-};
 $("fOld").addEventListener("submit", e => {
   e.preventDefault();
   const picks = [...$("oldBody").children].map(d => ({ id: d.dataset.id, v: d.querySelector("input:checked").value }));
@@ -1573,13 +1757,20 @@ $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
-  const lanes = [...$("sLanes").children].map(r => {
+  const stack = [];
+  const lanes = dRows().map(r => {
     const l = { id: r.dataset.id, 区分: r.querySelector("select.kb").value, 名前: r.querySelector("input.wk").value.trim() };
+    // 親：上にある 1つ浅い行（段の並びは 親のすぐ後ろに子）
+    const d = Math.min(dDep(r), stack.length); stack.length = d;
+    if (d) l.親 = stack[d - 1];
+    stack.push(l.id);
     r.querySelectorAll("input[data-k]").forEach(c => { l[c.dataset.k] = c.checked; });
     if (r.querySelector("input[data-done]").checked) l.完了 = true;
-    const hn = laneHeadOf(r);
-    if (hn) l.人数 = hn;
-    if (r.querySelector("select.sb").value === "外注") { l.種別 = "外注"; const g = r.querySelector("input.gy").value.trim(); if (g) l.業者 = g; }
+    const own = laneHeadOf(r), gy = r.querySelector("input.gy").value.trim(), gt = toHalf(r.querySelector('input.hn[data-h="g"]').value).trim();
+    const gn = gt ? String(parseInt(gt, 10) || 0) : "";
+    // 外注だけなら前の形（種別＝外注・人数＝外注の人数）、作業員も入っていれば 人数＝作業員・業者・外注人数
+    if (!own && (gy || gn)) { l.種別 = "外注"; if (gy) l.業者 = gy; if (gn) l.人数 = gn; }
+    else { if (own) l.人数 = own; if (gy) l.業者 = gy; if (gn) l.外注人数 = gn; }
     return l;
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
@@ -1773,15 +1964,29 @@ $("bSiteDown").onclick = () => moveSite(1);
 
 /* ---------- 上の操作 ---------- */
 function setFrom(k) {
+  // 期間を指定しているときは、長さを変えずに終わりの日も動かす
+  if (spanOf() === "c") { const len = Math.max(0, dayDiff(fromKey(S.view.from), S.view.to)); S.view.to = dayAdd(fromKey(k), len); $("inTo").value = S.view.to; }
   S.view.from = fromKey(k); $("inFrom").value = S.view.from;
   try { localStorage.setItem("kotei_view", JSON.stringify(S.view)); } catch (e) { }
   render();
 }
 $("inFrom").onchange = e => e.target.value && setFrom(e.target.value);
-$("inMonths").onchange = e => { S.view.span = e.target.value; S.view.months = parseInt(e.target.value, 10); $("wrap").scrollLeft = 0; setFrom(S.view.from); };
+$("inMonths").onchange = e => {
+  const v = e.target.value;
+  if (v === "c") { if (!S.view.to || S.view.to < fromKey(S.view.from)) S.view.to = range().end; }   // はじめは今の表示の終わりの日
+  else S.view.months = parseInt(v, 10);
+  S.view.span = v; showTo(); $("wrap").scrollLeft = 0; setFrom(S.view.from);
+};
+function showTo() { const c = spanOf() === "c"; $("inTo").hidden = $("toSep").hidden = !c; if (c) $("inTo").value = S.view.to; }
+$("inTo").onchange = e => {
+  const v = e.target.value; if (!v) return;
+  if (v < fromKey(S.view.from)) { toast("終わりの日は最初の日より後にしてください"); $("inTo").value = S.view.to; return; }
+  S.view.to = v; $("wrap").scrollLeft = 0; setFrom(S.view.from);
+};
 // ◀ ▶ は ○か月なら1か月ずつ（日はそのまま）、1日・○週間ならその長さの分。今日＝今日から
 function stepView(dir) {
   const sp = spanOf(), n = parseInt(sp, 10), u = sp.slice(-1), f = fromKey(S.view.from);
+  if (sp === "c") { setFrom(dayAdd(f, dir * (dayDiff(f, S.view.to) + 1))); return; }
   setFrom(u === "m" ? addMonths(f, dir) : dayAdd(f, dir * (u === "w" ? n * 7 : n)));
 }
 $("bPrev").onclick = () => stepView(-1);
@@ -1824,8 +2029,13 @@ $("inSort").value = sortBy;
 $("inSort").onchange = e => { sortBy = e.target.value; try { localStorage.setItem("kotei_sort", sortBy); } catch (x) { } render(); };
 $("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
 $("inListRange").onchange = renderList;
+$("inFlowIdle").checked = flowIdle; $("inFlowPeople").checked = flowPeople;
+$("inFlowIdle").onchange = e => { flowIdle = e.target.checked; try { localStorage.setItem("kotei_flowIdle", flowIdle ? "1" : "0"); } catch (x) { } render(); };
+$("inFlowPeople").onchange = e => { flowPeople = e.target.checked; try { localStorage.setItem("kotei_flowPeople", flowPeople ? "1" : "0"); } catch (x) { } render(); };
 $("inListQ").oninput = renderList;
 $("flow").addEventListener("click", e => {
+  const cp = e.target.closest("[data-cap]");
+  if (cp) { setCap(cp.dataset.cap); return; }
   const td = e.target.closest("td[data-bar]");
   if (!td) return;
   const s = S.files[fileOfSite(td.dataset.site)].doc;
@@ -1991,7 +2201,7 @@ function fitChart(W, H) {
 function fitFlow(W, H) {
   const tb = () => $("flow").querySelector("table"), n = range().days.length;
   root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
-  const nameW = () => tb().querySelector("th.nm").offsetWidth;
+  const nameW = () => tb().querySelector("thead th.nm").offsetWidth;
   let z = Math.min(1.6, H / tb().offsetHeight);
   let fw = (W / z - nameW()) / n;
   if (fw < 26) fw = Math.max(26, Math.min(46, fw));
@@ -2226,7 +2436,7 @@ $("pWork").onclick = () => {
   printCount();
   toast(`${md(a)}〜${md(z)} に作業がある現場 ${$("pSites").querySelectorAll("input:checked").length} 件にチェックしました`);
 };
-$("pView").onclick = () => { const v = fromKey(S.view.from); $("pFrom").value = v; $("pTo").value = dayAdd(addMonths(v, S.view.months), -1); printCount(); };
+$("pView").onclick = () => { const v = range(); $("pFrom").value = v.from; $("pTo").value = v.end; printCount(); };
 document.querySelectorAll("#dPrint [data-pm]").forEach(b => b.onclick = () => {
   const a = $("pFrom").value || fromKey(S.view.from);
   $("pTo").value = dayAdd(addMonths(a, +b.dataset.pm), -1); printCount();
@@ -2310,7 +2520,7 @@ setTimeout(checkVersion, 3000);
 async function start() {
   try { const v = JSON.parse(localStorage.getItem("kotei_view")); if (v && v.from) Object.assign(S.view, v); } catch (e) { }
   S.view.from = fromKey(S.view.from) || todayKey().slice(0, 8) + "01";
-  $("inFrom").value = S.view.from; $("inMonths").value = spanOf(); showOnly();
+  $("inFrom").value = S.view.from; $("inMonths").value = spanOf(); showTo(); showOnly();
 
   if (DEMO) {
     seedDemo();

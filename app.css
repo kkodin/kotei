@@ -137,6 +137,36 @@ table.fl td.as.dark { color: #222; }
 table.fl td.dup { background: #d93a36 !important; color: #fff; font-weight: bold; cursor: pointer; }
 table.fl td.n0 { color: #bbb; }
 table.fl td.un { color: #c62828; cursor: pointer; }
+/* 人の流れ：部会資料（PDF）の形（2026-11-11）。左＝現場（No・コード・名前・元請・担当）と工種、右＝工程線・労務人数（従業員／社員） */
+table.fl.pdf { --scw: 168px; --kcw: 150px; }
+table.fl.pdf th.nm { min-width: 0; }
+table.fl.pdf thead th.corner { left: 0; width: calc(var(--scw) + var(--kcw)); padding: 0 8px; font-weight: normal; color: #555; vertical-align: middle; }
+table.fl.pdf thead th.corner span:first-child { float: right; }
+table.fl.pdf th.sc { left: 0; width: var(--scw); min-width: var(--scw); max-width: var(--scw); white-space: normal; vertical-align: middle; font-weight: normal; padding: 4px 6px; border-bottom: 2px solid #8a96a3; }
+table.fl.pdf th.sc .sno { float: left; width: 20px; color: #555; }
+table.fl.pdf th.sc .sbody { margin-left: 22px; line-height: 1.5; }
+table.fl.pdf th.sc .scode { font-size: 11px; color: #555; }
+table.fl.pdf th.sc .snm { font-weight: bold; font-size: 13px; }
+table.fl.pdf th.sc .snm small { font-weight: normal; font-size: 11px; }
+table.fl.pdf th.sc .smeta { font-size: 11px; color: #333; }
+table.fl.pdf th.sc .donemk { color: #fff; background: #8a96a3; padding: 0 3px; border-radius: 3px; }
+table.fl.pdf th.kc { left: var(--scw); width: var(--kcw); min-width: var(--kcw); max-width: var(--kcw); white-space: normal; text-align: left; vertical-align: top; font-weight: normal; font-size: 11px; line-height: 1.35; padding: 3px 6px; }
+table.fl.pdf th.kc .gai { color: #777; }
+table.fl.pdf th.kc .night { color: #1a237e; font-weight: bold; }
+table.fl.pdf th.kc.lb { vertical-align: middle; text-align: center; color: #333; padding: 0 4px; }
+table.fl.pdf tr.fb td { height: calc(var(--fh, 26px) * .62); padding: 0; position: relative; }
+table.fl.pdf tr.fb td[data-bar] { cursor: pointer; }
+table.fl.pdf i.fbar { position: absolute; left: -1px; right: -1px; top: 50%; height: 8px; margin-top: -4px; background: var(--c); }
+table.fl.pdf i.fbar.a { left: 2px; } table.fl.pdf i.fbar.z { right: 2px; }
+table.fl.pdf i.fbar.gap { background: #fff; border: 1.5px solid var(--c); box-sizing: border-box; }
+table.fl.pdf tr.cnt td { font-weight: bold; }
+table.fl.pdf tr.send td, table.fl.pdf tr.send th.kc { border-bottom: 2px solid #8a96a3; }
+table.fl.pdf tr.ttop td, table.fl.pdf tr.ttop th { border-top: 2px solid #555; }
+table.fl.pdf tr.tot th.nm { text-align: center; letter-spacing: .1em; }
+table.fl.pdf a.cap { color: #1565c0; text-decoration: underline; cursor: pointer; }
+table.fl.pdf td.over { background: #d93a36 !important; color: #fff; }
+table.fl.pdf td.dupx sup { color: #d93a36; font-size: 9px; margin-left: 1px; }
+table.fl.pdf td.over.dupx sup { color: #fff; }
 
 /* ---- 一覧 ---- */
 .listbar { display: flex; gap: 16px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -152,7 +182,7 @@ table.fl td.un { color: #c62828; cursor: pointer; }
 /* ---- 小窓 ---- */
 dialog { border: 1px solid #888; border-radius: 6px; padding: 0; min-width: 340px; max-width: 96vw; }
 /* 現場の設定は横に広がりすぎないように（2026-10-14 ユーザー指定） */
-#dSite { width: 840px; }
+#dSite { width: min(1120px, 97vw); }
 #dSite .frm { grid-template-columns: 6.5em 1fr; }
 dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog h3 { margin: 0; padding: 10px 16px; background: var(--head); color: #fff; font-size: 16px; cursor: move; user-select: none; touch-action: none; }
@@ -219,11 +249,17 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .lnhead .h1 { width: 3.6em; } .lnhead .h2 { flex: 1; } .lnhead .h5 { width: 8.6em; }
 #sLanes .ln .lhd { flex: none; white-space: nowrap; font-size: 13px; }
 /* 作業員（自社）／外注（2026-10-14）。外注の行は 業者名＋人数 */
-#sLanes .ln select.sb { width: 5.2em; flex: none; }
-#sLanes .ln .lgai { display: none; flex: none; white-space: nowrap; font-size: 13px; }
-#sLanes .ln.gai .lhd { display: none; }
-#sLanes .ln.gai .lgai { display: inline; }
-#sLanes .ln input.gy { width: 7.4em; min-width: 0; }
+#sLanes .ln .lgai { flex: none; white-space: nowrap; font-size: 13px; }
+#sLanes .ln .lhd b, #sLanes .ln .lgai b { font-weight: normal; color: #555; margin: 0 3px 0 4px; }
+#sLanes .ln input.gy { width: 8em; min-width: 0; }
+/* 工種の行：ハンドル・階層の字下げ（2026-11-11） */
+#sLanes .ln .lhandle { flex: none; width: 18px; text-align: center; color: #8a96a3; cursor: grab; touch-action: none; user-select: none; font-size: 16px; }
+#sLanes .ln .lind { flex: none; width: calc(var(--d, 0) * 1.5em); }
+#sLanes .ln[data-depth="0"] input.wk { font-weight: bold; }
+#sLanes .ln:not([data-depth="0"]) input.wk { background: #f7f9fc; }
+#sLanes .ln.lifting { opacity: .45; }
+.lnhead .h0 { display: inline-block; width: 22px; }
+#ldLine { display: none; position: fixed; height: 3px; background: #1565c0; z-index: 1000; pointer-events: none; border-radius: 2px; }
 #sLanes .ln input.hn { flex: none; width: 2.6em; min-width: 0; text-align: right; padding-left: 2px; padding-right: 4px; } .lnhead .h3 { width: 8em; } .lnhead .h4 { width: 12.5em; }
 .llab.night { color: #1f3c88; font-weight: bold; }
 #sLanes .dw { font-size: 13px; white-space: nowrap; }
@@ -392,8 +428,16 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
 .wk .wkmap .nomap { height: 100%; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 20px; }
 
 /* 工種を1つずつたたむ */
-.llab .ltg { display: inline-block; width: 1.1em; color: #8a96a3; cursor: pointer; font-size: .85em; }
-.llab .ltg:hover { color: var(--head); background: #d6e4f2; border-radius: 3px; }
+/* 工種のたたむボタンは押しやすく（2026-11-11 ユーザー：小さすぎる）。左にハンドル、下位の工種は字下げ */
+.llab { padding-left: calc((2px + var(--ind, 0) * 12px) * var(--lz, 1)) !important; }
+.llab .lhandle { display: inline-block; width: 14px; text-align: center; color: #b0b8c1; cursor: grab; touch-action: none; user-select: none; }
+.llab .lhandle:hover { color: var(--head); }
+.llab .ltg { display: inline-block; width: 22px; height: 20px; line-height: 18px; margin-right: 3px; text-align: center; color: #5b6b7c; cursor: pointer; font-size: 13px;
+  border: 1px solid #c9d1da; border-radius: 4px; background: #f6f8fa; vertical-align: middle; }
+.llab .ltg:hover { color: #fff; background: var(--head); border-color: var(--head); }
+.lane.lparent > .llab { font-weight: bold; }
+.llab .kn { font-weight: normal; color: #888; }
+.lane.lifting { opacity: .45; }
 .lane.lfold { height: 16px !important; }
 .lane.lfold .llab { line-height: 16px; font-size: calc(11px * var(--lfz, 1)); color: #666; cursor: pointer; }
 .lane.lfold .llab:hover { color: var(--head); }
@@ -419,3 +463,6 @@ label .req { color: #c62828; font-size: 11px; font-weight: normal; }
   padding: 10px 14px; font-size: 15px; box-shadow: 0 4px 16px rgba(0,0,0,.3); display: flex; gap: 12px; align-items: center; white-space: nowrap; }
 .updbar[hidden] { display: none; }
 .updbar button { font-size: 15px; padding: 6px 16px; font-weight: bold; }
+.lane.lfold .llab .ltg { height: 14px; line-height: 12px; font-size: 10px; width: 18px; }
+.lnhead .h5 { width: 25em !important; } .lnhead .h4 { width: 15em !important; }
+@media print { .llab .lhandle { display: none; } .llab .ltg { border: none; background: none; } }

@@ -84,11 +84,12 @@ function chartXlsx(list, from, end, logo) {
 
   // 現場ごとの工種と行の数（1つの工種に重なる工程があれば行を足す：packLane）
   const siteBlocks = list.map(s => {
-    const lanes = s.段.filter(l => !l.完了 || showLanes.has(s.id));
+    // 下位の工種は親のすぐ後ろ・字下げ（2026-11-11）。親が完了なら下位も完了とみなす
+    const T = treeInfo(s.段), lanes = T.order.filter(l => !laneDoneTree(T, l) || showLanes.has(s.id));
     const blocks = (lanes.length ? lanes : [null]).map(ln => {
       const bars = ln ? s.バー.filter(b => b.段 === ln.id && b.終了 >= from && b.開始 <= end) : [];
       const p = packLane(bars);
-      return { ln, bars, pos: p.pos, n: p.rows };
+      return { ln, bars, pos: p.pos, n: p.rows, dep: ln ? T.depth[ln.id] || 0 : 0 };
     });
     return { s, blocks, pairs: blocks.reduce((a, b) => a + b.n, 0) };
   });
@@ -115,8 +116,8 @@ function chartXlsx(list, from, end, logo) {
     if (g.length || !groups.length) groups.push(g); }
 
   // 合計（作業員［自社］・外注［外注の工種があるときだけ］・職員［社員の人数。同じ人は1人］）。チェックした現場ぜんぶの、その日に作業する工程（休工日・会社の休みは数えない）
-  const hasGai = list.some(s => s.段.some(isGai));
-  const totals = ["作業員", ...(hasGai ? ["外注"] : []), "職員"];
+  const anyGai = list.some(s => s.段.some(hasGai));
+  const totals = ["作業員", ...(anyGai ? ["外注"] : []), "職員"];
   const at = {};
   for (const s of list) for (const b of s.バー) {
     if (b.終了 < from || b.開始 > end) continue;
@@ -126,7 +127,7 @@ function chartXlsx(list, from, end, logo) {
   const totalOf = (name, k) => {
     const xs = at[k] || [];
     if (name === "職員") return new Set(xs.flatMap(x => x.b.社員 || [])).size;
-    return xs.filter(x => name === "外注" ? isGai(x.ln) : !isGai(x.ln)).reduce((a, x) => a + headAt(x.b, k, x.ln), 0);
+    return xs.reduce((a, x) => a + (name === "外注" ? gaiAt : ownAt)(x.b, k, x.ln), 0);   // 共同作業の工種は両方に数える
   };
 
   const ST = cxStyles(), noOf = new Map(list.map((s, i) => [s.id, i + 1]));   // No は通し番号
@@ -244,7 +245,7 @@ function cxSheet({ ST, g, a, z, noOf, lastGroup, totals, totalOf, pageWpx, pageH
     blocks.forEach((bk, bi) => {
       const top = bi === 0 ? "medium" : "thin";
       const night = !!(bk.ln && isNight(bk.ln));
-      box(r, 3, r + bk.n * 2 - 1, 3, laneStyle(top, night), bk.ln ? str(laneName(bk.ln) + (isGai(bk.ln) ? "\n（外注 " + gaiName(bk.ln) + "）" : "")) : {});
+      box(r, 3, r + bk.n * 2 - 1, 3, laneStyle(top, night), bk.ln ? str("　".repeat(bk.dep) + laneName(bk.ln) + (hasGai(bk.ln) ? "\n（" + (isGai(bk.ln) ? "" : "＋") + "外注 " + gaiName(bk.ln) + "）" : "")) : {});
       for (let j = 0; j < bk.n; j++) {
         const rb = r + j * 2, rt = rb + 1, ph = pairH[pi++];
         rowsPx[rb] = Math.round(ph * 0.42); rowsPx[rt] = ph - rowsPx[rb];   // 上＝工程線、下＝文字

@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr001 10/31 12:48">
+<link rel="stylesheet" href="app.css?v=Vr001 11/11 20:21">
 </head>
 <body>
 <header id="top">
@@ -31,7 +31,9 @@
       <option value="2m" selected>2か月</option>
       <option value="3m">3か月</option>
       <option value="4m">4か月</option>
+      <option value="c">期間を指定</option>
     </select>
+    <span id="toSep" hidden>〜</span><input type="date" id="inTo" title="表示する最後の日" hidden>
     <button id="bNext" class="sub" title="次へ（表示している長さの分）">▶</button>
     <button id="bToday" class="sub" title="今日から表示">今日</button>
     <select id="inSort" title="現場の並び（自分の画面だけ）">
@@ -54,7 +56,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 10/31 12:48</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr001 11/11 20:21</span>
   </span>
 </header>
 
@@ -73,6 +75,11 @@
 </main>
 
 <main id="pFlow" hidden>
+  <div class="listbar">
+    <label title="表示している期間に作業する日が1日も無い現場も出す（自分の画面だけ）"><input type="checkbox" id="inFlowIdle"> 作業の無い現場も出す</label>
+    <label title="社員1人ずつの行き先の表を下に出す（2現場以上の日は赤）"><input type="checkbox" id="inFlowPeople"> 社員の行き先も出す</label>
+    <span class="note">最下行の人数を超えた日は赤。「〇名」を押すと人数を変えられます（全員で共有）</span>
+  </div>
   <div id="flow"></div>
 </main>
 
@@ -140,12 +147,12 @@
       <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
       <label>工種</label>
       <div>
-        <div class="lnhead"><span class="h1">区分</span><span class="h2">作業名</span><span class="h5">作業員／外注</span><span class="h3">作業する曜日</span><span class="h4">完了</span></div>
+        <div class="lnhead"><span class="h0"></span><span class="h1">区分</span><span class="h2">作業名</span><span class="h5">作業員・外注（ふだんの人数）</span><span class="h3">作業する曜日</span><span class="h4">完了・階層</span></div>
         <div id="sLanes"></div><datalist id="gyoList"></datalist>
-        <button type="button" id="bLaneAdd" class="sub small">＋ 工種を足す</button>
         <div class="note">工種は工程表の1行です。区分（昼／夜）と作業名（例：立坑工・25tクレーン）を入れます。昼夜の現場は昼と夜の2行にします。<br>
+          ⠿ をつかんで上下に動かすと順番を入れ替え（下位の工種も一緒）。▶＝すぐ上の工種の下位にする、◀＝上の階層へ戻す。＋＝下に空の行を足す。<br>
           作業する曜日：チェックした曜日も作業する（平日はいつも作業）。工程ごとの休みは、バーの「休工日を設定」。<br>
-          作業員／外注：自社の作業員なら ふだんの人数（〇人＋〇人）、外注なら 業者名＋人数。バーで人数を入れなければこの人数。日によって違うときはバーの「日ごとの人数」。<br>
+          作業員・外注：自社の作業員の ふだんの人数（〇人＋〇人）と、外注の 業者名＋人数。両方入れると共同作業。バーで人数を入れなければこの人数。日によって違うときはバーの「日ごとの人数」。<br>
           完了：終わった工種。工程表ではたたんで隠し、現場の下の「▸ 完了 n工種」で出せます。✕で消すとその工種のバーも消えます。</div>
       </div>
       <label>並び</label>
@@ -276,9 +283,9 @@
 <div id="updBar" class="updbar" hidden>新しい版（<span id="updVer"></span>）が出ています。<button type="button" id="bUpd">更新する</button></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 10/31 12:48"></script>
-<script src="app.js?v=Vr001 10/31 12:48"></script>
-<script src="weekxlsx.js?v=Vr001 10/31 12:48"></script>
-<script src="chartxlsx.js?v=Vr001 10/31 12:48"></script>
+<script src="config.js?v=Vr001 11/11 20:21"></script>
+<script src="app.js?v=Vr001 11/11 20:21"></script>
+<script src="weekxlsx.js?v=Vr001 11/11 20:21"></script>
+<script src="chartxlsx.js?v=Vr001 11/11 20:21"></script>
 </body>
 </html>
