@@ -792,7 +792,7 @@ function renderFlow() {
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
     `</tr><tr>` + days.map(k => `<th class="${dayClass(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
   const cols = days.length + 2;
-  const h = [`<table class="fl pdf">`, head, `<tbody>`];
+  const h = [`<table class="fl pdf${S.print ? " prt" : ""}">`, head, `<tbody>`];   // prt：印刷用の字（app.css）
   const cell = (k, v, extra = "") => `<td class="${v ? "" : "n0"} ${dayClass(k)} ${extra}">${v || ""}</td>`;
 
   // 1. 現場ごと：工程の流れ（工程線）＋ 労務人数（従業員）・労務人数（社員）
@@ -861,6 +861,11 @@ function renderFlow() {
     h.push(dup.length ? `<td class="${dayClass(k)} ${v > cap.社員 ? "over" : ""} dupx" title="${esc(md(k) + " 2現場以上：" + dup.map(([n, ss]) => n + "（" + [...ss].join("・") + "）").join("、"))}">${v || ""}<sup>!</sup></td>` : cell(k, v, v > cap.社員 ? "over" : ""));
   }
   h.push(`</tr>`);
+  /* 2026-11-12 ユーザー：最下行に、従業員・社員を合計した欄を設ける。
+     合計＝その日の 労務人数（従業員）＋ 労務人数（社員）。人数枠（従業員＋社員）を超えた日は赤 */
+  const capAll = cap.従業員 + cap.社員;
+  h.push(`<tr class="tot tsum"><th class="nm" colspan="2" title="${totTitle}">労務人数 合計（従業員＋社員 ${capAll}名）</th>` +
+    days.map(k => { const v = empAt(k, () => true) + stfAt(k, () => true); return cell(k, v, v > capAll ? "over" : ""); }).join("") + `</tr>`);
 
   // 3. 社員の行き先（「社員の行き先も出す」のとき。マスタの全員を出すので、空いている人も分かる）
   if (flowPeople) {
@@ -2243,21 +2248,30 @@ function fitChart(W, H) {
   return z;
 }
 /* 人の流れを1ページに収める（2026-11-11 ユーザー：10現場で1ページに収まらなかった。部会資料の PDF は11現場で収まっていた）
-   幅：日の幅を用紙の横に合わせる（22〜120px。入らなければ縮める）。高さ：行の高さ --fh を、ちょうど用紙の縦に収まる高さにする（14〜70px）。
-   それでも入らなければ全体を縮める。用紙の端で切れて2ページ目に回らないよう、縦は 5% 控える */
+   2026-11-12 ユーザー：1か月など短い期間を印刷するときは、列の幅を広げて用紙に合わせる。字も読みやすく。
+   → 倍率 z（字ごと拡大）を、横（日の幅が 22px を切らない）・縦（行の高さ 14px で収まる）の両方で入る一番大きな値にする（2.0 まで）。
+     短い期間ほど字が大きくなる。日の幅が余るときは左の列（現場名・工種）も広げて … で切れにくくする。
+     そのあと行の高さ --fh を、ちょうど用紙の縦に収まる高さにする（14〜70px）。用紙の端で2ページ目に回らないよう、縦は 5% 控える */
 function fitFlow(W, H) {
   const tb = () => $("flow").querySelector("table"), n = range().days.length;
+  const MINW = 22, ZMAX = 2.0;
   H *= 0.95;
-  root.setProperty("--fw", "46px"); root.setProperty("--fh", "26px"); renderFlow();
-  const nameW = tb().querySelector("thead th.nm").offsetWidth;
-  root.setProperty("--fw", Math.max(22, Math.min(120, Math.floor((W - nameW - 4) / n * 100) / 100)) + "px");
-  renderFlow();
-  let z = Math.min(1.6, W / tb().offsetWidth);
+  let nameW = 0, z = 1;
+  const setFw = () => root.setProperty("--fw", Math.max(MINW, Math.floor((W / z - nameW - 4) / n * 100) / 100) + "px");
+  const pickZ = () => {
+    root.setProperty("--fw", MINW + "px"); root.setProperty("--fh", "14px"); renderFlow();
+    nameW = tb().querySelector("thead th.nm").offsetWidth;
+    z = Math.min(ZMAX, W / (nameW + 4 + MINW * n), H / tb().offsetHeight);
+  };
+  root.setProperty("--fscw", "168px"); root.setProperty("--fkcw", "150px");
+  pickZ();
+  // 日の幅が十分に余る（短い期間）なら、左の列を広げて選び直す
+  if ((W / z - nameW) / n > 70) { root.setProperty("--fscw", "240px"); root.setProperty("--fkcw", "220px"); pickZ(); }
+  setFw();
   let lo = 14, hi = 70;
   for (let i = 0; i < 14; i++) { const m = (lo + hi) / 2; root.setProperty("--fh", m + "px"); renderFlow(); if (tb().offsetHeight * z <= H) lo = m; else hi = m; }
   root.setProperty("--fh", lo + "px"); renderFlow();
-  if (tb().offsetHeight * z > H) z = H / tb().offsetHeight;
-  return z;
+  return Math.min(z, W / tb().offsetWidth, H / tb().offsetHeight);
 }
 // 期間を nx ページに分ける。期間がちょうど nか月で nx で割り切れるなら月の切れ目で、そうでなければ日数で等分
 function dayChunks(from, end, nx) {
@@ -2403,21 +2417,21 @@ function preparePrint() {
         el = $("flow").querySelector("table").cloneNode(true);
       }
       // 写しにはそのページの幅・高さ・倍率を持たせる（:root の値はページごとに変わるため）
-      ["--dw", "--rh", "--fw", "--fh"].forEach(k => { const v = root.getPropertyValue(k); if (v) el.style.setProperty(k, v); });
+      ["--dw", "--rh", "--fw", "--fh", "--fscw", "--fkcw"].forEach(k => { const v = root.getPropertyValue(k); if (v) el.style.setProperty(k, v); });
       el.style.zoom = z.toFixed(4);
       div.appendChild(el);
       out.appendChild(div);
     });
   }
   S.print = P;
-  ["--dw", "--rh", "--fw", "--fh"].forEach(k => root.removeProperty(k));
+  ["--dw", "--rh", "--fw", "--fh", "--fscw", "--fkcw"].forEach(k => root.removeProperty(k));
   document.body.classList.add("printing");
 }
 function afterPrint() {
   document.body.classList.remove("printing");
   $("printPages").innerHTML = "";
   S.print = null;
-  ["--dw", "--rh", "--fw", "--fh"].forEach(k => root.removeProperty(k));
+  ["--dw", "--rh", "--fw", "--fh", "--fscw", "--fkcw"].forEach(k => root.removeProperty(k));
   applyZoom(); render();
 }
 window.addEventListener("beforeprint", preparePrint);

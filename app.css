@@ -138,7 +138,7 @@ table.fl td.dup { background: #d93a36 !important; color: #fff; font-weight: bold
 table.fl td.n0 { color: #bbb; }
 table.fl td.un { color: #c62828; cursor: pointer; }
 /* 人の流れ：部会資料（PDF）の形（2026-11-11）。左＝現場（No・コード・名前・元請・担当）と工種、右＝工程線・労務人数（従業員／社員） */
-table.fl.pdf { --scw: 168px; --kcw: 150px; }
+table.fl.pdf { --scw: var(--fscw, 168px); --kcw: var(--fkcw, 150px); }
 table.fl.pdf th.nm { min-width: 0; }
 table.fl.pdf thead th.corner { left: 0; width: calc(var(--scw) + var(--kcw)); padding: 0 8px; font-weight: normal; color: #555; vertical-align: middle; }
 table.fl.pdf thead th.corner span:first-child { float: right; }
@@ -164,6 +164,7 @@ table.fl.pdf tr.send td, table.fl.pdf tr.send th.kc { border-bottom: 2px solid #
 table.fl.pdf tr.ttop td, table.fl.pdf tr.ttop th { border-top: 2px solid #555; }
 table.fl.pdf tr.tot th.nm { text-align: center; letter-spacing: .1em; }
 table.fl.pdf a.cap { color: #1565c0; text-decoration: underline; cursor: pointer; }
+table.fl.pdf tr.tsum td, table.fl.pdf tr.tsum th { border-top: 2px solid #8a96a3; background: #e6ecf2; }
 table.fl.pdf td.over { background: #d93a36 !important; color: #fff; }
 table.fl.pdf td.dupx sup { color: #d93a36; font-size: 9px; margin-left: 1px; }
 table.fl.pdf td.over.dupx sup { color: #fff; }
@@ -484,3 +485,10 @@ table.fl.pdf th.sc .sbody { line-height: 1.3; }
 /* 人の流れの行を低くしたとき（1ページに収める）、現場の欄の字が行からはみ出さないように少し小さく */
 table.fl.pdf th.sc .sbody { font-size: 11px; } table.fl.pdf th.sc .snm { font-size: 12px; } table.fl.pdf th.sc .scode, table.fl.pdf th.sc .smeta { font-size: 10px; }
 table.fl.pdf th.sc { padding: 1px 4px; }
+
+/* 印刷の人の流れは読みやすい字に（2026-11-12 ユーザー指定）。BIZ UDPゴシック（Windows 10 以降に入っているユニバーサルデザインの字）、無ければメイリオ */
+table.fl.prt { font-family: "BIZ UDPGothic", "BIZ UDPゴシック", "BIZ UDGothic", "Meiryo", "メイリオ", sans-serif; font-size: 13px; }
+table.fl.prt th.sc .sbody { font-size: 12px; } table.fl.prt th.sc .snm { font-size: 13px; }
+table.fl.prt th.sc .scode, table.fl.prt th.sc .smeta { font-size: 11px; }
+table.fl.prt th.kc { font-size: 12px; }
+table.fl.prt tr.cnt td, table.fl.prt tr.tot td { font-size: 14px; }
