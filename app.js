@@ -897,12 +897,24 @@ function renderFlow() {
   if (!S.print) { const before = root.getPropertyValue("--fw"); fitFlowWidth(days.length); if (root.getPropertyValue("--fw") !== before) $("flow").innerHTML = h.join(""); }
 }
 
+/* 現場名の候補（2026-11-13 ユーザー：完了した物、すでに載っている物は候補に出したくない）
+   ・この工程表にもう載っている現場（完了も含む）は出さない。コード → 略称 → 名前 のどれかが同じなら同じ現場
+   ・マスタの 工期（至）が今日より前の現場（終わった現場）は出さない。工期（至）が空なら出す */
+function siteCands() {
+  const all = sites(), codes = new Set(all.map(s => String(s.コード || "")).filter(Boolean));
+  const names = new Set(all.flatMap(s => [s.略称, s.名前]).filter(Boolean));
+  const today = todayKey();
+  return (M().現場 || []).filter(x =>
+    !(x.コード && codes.has(String(x.コード))) && !(x.略称 && names.has(x.略称)) && !(x.名前 && names.has(x.名前)) &&
+    !(x.工期至 && x.工期至 < today));
+}
+
 function render() {
   if (S.tab === "chart") renderChart(); else if (S.tab === "flow") renderFlow(); else renderList();
   showOnly();
   // 候補（マスタ＋入力済み）
   $("staffList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
-  $("siteList").innerHTML = M().現場.map(x => `<option value="${esc(x.略称 || x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? x.名前 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
+  $("siteList").innerHTML = siteCands().map(x => `<option value="${esc(x.略称 || x.名前)}">${esc([x.コード, x.略称 && x.略称 !== x.名前 ? x.名前 : "", x.担当 ? "担当 " + x.担当 : ""].filter(Boolean).join("　"))}</option>`).join("");
 }
 
 /* ---------- ドラッグ（動かす・延ばす・作る） ----------
@@ -2609,7 +2621,16 @@ async function start() {
   showSync();
   let tab = "chart";
   try { tab = localStorage.getItem("kotei_tab") || "chart"; } catch (e) { }
+  const requestedSite = new URLSearchParams(location.search).get("site");
+  if (requestedSite && sites().some(s => s.id === requestedSite)) { setOnly([requestedSite]); tab="chart"; }
   (document.querySelector(`#tabs [data-tab="${tab}"]`) || document.querySelector("#tabs [data-tab=chart]")).click();
   setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
 }
+// 部会資料は独立Vr001。最新版の原版（Vr002以降）を正式な入口にする。
+$("bBukai").onclick = () => {
+  const u=new URL("bukai/",location.href);
+  u.searchParams.set("from","kotei"); u.searchParams.set("sourceVersion",/^Vr\d+/.test($("ver").textContent) ? $("ver").textContent : "Vr002 開発中");
+  if (DEMO) u.searchParams.set("demo","");
+  window.open(u.href,"_blank","noopener");
+};
 start();

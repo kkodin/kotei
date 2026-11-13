@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>全体工程表 使用方法</title>
+<!-- 使用方法（2026-10-14 ユーザー：説明は「使用方法」ボタンで別の窓に。パソコン用とスマホ用を分ける）。
+     #pc／#sp で開くほうを決める（app.js の bHelp は、指で操作する端末なら #sp） -->
+<style>
+  :root { --head: #1f4e79; --line: #d0d7de; --soft: #f6f8fa; --ink: #222; --sub: #555; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Yu Gothic UI", Meiryo, sans-serif; color: var(--ink); background: #fff; line-height: 1.7; font-size: 15px; }
+  .stick { position: sticky; top: 0; z-index: 2; }
+  header { background: var(--head); color: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  header h1 { margin: 0; font-size: 18px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs a { color: #fff; text-decoration: none; padding: 4px 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; font-size: 14px; }
+  /* 閉じる（2026-10-14 ユーザー：タブレットで閉じられなかった） */
+  .close { margin-left: auto; background: #fff; color: var(--head); border: none; border-radius: 4px; padding: 6px 14px; font-size: 15px; font-weight: bold; cursor: pointer; font-family: inherit; }
+  .tabs a.on { background: #fff; color: var(--head); font-weight: bold; }
+  nav.toc { background: var(--soft); border-bottom: 1px solid var(--line); padding: 8px 16px; font-size: 14px; }
+  nav.toc a { color: var(--head); margin-right: 14px; white-space: nowrap; }
+  main { max-width: 820px; margin: 0 auto; padding: 8px 16px 40px; }
+  section.page { display: none; }
+  section.page.on { display: block; }
+  h2 { font-size: 17px; border-left: 5px solid var(--head); padding-left: 8px; margin: 26px 0 8px; }
+  h3 { font-size: 15px; margin: 16px 0 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); white-space: nowrap; width: 11em; }
+  ul { padding-left: 1.3em; margin: 4px 0; }
+  li { margin: 2px 0; }
+  kbd { border: 1px solid #aaa; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: 13px; background: #fff; font-family: inherit; }
+  .note { color: var(--sub); font-size: 13px; }
+  .box { background: #fff8e1; border: 1px solid #f0d58a; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
+  .red { color: #c62828; font-weight: bold; }
+  @media (max-width: 560px) { th { width: 7.5em; white-space: normal; } body { font-size: 14px; } nav.toc { white-space: nowrap; overflow-x: auto; padding: 6px 12px; } header { padding: 8px 12px; } header h1 { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="stick">
+<header>
+  <h1>全体工程表 使用方法</h1>
+  <div class="tabs"><a href="#pc" id="tPc">パソコン</a><a href="#sp" id="tSp">スマホ・タブレット</a></div>
+  <button type="button" id="bClose" class="close">✕ 閉じる</button>
+</header>
+<nav class="toc">
+  <a href="#" data-go="bukai">工事部会資料</a><a href="#" data-go="see">画面の見方</a><a href="#" data-go="bar">工程（バー）</a><a href="#" data-go="site">現場の設定</a>
+  <a href="#" data-go="num">作業員の人数</a><a href="#" data-go="flow">人の流れ・一覧</a><a href="#" data-go="print">印刷・週間工程表</a><a href="#" data-go="faq">困ったとき</a>
+</nav>
+</div>
+<main>
+
+<!-- ============ パソコン ============ -->
+<section class="page" id="page-pc">
+<h2 data-sec="bukai">工事部会資料を作る</h2>
+  <ol>
+    <li>最新版の全体工程表（原版）Vr002以降の「工事部会資料」から別画面で開き、会議月を選びます。旧版からは利用できません。当月から3か月分の工程を参照します。</li>
+    <li>左のチェックで掲載する現場を選び、現場名を押します。全体工程表の現場は初めに掲載、台帳だけの現場はチェックして追加できます。</li>
+    <li>台帳の元請・工期・概要等を利用し、計画％・実行％・備考などを補って「この現場を保存」。追記は会議月ごとの共有データです。</li>
+    <li>工程・人数・休工日は工程表と共通です。「全体工程表で開く」から修正できます。部会資料で工種ごとの外注／直労／機材の区分を選べます。</li>
+    <li>「記入済みJSONを取り込む」は、会議月と工事コードを照合し、反映前に内容を表示します。「共有用JSONを書き出す」で同じ形式のデータを受け渡せます。Excelの直接取り込みは未対応です。</li>
+    <li>全体を確認後、「配布版を保存」でその時点の内容を残します。上の「資料」から過去の配布版を選べます。配布版の内容は後の工程変更では変わりません。</li>
+    <li>用紙・1ページの現場数を選び「印刷・PDF」。PDFは印刷画面で「PDFに保存」。プリンターの用紙サイズも合わせてください。</li>
+  </ol>
+  <div class="box">同じ項目をほかの人が変更したときは、保存を止めてお知らせします。入力内容を控え、「最新を読み直す」で確認してください。別の項目の変更は保持します。保存されていない入力は、読み直し前に確認します。</div>
+
+  <h2 data-sec="see">画面の見方</h2>
+  <table>
+    <tr><th>工程表／人の流れ／一覧</th><td>上のボタンで切り替えます。</td></tr>
+    <tr><th>◀ 日付 ▶・長さ</th><td>表示する最初の日と長さ（1日・1週間・2週間・1か月〜4か月・<b>期間を指定</b>）。「期間を指定」を選ぶと右に終わりの日が出ます。表は画面の幅いっぱいに広がります。日付は好きな日にできます。◀▶ は「○か月」なら1か月ずつ、「1日・○週間」ならその長さずつ。「今日」で今日から。</td></tr>
+    <tr><th>現場：すべて</th><td>表示する現場を選びます（チェック・担当で選ぶ）。自分の画面だけで、ほかの人の画面は変わりません。</td></tr>
+    <tr><th>並び</th><td>設定順・社内工事名・工事コード・開始日。自分の画面だけの並びです。</td></tr>
+    <tr><th>完了も出す</th><td>完了にした現場も表示します。</td></tr>
+    <tr><th>－ 100% ＋</th><td>表だけを拡大縮小。<kbd>Ctrl</kbd>＋ホイール、<kbd>Ctrl</kbd>＋<kbd>＋</kbd>／<kbd>－</kbd>／<kbd>0</kbd> でも。数字を押すと 100%。</td></tr>
+    <tr><th>↻ 最新にする</th><td>ほかの人の書き込みを読み直します（30秒ごとにも自動で読み直します）。</td></tr>
+    <tr><th>右上の版</th><td>いま開いている画面の版（例：Vr001 10/14 16:59）。</td></tr>
+  </table>
+  <h3>工程表の左</h3>
+  <ul>
+    <li>現場名の左の ▾／▸ で現場をたたむ・ひらく。左上の「全部たたむ／全部ひらく」も。</li>
+    <li>工種名の左の ▾ で工種を1つずつたたむ（細い1行に色の線だけ）。</li>
+    <li>現場名を押すと <b>現場の設定</b>。</li>
+    <li>日付の見出しを押すと、その日を<b>会社の休み</b>にする／戻す（全員共通。列全体に斜線）。</li>
+  </ul>
+
+  <h2 data-sec="bar">工程（バー）を書く・直す</h2>
+  <table>
+    <tr><th>新しいバー</th><td>工種の行の空いている所を横になぞる。</td></tr>
+    <tr><th>動かす</th><td>バーをつかんで横に動かす。</td></tr>
+    <tr><th>期間を延ばす・縮める</th><td>バーの左右の端をつかんで動かす。</td></tr>
+    <tr><th>コピー</th><td><kbd>Ctrl</kbd> を押しながらバーをつかんで横に動かす（点線の写しが動き、元のバーは残ります）。小窓の「<b>コピー</b>」でもできます（次の日から同じ日数で「工程を足す」になるので、工種・日付を直して保存）。</td></tr>
+    <tr><th>中身を直す</th><td>バーを押す → 小窓（作業・期間・社員・作業員・色・メモ）。</td></tr>
+    <tr><th>右クリック</th><td>メニュー：直す／コピーする／同じ期間で工種を足す／その日から工種を足す／休工日を設定／完了にしてたたむ／消す。</td></tr>
+  </table>
+  <h3>休工日</h3>
+  <ul>
+    <li>休みをはさむ工程も1本で書き、休みの日はバーの小窓の「<b>休工日を設定</b>」で抜きます（カレンダーで日を押すと休工、もう一度で戻る）。</li>
+    <li>バーの中で作業しない日は白く抜けて表示されます。</li>
+  </ul>
+  <h3>小窓の入力</h3>
+  <ul><li><kbd>Enter</kbd> で次の欄へ進みます（小窓は閉じません）。保存は小窓の上の帯の「保存」。メモの欄の <kbd>Enter</kbd> は改行です。</li></ul>
+  <h3>社員</h3>
+  <ul><li>1人1欄。候補から選ぶか、名字だけ打てばフルネームに直ります。「＋ 社員の欄を足す」で増やします。</li></ul>
+
+  <h2 data-sec="site">現場の設定</h2>
+  <table>
+    <tr><th>社内工事名 <span class="red">必須</span></th><td>社内での呼び名（略称）。工程表・人の流れに出ます。候補から選ぶとコード・担当・正式工事名・住所が入ります。</td></tr>
+    <tr><th>正式工事名</th><td>任意。印刷の週間工程表の「工事名」に出ます（空なら社内工事名）。Excel の週間工程表は 工事略称（社内工事名）・現場コードです。</td></tr>
+    <tr><th>工期・住所</th><td>週間工程表に出ます。</td></tr>
+    <tr><th>地図</th><td>「画像ファイルを選ぶ」・小窓へ<b>ドラッグ＆ドロップ</b>・枠を押して <kbd>Ctrl</kbd>＋<kbd>V</kbd>。枠の中で画像をつかんで動かし、大きさはスライダーかホイール。「全体を入れる」「枠いっぱい」。枠の中が週間工程表（印刷・Excel）に出ます。</td></tr>
+    <tr><th>工種</th><td>区分（昼／夜）・作業名・<b>作業員（〇人＋〇人）か外注（業者名＋人数）</b>・作業する曜日（土日祝）・完了。▲▼で順番、✕で消す（その工種のバーも消えます）。</td></tr>
+    <tr><th>完了（現場）</th><td>終わった現場。工程表・一覧から隠れます（「完了も出す」で表示）。</td></tr>
+    <tr><th>並び ▲▼</th><td>「設定順」の並び（全員共通）を変えます。</td></tr>
+  </table>
+  <div class="box">完了でない工種が3つ以上あるときや、終わった工種があるときに「＋ 工種を足す」を押すと、古い工種を<b>たたむ／そのまま／消す</b>から選ぶ小窓が出ます。</div>
+
+  <h2 data-sec="num">作業員の人数</h2>
+  <ul>
+    <li>「<b>1+3</b>」のように＋で分けて入れられます（表示は「1名＋3名」）。全角で打っても直ります。「1」とだけ入れれば「1名」です（工種の人数の欄も、片方だけ入れれば「1名」）。</li>
+    <li><b>工種の人数</b>（現場の設定の工種の行）＝ふだんの人数。バーに人数を入れなければこの人数になります。</li>
+    <li><b>バーの人数</b>（バーの小窓の「作業員」）＝その工程だけの人数。空なら工種の人数が薄い字で見えます。</li>
+    <li><b>日ごとの人数</b>（バーの小窓の「日ごとの人数」）＝日によって違う日だけ入れます。空の日はふだんの人数。変えた日のあるバーは人数の後ろに「※」。</li>
+    <li><b>外注</b>：工種の行で「作業員」を「外注」に変えると、業者名と人数を入れられます。バーには「業者名 3名」と出ます。</li>
+    <li>人の流れは、自社の作業員（従業員）と社員を数えます（外注は数えません）。Excel の週間工程表の人員予定（昼間／夜間）は<b>自社だけ</b>を「1+4」の形で出します（外注は入れません）。</li>
+  </ul>
+
+  <h2 data-sec="flow">人の流れ・一覧</h2>
+  <ul>
+    <li><b>人の流れ</b>：工事部会資料の形で、現場ごとに 工程線・労務人数（従業員）・労務人数（社員）を出します。一番下は全部の現場の合計です。</li>
+    <li>合計が「従業員 〇名」「社員 〇名」を超えた日は<span class="red">赤</span>。「〇名」を押すと人数を変えられます（全員で共有）。「!」は同じ日に2つ以上の現場に入っている社員がいる日（マスに指を載せると名前）。</li>
+    <li>「作業の無い現場も出す」：表示している期間に作業の無い現場も出します。「社員の行き先も出す」：社員1人ずつの行き先の表を下に出します。工程線を押すとその工程が開きます。</li>
+    <li><b>一覧</b>：バーを表で。「表示中の期間にかかるものだけ」と、現場・作業・社員で絞れます。行を押すとその工程が開きます。</li>
+  </ul>
+
+  <h2 data-sec="print">印刷・PDF・週間工程表</h2>
+  <ol>
+    <li>上の「印刷・PDF」→ 小窓で <b>形式</b>（工程表／週間工程表）・<b>期間</b>・<b>現場</b>・<b>用紙</b>（A3横／A4横）・<b>ページ分け</b>を選ぶ。週間工程表は <b>色</b>（カラー＝全体工程の線の色／白黒＝線はどれも黒）も選べます。</li>
+    <li>現場の「<b>期間に作業がある現場だけ</b>」：小窓の期間（週間工程表は月曜から3週間）に工程がある現場だけにチェックを付けます（ほかは外れます）。期間を変えたら押し直してください。</li>
+    <li>「印刷する」→ 印刷画面。PDF は送信先で「PDF に保存」。</li>
+  </ol>
+  <div class="box">プリンターで A3 に出すときは、印刷画面の「詳細設定 → 用紙サイズ」も <b>A3</b> にしてください（A4 のままだと縮んで出ます）。</div>
+  <ul>
+    <li><b>週間工程表</b>は現場ごとに1枚、開始日の週の<b>月曜</b>から。右に現場の地図が入ります。</li>
+    <li>「<b>Excel で出す</b>」：週間工程表を .xlsx で保存（現場ごとに1シート・3週間）。右上に会社のロゴ、地図は AA〜AJ 列（4行目〜人員予定）に入ります。記事の右は自由に書ける欄です。線の欄の色の文字（青・赤…）を選び直すと線の色が変わります。表の下（印刷の外）の「休日→」の行で「休」を選ぶとその列が灰色（日付は赤）、消すと元に戻ります（はじめは日曜・祝日・会社の休み・どの工種も作業しない日が「休」）。</li>
+    <li>形式が<b>工程表</b>のときの「<b>Excel で出す</b>」：工程表（いまの画面の形）を .xlsx の1シートで保存。左に No・現場（コード・社内工事名・担当）・工種、右に選んだ期間の日の列。<b>工程線は図形</b>（Excel の上でつかんで動かす・伸ばす・色を変えられます。休工日は白抜き）、下の行に「作業 人数 社員」。たたんだ現場・工種もひらいて出します。
+      休みは週間工程表と同じく、表の下（印刷の外）の「休日→」の行で「休」を選ぶ／消すとその列が灰色（日付は赤）になる／戻ります（はじめは日曜・祝日・会社の休み）。表の下に <b>作業員 計</b>（自社）・<b>職員 計</b>（その日に工程に入っている社員の人数）、外注の工種があれば <b>外注 計</b>。
+      列の幅・行の高さは用紙（A3／A4 横）いっぱいに合わせます（現場が少なければ行が高くなり、下に余白が出ません。縮小はできるだけ使いません）。
+      ページ分けを選ぶと1ページ＝1シート（現場の途中では切りません）。工程表のタブで出してください。</li>
+    <li><kbd>Ctrl</kbd>＋<kbd>P</kbd> は画面のままの印刷です。</li>
+  </ul>
+
+  <h2 data-sec="faq">困ったとき</h2>
+  <table>
+    <tr><th>新しい機能が出ない</th><td>右上の版を確かめて、古ければ <kbd>Ctrl</kbd>＋<kbd>F5</kbd> で読み直してください。</td></tr>
+    <tr><th>保存されない・赤い表示</th><td>「↻ 最新にする」を押す。同じときにほかの人が直したときは、読み直して重ねて保存します。</td></tr>
+    <tr><th>見えない現場がある</th><td>「完了も出す」にチェック、または工程表の下の「完了した現場 n 件を隠しています」。</td></tr>
+    <tr><th>工種が見えない</th><td>完了にした工種は、現場の一番下の「▸ 完了 n工種」を押すと出ます。</td></tr>
+  </table>
+</section>
+
+<!-- ============ スマホ・タブレット ============ -->
+<section class="page" id="page-sp">
+  <div class="box">細かい直しはパソコンのほうが楽です。スマホは<b>見る・少し直す</b>向きです。横向きにすると見やすくなります。</div>
+
+<h2 data-sec="bukai">工事部会資料を作る</h2>
+  <ol>
+    <li>最新版の全体工程表（原版）Vr002以降の「工事部会資料」から別画面で開き、会議月を選びます。旧版からは利用できません。当月から3か月分の工程を参照します。</li>
+    <li>左のチェックで掲載する現場を選び、現場名を押します。全体工程表の現場は初めに掲載、台帳だけの現場はチェックして追加できます。</li>
+    <li>台帳の元請・工期・概要等を利用し、計画％・実行％・備考などを補って「この現場を保存」。追記は会議月ごとの共有データです。</li>
+    <li>工程・人数・休工日は工程表と共通です。「全体工程表で開く」から修正できます。部会資料で工種ごとの外注／直労／機材の区分を選べます。</li>
+    <li>「記入済みJSONを取り込む」は、会議月と工事コードを照合し、反映前に内容を表示します。「共有用JSONを書き出す」で同じ形式のデータを受け渡せます。Excelの直接取り込みは未対応です。</li>
+    <li>全体を確認後、「配布版を保存」でその時点の内容を残します。上の「資料」から過去の配布版を選べます。配布版の内容は後の工程変更では変わりません。</li>
+    <li>用紙・1ページの現場数を選び「印刷・PDF」。PDFは印刷画面で「PDFに保存」。プリンターの用紙サイズも合わせてください。</li>
+  </ol>
+  <div class="box">同じ項目をほかの人が変更したときは、保存を止めてお知らせします。入力内容を控え、「最新を読み直す」で確認してください。別の項目の変更は保持します。保存されていない入力は、読み直し前に確認します。</div>
+
+  <h2 data-sec="see">画面の見方</h2>
+  <table>
+    <tr><th>画面を動かす</th><td><b>1本指</b>でスワイプ（工程線の上からでも動きます）。</td></tr>
+    <tr><th>拡大縮小</th><td><b>2本指でピンチ</b>。上の「－ 100% ＋」でも（数字を押すと 100%）。</td></tr>
+    <tr><th>切り替え</th><td>上の「工程表／人の流れ／一覧」。期間は ◀ 日付 ▶ と長さ（1日〜4か月・期間を指定）。</td></tr>
+    <tr><th>最新にする</th><td>「↻ 最新にする」でほかの人の書き込みを読み直します。</td></tr>
+  </table>
+
+  <h2 data-sec="bar">工程線を書く・直す</h2>
+  <table>
+    <tr><th>新しい工程線</th><td>空いている所を<b>1本指で長押し</b> → 書く状態（点線の枠）→ 指を離さずに左右へ動かして線を引く → 離すとできます（小窓は出ません）。</td></tr>
+    <tr><th>動かす</th><td>工程線を<b>長押し</b> → 線に<b>影</b>が付いて浮いたら、指を離さずに左右へ。</td></tr>
+    <tr><th>延ばす・縮める</th><td>工程線の<b>端を長押し</b> → 端に<b>⇔</b> が付いたら、指を離さずに左右へ。</td></tr>
+    <tr><th>中身を直す</th><td>工程線を<b>ダブルタップ</b> → 小窓（作業名・期間・社員・作業員・色・メモ・休工日）。</td></tr>
+    <tr><th>コピー</th><td>小窓の下の「<b>コピー</b>」（またはメニューの「コピーする」）→ 次の日から同じ日数で「工程を足す」になるので、工種・日付を直して保存。</td></tr>
+    <tr><th>小窓</th><td>開いてもキーボードは出ません。入れたい欄をタップしてください。キーボードの<b>エンターで次の欄</b>へ進みます。<b>作業員の人数</b>の欄では、キーボードの代わりに<b>テンキー</b>（数字と＋・⌫・C・次へ・閉じる）が出ます。<b>保存・やめる</b>は小窓の一番上の帯にあります。</td></tr>
+    <tr><th>メニュー</th><td>長押しして、動かさずに離す（コピーする・工種を足す・休工日・完了にしてたたむ・消す など）。</td></tr>
+    <tr><th>現場の設定</th><td>左の工事名・工種名を<b>ダブルタップ</b>。</td></tr>
+  </table>
+  <ul>
+    <li>休みをはさむ工程は1本で書き、小窓の「休工日を設定」で日をタップして抜きます。</li>
+  </ul>
+
+  <h2 data-sec="site">現場の設定</h2>
+  <ul>
+    <li><b>社内工事名</b>（必須）＝社内での呼び名。<b>正式工事名</b>は任意（週間工程表に出ます）。</li>
+    <li>工種の行：区分（昼／夜）・作業名・<b>作業員（〇人＋〇人）か外注（業者名＋人数）</b>・作業する曜日・完了。</li>
+    <li>地図：「画像ファイルを選ぶ」で写真・画像を選び、枠の中を指で動かして位置を合わせ、スライダーで大きさ。</li>
+  </ul>
+
+  <h2 data-sec="num">作業員の人数</h2>
+  <ul>
+    <li>「1+3」のように＋で分けて入れられます（表示は「1名＋3名」）。</li>
+    <li>工種の人数＝ふだん。バーの人数＝その工程だけ。「日ごとの人数」＝違う日だけ。変えた日のあるバーは「※」。</li>
+    <li>外注の工種は「業者名 3名」。人の流れでは外注は数えません。</li>
+  </ul>
+
+  <h2 data-sec="flow">人の流れ・一覧</h2>
+  <ul>
+    <li>人の流れ：現場ごとに工程線と労務人数（従業員・社員）。一番下の合計が人数を超えた日は<span class="red">赤</span>、「!」＝同じ日に2現場の社員。工程線をタップでその工程。</li>
+    <li>一覧：バーを表で。上の欄で絞れます。</li>
+  </ul>
+
+  <h2 data-sec="print">印刷・週間工程表</h2>
+  <ul>
+    <li>「印刷・PDF」から出せますが、用紙の設定や Excel はパソコンで行うのがおすすめです。</li>
+  </ul>
+
+  <h2 data-sec="faq">困ったとき</h2>
+  <table>
+    <tr><th>新しい機能が出ない</th><td>右上の版を確かめ、古ければページを読み直す（ブラウザの再読み込み）。</td></tr>
+    <tr><th>タップで小窓が開いてしまう</th><td>画面を動かすときは<b>2本指</b>で。</td></tr>
+    <tr><th>見えない現場・工種</th><td>「完了も出す」、または現場の下の「▸ 完了 n工種」。</td></tr>
+  </table>
+</section>
+</main>
+<script>
+  const show = () => {
+    const sp = location.hash === "#sp";
+    document.getElementById("page-pc").classList.toggle("on", !sp);
+    document.getElementById("page-sp").classList.toggle("on", sp);
+    document.getElementById("tPc").classList.toggle("on", !sp);
+    document.getElementById("tSp").classList.toggle("on", sp);
+    scrollTo(0, 0);
+  };
+  addEventListener("hashchange", show);
+  // 閉じる：ボタンから開いた窓・タブなら閉じる。閉じられないとき（直に開いたなど）は工程表へ戻る
+  document.getElementById("bClose").onclick = () => {
+    window.close();
+    setTimeout(() => { if (!window.closed) location.href = "./"; }, 300);
+  };
+  show();
+  // 目次：いま開いているほうの見出しへ
+  document.querySelector("nav.toc").addEventListener("click", e => {
+    const a = e.target.closest("a[data-go]");
+    if (!a) return;
+    e.preventDefault();
+    const h = document.querySelector("section.page.on [data-sec='" + a.dataset.go + "']");
+    if (h) { const y = h.getBoundingClientRect().top + scrollY - document.querySelector(".stick").offsetHeight - 8; scrollTo({ top: y, behavior: "smooth" }); }
+  });
+</script>
+</body>
+</html>
