@@ -244,18 +244,30 @@ body[data-tab=free] #bar, body[data-tab=master] #bar { display: none; }
 
 /* ---- 請求書（2026-11-13・bill.js）：画面では紙の見本、印刷は A4 縦（Letter でも切れない 180mm 幅）で1まとまり（または1現場）1枚 ---- */
 body[data-tab=bill] #bar { display: none; }
-#pBill { padding: 12px 16px 40px; background: #e9edf1; }
-.bctl { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 6px; }
-.bctl input[type=month] { font-size: 16px; }
-.bctl b { font-size: 16px; color: var(--head); }
-.binfo { margin: 0 0 6px; }
-.bwarn { background: #fff4e5; border: 1px solid #f0b46a; border-radius: 4px; padding: 6px 12px; margin: 6px 0; font-size: 13px; max-width: 196mm; }
-.bwarn ul { margin: 4px 0 0; padding-left: 1.3em; }
-.bset { background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px; margin: 6px 0 12px; max-width: 196mm; }
-.bset summary { cursor: pointer; color: var(--head); font-weight: 700; }
+/* 画面：上に操作の帯（1行）・まとまりのタブ・その下に紙の見本（高さに合わせて縮める）。設定と注意は上に重ねて出す（2026-11-13） */
+#pBill.on { display: flex; flex-direction: column; overflow: hidden; background: #e2e7ec; }
+.bctl { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 5px 10px; background: #f6f8fa; border-bottom: 1px solid var(--line); }
+.bctl button, .bctl select, .bctl input { font-size: 13px; padding: 2px 8px; }
+.bctl input[type=month] { font-size: 14px; }
+.bctl b { font-size: 14px; color: var(--head); }
+.bwbtn { background: #fff4e5; color: #8a4b00; border-color: #f0b46a; font-weight: 700; }
+.btabs { display: flex; gap: 2px; padding: 5px 10px 0; overflow-x: auto; flex: none; border-bottom: 2px solid var(--head); }
+.btabs button { background: #fff; color: var(--head); border: 1px solid #b7c3cf; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 4px 14px; white-space: nowrap; font-size: 13px; }
+.btabs button small { margin-left: 6px; font-size: 11px; color: #5a6672; }
+.btabs button.on { background: var(--head); color: #fff; border-color: var(--head); }
+.btabs button.on small { color: #dfe7ef; }
+.bstage { flex: 1; min-height: 0; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 6px; }
+.bstage .bpage { margin: 0; flex: none; }
+.bpage.boff { display: none; }
+.bpop { position: absolute; top: 40px; right: 10px; z-index: 20; width: min(760px, calc(100% - 20px)); max-height: calc(100% - 50px); overflow: auto;
+  background: #fff; border: 1px solid #b7c3cf; border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 8px 12px; font-size: 13px; }
+.bpop .bph { display: flex; justify-content: space-between; align-items: center; gap: 8px; position: sticky; top: -8px; background: #fff; padding: 4px 0; }
+.bpop ul { margin: 4px 0; padding-left: 1.3em; }
+#bmWarnP { background: #fffaf2; border-color: #f0b46a; }
+#bmWarnP .bph { background: #fffaf2; }
 .bgset { border-top: 1px solid var(--line); padding: 8px 0; display: flex; flex-direction: column; gap: 6px; }
 .bgset > div { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
-.bm { display: inline-flex; align-items: center; gap: 4px; background: #eef2f6; border-radius: 12px; padding: 2px 4px 2px 10px; }
+.bm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; background: #eef2f6; border-radius: 12px; padding: 2px 4px 2px 10px; }
 .bm button { padding: 0 7px; font-size: 13px; }
 .bm input.num { width: 70px; text-align: right; font-size: 14px; }
 .bgset input.num { width: 90px; text-align: right; }
@@ -335,10 +347,19 @@ table.bstampbox th { font-size: 8.5px; font-weight: 400; padding: .4mm 1.5mm; }
 table.bstampbox td.bstamp { width: auto; height: 13mm; }
 @media print {
   body[data-tab=bill] #pBill { padding: 0; background: #fff; }
-  body[data-tab=bill] .bctl, body[data-tab=bill] .binfo, body[data-tab=bill] .bwarn, body[data-tab=bill] .bset, body[data-tab=bill] #toast { display: none !important; }
+  body[data-tab=bill] .bctl, body[data-tab=bill] .btabs, body[data-tab=bill] .bpop, body[data-tab=bill] #toast { display: none !important; }
+  body[data-tab=bill] #pBill.on { display: block; overflow: visible; }
+  body[data-tab=bill] .bstage { display: block; overflow: visible; padding: 0; }
+  .bpage.boff { display: block; }
+  body.bprint1 .bpage.boff { display: none; }
+  .bpage { zoom: 1 !important; }
   /* 用紙が A4 でも Letter でも切れないよう、中身は 180mm 幅で真ん中に */
   .bpage { box-shadow: none; margin: 0 auto; padding: 0; width: 180mm; min-height: 0; break-after: page; }
   .bpage:last-child { break-after: auto; }
   table.bt th { position: static; }
   td.bstamp .bhint { visibility: hidden; }
 }
+/* 昼・夜・残業で分ける機械（ラフタークレーン）：残業の数量は画面で入れる。印刷では枠なしの数字 */
+input.botin { width: 11mm; font-size: 10px; padding: 0 2px; text-align: right; border: 1px solid #9fb3c8; border-radius: 2px; background: #fffbe6; }
+.bsub.bsubh { color: #dfe7ef; font-size: 8px; }
+@media print { input.botin { border: 0; background: transparent; padding: 0; } input.botin[value=""] { visibility: hidden; } }
