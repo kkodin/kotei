@@ -256,8 +256,8 @@ body[data-tab=bill] #bar { display: none; }
 .btabs button small { margin-left: 6px; font-size: 11px; color: #5a6672; }
 .btabs button.on { background: var(--head); color: #fff; border-color: var(--head); }
 .btabs button.on small { color: #dfe7ef; }
-.bstage { flex: 1; min-height: 0; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 6px; }
-.bstage .bpage { margin: 0; flex: none; }
+.bstage { flex: 1; min-height: 0; overflow: auto; padding: 6px; }
+.bstage .bpage { margin: 0 auto; }
 .bpage.boff { display: none; }
 .bpop { position: absolute; top: 40px; right: 10px; z-index: 20; width: min(760px, calc(100% - 20px)); max-height: calc(100% - 50px); overflow: auto;
   background: #fff; border: 1px solid #b7c3cf; border-radius: 6px; box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 8px 12px; font-size: 13px; }
@@ -274,7 +274,7 @@ body[data-tab=bill] #bar { display: none; }
 
 /* 紙 */
 .bpage { --ink: #1b2a3a; --acc: #1f4e79; --rule: #9aa7b4; --soft: #f3f6f9;
-  width: 196mm; min-height: 270mm; background: #fff; margin: 0 0 14px; padding: 8mm; box-shadow: 0 1px 8px rgba(0,0,0,.18);
+  width: 210mm; min-height: 297mm; background: #fff; margin: 0 0 14px; padding: 9mm 10mm 9mm 25mm;   /* 余白 左 25mm・右 10mm（2026-11-13 ユーザー） */ box-shadow: 0 1px 8px rgba(0,0,0,.18);
   color: var(--ink); font-family: "BIZ UDPGothic", "Yu Gothic UI", Meiryo, sans-serif; font-size: 10.5px; }
 .bh { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 2.5mm; margin-bottom: 4mm; border-bottom: 1.2mm solid var(--acc); }
 .bh .br { text-align: right; }
@@ -353,8 +353,8 @@ table.bstampbox td.bstamp { width: auto; height: 13mm; }
   .bpage.boff { display: block; }
   body.bprint1 .bpage.boff { display: none; }
   .bpage { zoom: 1 !important; }
-  /* 用紙が A4 でも Letter でも切れないよう、中身は 180mm 幅で真ん中に */
-  .bpage { box-shadow: none; margin: 0 auto; padding: 0; width: 180mm; min-height: 0; break-after: page; }
+  /* 中身は 175mm 幅（A4 から 左 25mm・右 10mm の余白を除く。@page は bill.js） */
+  .bpage { box-shadow: none; margin: 0; padding: 0; width: 175mm; min-height: 0; break-after: page; }
   .bpage:last-child { break-after: auto; }
   table.bt th { position: static; }
   td.bstamp .bhint { visibility: hidden; }
@@ -363,3 +363,38 @@ table.bstampbox td.bstamp { width: auto; height: 13mm; }
 input.botin { width: 11mm; font-size: 10px; padding: 0 2px; text-align: right; border: 1px solid #9fb3c8; border-radius: 2px; background: #fffbe6; }
 .bsub.bsubh { color: #dfe7ef; font-size: 8px; }
 @media print { input.botin { border: 0; background: transparent; padding: 0; } input.botin[value=""] { visibility: hidden; } }
+/* 字を相手の行（昼の線→下の夜の行、夜の線→上の昼の行）に矢印付きの吹き出しで出す（2026-11-13） */
+.bar.outD, .bar.outU { z-index: 4; }
+.bar.outD .lbl, .bar.outU .lbl { left: 2px; color: #222; font-weight: 700; text-shadow: none; background: #fff; border: 1.5px solid var(--c); border-radius: 4px;
+  padding: 0 5px; line-height: calc(var(--rh) - 8px); box-shadow: 0 1px 3px rgba(0,0,0,.25); white-space: nowrap; }
+.bar.outD .lbl { top: calc(var(--rh) + 1px); }
+.bar.outU .lbl { top: calc(-1 * var(--rh) + 3px); }
+.bar.outD .lbl::after, .bar.outU .lbl::after { content: ""; position: absolute; left: 6px; border: 5px solid transparent; }
+.bar.outD .lbl::after { top: -10px; border-bottom-color: var(--c); }
+.bar.outU .lbl::after { bottom: -10px; border-top-color: var(--c); }
+.bar.conf.outD .lbl::after, .bar.conf.outU .lbl::after { content: ""; }
+
+/* 機械別の請求／現場別の請求 の切り替え・拡大縮小（2026-11-13） */
+.bseg { display: inline-flex; }
+.bseg button { background: #fff; color: var(--head); border-radius: 0; }
+.bseg button:first-child { border-radius: 4px 0 0 4px; } .bseg button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+.bseg button.on { background: var(--head); color: #fff; }
+.bzoom { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: #444; }
+.bzoom button { padding: 0 7px; }
+.brec { font-size: 10px; color: #6b7785; margin-left: 2px; }
+/* 日付の表の下：列ごとの 合計数量・単価・金額 */
+table.bday tfoot th.bd { background: var(--acc); color: #fff; text-align: center; font-size: 8.5px; }
+table.bday tfoot td { background: #f2f5f8; font-weight: 700; height: 4.4mm; text-overflow: clip; font-size: 8.5px; padding: 0 1mm; }
+table.bday tfoot tr:last-child td { border-bottom: .5mm double var(--ink); }
+table.bday thead th.hot { background: #fde9c8 !important; color: #6b4a00 !important; }
+table.bday td.co { background-color: #fffbef; text-align: right; }
+table.bsum.wide { font-size: 9px; }
+table.bsum.wide th, table.bsum.wide td { padding: .6mm 1mm; }
+/* 表を直す：選んだセル・リスト・数字の欄 */
+#pBill td[data-c], #pBill td[data-o] { cursor: cell; }
+#pBill td.sel { outline: 2px solid #1a73e8; outline-offset: -2px; background-color: #e8f0fe !important; }
+#bEdit { position: fixed; z-index: 70; background: #fff; border: 1px solid #8aa0b6; border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 4px; font-size: 13px; }
+#bEdit select { min-width: 200px; font-size: 14px; }
+#bEdit input { font-size: 16px; width: 90px; text-align: right; }
+#ctx .off { color: #aaa; pointer-events: none; }
+@media print { #pBill td.sel { outline: 0; background-color: transparent !important; } #bEdit { display: none; } table.bday td.co { background: none; } }

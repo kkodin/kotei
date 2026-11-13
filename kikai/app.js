@@ -75,9 +75,21 @@ const emptyData = () => ({ 形式: "自社機械稼働表", 版: 1, 機械: [], 
   { 名前: "故障又は修理中", 種類: "整備", 色: KIND_COLOR.整備, コード: "", 完了: false },
   { 名前: "特定自主検査", 種類: "整備", 色: KIND_COLOR.整備, コード: "", 完了: false }], 予約: [] });
 
+/* 同じ現場の別の名前をそろえる（2026-11-13 ユーザー：阿久和南 と 阿久和南道路改良 は同じ現場。阿久和南道路改良 に統一）。読むたびに直す */
+const SITE_MERGE = { "阿久和南": "阿久和南道路改良" };
+function mergeSites(d) {
+  Object.entries(SITE_MERGE).forEach(([a, b]) => {
+    if (!d.現場.some(s => s.名前 === a) && !d.予約.some(r => r.現場 === a || r.積置き?.現場 === a)) return;
+    d.予約.forEach(r => { if (r.現場 === a) r.現場 = b; if (r.積置き?.現場 === a) r.積置き.現場 = b; });
+    const sa = d.現場.find(s => s.名前 === a), sb = d.現場.find(s => s.名前 === b);
+    if (sa && sb) { Object.keys(sa).forEach(f => { if (sb[f] == null || sb[f] === "") sb[f] = sa[f]; }); d.現場 = d.現場.filter(s => s !== sa); }
+    else if (sa) sa.名前 = b;
+  });
+}
 function normalize(d) {
   if (!d || d.形式 !== "自社機械稼働表") throw new Error("自社機械稼働表のデータではありません");
   d.機械 = d.機械 || []; d.現場 = d.現場 || []; d.予約 = d.予約 || [];
+  mergeSites(d);
   d.予約.forEach(r => { r.休み = r.休み || []; r.出勤 = r.出勤 || []; r.未使用 = r.未使用 || []; r.状態 = r.状態 || "確定"; });
   d.現場.forEach(s => { if (s.種類 === "修理" || s.種類 === "検査") { s.種類 = "整備"; s.色 = KIND_COLOR.整備; } });   // 2026-10-31 まとめて整備に
   return d;
@@ -177,12 +189,16 @@ function patchTo(to, from) {
     A.forEach((_, id) => { if (!B.has(id)) ops.push({ c, id, del: true }); });
   });
   const order = to.機械.map(m => m.id), orderChanged = order.join() !== from.機械.map(m => m.id).join();
+  /* 請求書の残業の数量（D.請求書.残業日。2026-11-13）も1つずつ戻す */
+  const OA = from.請求書?.残業日 || {}, OB = to.請求書?.残業日 || {}, otOps = [];
+  new Set([...Object.keys(OA), ...Object.keys(OB)]).forEach(k => { if (OA[k] !== OB[k]) otOps.push([k, OB[k]]); });
   return d => {
     ops.forEach(o => {
       const i = d[o.c].findIndex(x => keys[o.c](x) === o.id);
       if (o.del) { if (i >= 0) d[o.c].splice(i, 1); }
       else if (i >= 0) d[o.c][i] = JSON.parse(JSON.stringify(o.x)); else d[o.c].push(JSON.parse(JSON.stringify(o.x)));
     });
+    if (otOps.length) { d.請求書 = Object.assign({}, d.請求書); const o = d.請求書.残業日 = Object.assign({}, d.請求書.残業日); otOps.forEach(([k, v]) => { if (v == null) delete o[k]; else o[k] = v; }); }
     if (orderChanged) d.機械.sort((a, b) => (order.indexOf(a.id) + 1 || 1e9) - (order.indexOf(b.id) + 1 || 1e9));
   };
 }
@@ -598,21 +614,50 @@ function barHtml(r, from, N, dw, rh, row, conf) {
      外に出した字は塗りなし・現場の色の太字＋白い縁取り（線と見分ける）。両側ともふさがっていれば線の中で切る（マウス・押すと全部出る）。
      はじめは下の空いた行へ折り返していたが、昼と夜の両方で使うように見えるのでやめた（同日 ユーザー）。 */
 let LBL = [];
+/* 2026-11-13 ユーザー：休み（28・29）で線の頭が短いと字が見えない。下（夜）の行が空いていればそこへ、または後の空いている日（30〜4）へ逃がす。矢印付きの吹き出しでもよい。
+   字の置き方（この順）：①線の頭の使う日に収まる → そのまま ②後ろの使う日のかたまりに収まる → そこへ ③昼の線は夜の行、夜の線は昼の行が空いていれば、矢印付きの吹き出し（.outD／.outU）
+   ④同じ行で右が空いていれば右、左が空いていれば左（.outR／.outL） ⑤だめなら線の中で切る */
+function barSegs(o) {   // 線の中の「使う日」のかたまり [左, 幅]（休みの .gap を除く）
+  const gaps = [...o.b.querySelectorAll(".gap")].map(g => [g.offsetLeft, g.offsetLeft + g.offsetWidth]).sort((a, b) => a[0] - b[0]);
+  const out = []; let x = 0;
+  gaps.forEach(([a, b]) => { if (a > x) out.push([x, a - x]); x = Math.max(x, b); });
+  if (o.W > x) out.push([x, o.W - x]);
+  return out;
+}
 function labelFit() {
   const rows = new Map();
   LBL = [...$("chart").querySelectorAll(".bar")].map(b => {
-    const o = { b, l: b.querySelector(".lbl"), L: b.offsetLeft, W: b.offsetWidth };
+    const o = { b, l: b.querySelector(".lbl"), L: b.offsetLeft, W: b.offsetWidth, T: b.offsetTop };
     const key = b.parentNode; (rows.get(key) || rows.set(key, []).get(key)).push(o);
     return o;
   });
+  /* 吹き出しを出せるか：相手の行（昼⇔夜）の、その横の範囲に線も吹き出しも無い */
+  const taken = new Map();   // cells → [[左, 右]]
   rows.forEach((list, cells) => {
     const byTop = {}; list.forEach(o => (byTop[o.b.style.top] ||= []).push(o));
-    Object.values(byTop).forEach(row => {
+    const tops = Object.keys(byTop).map(parseFloat).sort((a, b) => a - b);
+    Object.entries(byTop).forEach(([top, row]) => {
       row.sort((a, b) => a.L - b.L);
       let used = 0;   // この行で、線と外に出した字が使っている右の端
       row.forEach((o, i) => {
         const tw = o.l.getBoundingClientRect().width, next = row[i + 1]?.L ?? cells.offsetWidth;
-        if (tw <= o.W - 6) { used = o.L + o.W; return; }
+        const segs = barSegs(o);
+        if (!segs.length || tw <= segs[0][1] - 6) { used = o.L + o.W; return; }
+        const seg = segs.find(([x, w]) => tw <= w - 6);
+        if (seg) { o.fix = seg[0]; o.l.style.left = seg[0] + "px"; used = o.L + o.W; return; }
+        /* 相手の行：昼の線（いちばん下の段）→ すぐ下の夜の行、夜の線（いちばん上の段）→ すぐ上の昼の行 */
+        const k = cells.dataset.k, other = k === "昼" ? cells.nextElementSibling : cells.previousElementSibling;
+        const edge = k === "昼" ? parseFloat(top) === tops[tops.length - 1] : parseFloat(top) === tops[0];
+        if (edge && other?.matches?.(".cells") && other.dataset.m === cells.dataset.m) {
+          const a = o.L, b = o.L + tw + 14;
+          const rowsO = [...(rows.get(other) || [])], nearTop = k === "昼" ? Math.min(...rowsO.map(x => x.T), Infinity) : Math.max(...rowsO.map(x => x.T), -Infinity);
+          const sameRow = rowsO.filter(x => x.T === nearTop);
+          if (!sameRow.some(x => x.L < b && x.L + x.W > a) && !(taken.get(other) || []).some(([x, y]) => x < b && y > a)) {
+            o.b.classList.add("out", k === "昼" ? "outD" : "outU"); o.out = true;
+            (taken.get(other) || taken.set(other, []).get(other)).push([a, b]);
+            used = o.L + o.W; return;
+          }
+        }
         if (o.L + o.W + tw + 6 <= next) { o.b.classList.add("out", "outR"); o.out = true; used = o.L + o.W + tw + 6; return; }
         if (o.L - tw - 6 >= used) { o.b.classList.add("out", "outL"); o.out = true; }
         used = o.L + o.W;
@@ -624,7 +669,7 @@ function labelFit() {
 function labelShift() {
   const x0 = $("wrap").scrollLeft, dw = DW();
   for (const o of LBL) {
-    if (o.out) continue;
+    if (o.out || o.fix != null) continue;
     const v = x0 > o.L && x0 < o.L + o.W ? Math.min(x0 - o.L, Math.max(0, o.W - dw)) : 0;
     if ((o.v || 0) !== v) { o.v = v; o.l.style.left = v ? v + "px" : ""; }
   }
@@ -1374,7 +1419,7 @@ function renderSum() {
 /* ---------- 機械・現場（マスタ） ---------- */
 /* 期（9月はじまり。2026-09〜2027-08＝52期）。工事コード 510012 なら頭の 51 */
 const kiOf = k => +k.slice(0, 4) - (+k.slice(5, 7) >= 9 ? 1974 : 1975);
-const siteKi = (s, firstDay) => /^\d{6}$/.test(s.コード || "") ? +s.コード.slice(0, 2) : firstDay ? kiOf(firstDay) : 0;
+const siteKi = (s, firstDay) => (s.種類 || "現場") !== "現場" ? 0 : /^\d{6}$/.test(s.コード || "") ? +s.コード.slice(0, 2) : firstDay ? kiOf(firstDay) : 0;   // 置場（積置き・機材センター・車両ヤード など）は期の対象外（2026-11-13 ユーザー）
 let MTAB = "machine";
 function renderMaster() {
   const el = $("pMaster");
