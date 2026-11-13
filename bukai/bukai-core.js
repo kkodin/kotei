@@ -4,8 +4,11 @@
   const fields = {
     client: "発注者・元請", handler: "担当", summary: "工事概要", plan: "計画％", execPercent: "実行％",
     remarks: "備考", pipeDia: "管径・坑径・管種", length: "推進延長・立坑深", count: "数量", soil: "土質",
-    amount: "請負金額", phone: "連絡先", start: "工期 自", end: "工期 至"
+    amount: "請負金額", phone: "連絡先", start: "工期 自", end: "工期 至",
+    // Vr002（Excel風の表）で追加した項目
+    place: "所在地", clientStaff: "元請担当", subHandler: "副担当", summaryDone: "作業終了の行"
   };
+  const LANES = ["計画", "外注", "直労", "機材"];
   const clone = x => JSON.parse(JSON.stringify(x));
   const equal = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   function period(month) {
@@ -48,17 +51,80 @@
     }
     return out;
   }
+  // 部会資料の工程線（Vr002）。row：0計画 1外注 2直労 3機材。工程原本（現場_*.json）は変えない。
+  function checkLines(list) {
+    if (!Array.isArray(list) || list.length > 300) throw Error("工程線の数を確認してください。");
+    return list.map(l => {
+      if (!l || typeof l.id !== "string" || !/^[\w-]{1,40}$/.test(l.id)) throw Error("工程線のIDを確認してください。");
+      if (![0,1,2,3].includes(l.row)) throw Error("工程線の行を確認してください。");
+      if (!dateOK(l.from) || !dateOK(l.to) || l.from > l.to) throw Error("工程線の日付を確認してください。");
+      const out = { id: l.id, row: l.row, from: l.from, to: l.to, color: String(l.color || "黒").slice(0, 10), label: String(l.label || "").slice(0, 200) };
+      if (Array.isArray(l.off) && l.off.length) out.off = l.off.filter(dateOK).slice(0, 400);
+      return out;
+    });
+  }
+  // 全体工程表の工程から、部会資料の線を大まかに作る（2026-11-13 利用者指定）。
+  // 工種ごとではなく「外注が稼働」「従業員（直労）が稼働」「機材が稼働」の3本の行にまとめる。
+  // 工種の振り分けは categories[段id]＝["外注","直労","機材"] の一部（空＝取り込まない）。
+  // 未指定は 外注の工種→外注、作業員と外注の共同→直労＋外注、それ以外→直労（全体工程表に機材の区別は無い）。
+  function laneCats(ln, item) {
+    const c = ((item && item.categories) || {})[ln && ln.id];
+    if (Array.isArray(c)) return c.filter(x => ["外注","直労","機材"].includes(x));
+    if (typeof c === "string") return [c];
+    if (ln && ln.種別 === "外注") return ["外注"];
+    if (ln && (ln.業者 || ln.外注人数)) return ["直労","外注"];
+    return ["直労"];
+  }
+  const GAP = 3;   // 3日以内の切れ目（土日・祝日）はつなげて1本にする
+  function deriveLines(row, item, p, works) {
+    const src = row.source || {}, acc = { 外注: { days: new Set(), names: [] }, 直労: { days: new Set(), names: [] }, 機材: { days: new Set(), names: [] } };
+    for (const b of src.バー || []) {
+      if (!b.開始 || !b.終了 || b.開始 > p.end || b.終了 < p.from) continue;
+      const ln = (src.段 || []).find(l => l.id === b.段), cats = laneCats(ln, item);
+      const days = p.days.filter(k => k >= b.開始 && k <= b.終了 && (!works || works(ln, b, k)));
+      const name = b.作業 || (ln && ln.名前) || "";
+      for (const cat of cats) { days.forEach(k => acc[cat].days.add(k)); if (days.length && name && !acc[cat].names.includes(name)) acc[cat].names.push(name); }
+    }
+    const out = [];
+    for (const cat of ["外注","直労","機材"]) {
+      const ds = [...acc[cat].days].sort(), idx = k => p.days.indexOf(k);
+      const label = acc[cat].names.slice(0, 3).join("・") + (acc[cat].names.length > 3 ? " 他" : "");
+      let run = null, n = 0;
+      const push = () => { if (run) out.push({ id: "k" + LANES.indexOf(cat) + "_" + (n++), row: LANES.indexOf(cat), from: run[0], to: run[1], color: "黒", label: n === 1 ? label : "" }); };
+      for (const k of ds) { if (run && idx(k) - idx(run[1]) <= GAP + 1) run[1] = k; else { push(); run = [k, k]; } }
+      push();
+    }
+    return out;
+  }
+  // 和暦表示（令和のみ）と、入力の読み取り（R8.7.1／令和8年7月1日／2026/7/1／2026-07-01）
+  function era(iso) {
+    if (!dateOK(iso || "")) return iso || "";
+    const y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10);
+    return y >= 2019 ? `R${y - 2018}.${m}.${d}` : `${y}.${m}.${d}`;
+  }
+  function parseDate(text) {
+    const t = String(text ?? "").trim().replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[～〜~]$/, "");
+    if (!t) return "";
+    let m, y, mo, d;
+    if ((m = /^(?:R|r|令和)\s*(\d{1,2})[.\/年-](\d{1,2})[.\/月-](\d{1,2})日?$/.exec(t))) { y = 2018 + +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = /^(\d{4})[.\/年-](\d{1,2})[.\/月-](\d{1,2})日?$/.exec(t))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else throw Error("日付は R8.7.1 や 2026/7/1 の形で入力してください。");
+    const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (!dateOK(iso)) throw Error("存在しない日付です。");
+    return iso;
+  }
   function values(row, doc) { return {...row.base, ...((doc.entries || {})[row.key] || {}).values}; }
   function selected(row, doc) { const v=(doc.entries || {})[row.key]; return v && typeof v.included === "boolean" ? v.included : !row.done; }
   // 同じ項目が他の人に変更されていたら止める。別の項目の編集は残す。
   function patch(doc, changes) {
     const next=clone(doc); next.entries ||= {};
     for (const p of changes) {
-      if (!p.key || !["values","included","categories"].includes(p.area)) throw Error("保存内容を確認してください。");
+      if (!p.key || !["values","included","categories","lines"].includes(p.area)) throw Error("保存内容を確認してください。");
       const item=next.entries[p.key] ||= {};
       const actual=p.area === "values" ? (item.values || {})[p.field] : item[p.area];
       if (!equal(actual,p.before) && !equal(actual,p.after)) throw Error("同じ項目をほかの人が変更しました。入力内容を控えてから「最新を読み直す」で確認してください。");
       if (p.area === "values") { item.values ||= {}; if (p.after == null) delete item.values[p.field]; else item.values[p.field]=validate(p.field,p.after); }
+      else if (p.area === "lines") { if (p.after == null) delete item.lines; else item.lines=checkLines(p.after); }
       else item[p.area]=clone(p.after);
     }
     return next;
@@ -88,7 +154,7 @@
     }
     return {changes,preview};
   }
-  const api={fields,clone,equal,period,dateOK,validate,rows,values,selected,patch,importData};
+  const api={fields,LANES,clone,equal,period,dateOK,validate,rows,values,selected,patch,importData,checkLines,deriveLines,laneCats,era,parseDate};
   if (typeof module !== "undefined" && module.exports) module.exports=api;
   root.BukaiCore=api;
 })(typeof window === "undefined" ? globalThis : window);

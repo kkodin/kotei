@@ -220,16 +220,16 @@ async function pull(){
 let paper="A3";
 const papers={A3:[420,297],A4:[297,210]},margin=7;
 function pageStyle(){let el=$("bukaiPageStyle");if(!el){el=document.createElement("style");el.id="bukaiPageStyle";document.head.appendChild(el);}el.textContent=`@page { size: ${paper} landscape; margin: ${margin}mm; }`;}
-function openKotei(id){const u=new URL("../",location.href);if(id)u.searchParams.set("site",id);if(DEMO)u.searchParams.set("demo","");window.open(u.href,"_blank","noopener");}
+function openKotei(id){const u=new URL("../",location.href);if(id)u.searchParams.set("site",id);if(DEMO)u.searchParams.set("demo","");location.href=u.href;/* 2026-11-13 同じ窓で全体工程表へ戻る */}
 $("bHelp").onclick=()=>window.open("help.html#pc","_blank","noopener");
 if(DEMO)$("backToKotei").href="../?demo";
-Bukai.init({files:()=>S.files,sites,masters:()=>S.files["マスタ.json"]?.doc?.現場 || [],store:()=>store,who:()=>me.name,today:todayKey,tab:()=>"bukai",id:uid,sync:showSync,pull,works:barWorks,own:ownAt,outside:gaiAt,color:colorOf,openSite:openKotei,paper:value=>{paper=value;pageStyle();},printWidth:()=>(papers[paper][0]-margin*2)*96/25.4*0.98,printHeight:()=>(papers[paper][1]-margin*2)*96/25.4*0.96});
+Bukai.init({holiday:k=>!!holidayOf(k) || isRest(k),files:()=>S.files,sites,masters:()=>S.files["マスタ.json"]?.doc?.現場 || [],store:()=>store,who:()=>me.name,today:todayKey,tab:()=>"bukai",id:uid,sync:showSync,pull,works:barWorks,own:ownAt,outside:gaiAt,color:colorOf,openSite:openKotei,paper:value=>{paper=value;pageStyle();},printWidth:()=>(papers[paper][0]-margin*2)*96/25.4*0.98,printHeight:()=>(papers[paper][1]-margin*2)*96/25.4*0.96});
 window.addEventListener("beforeprint",()=>{if(ready)Bukai.preparePrint();});
 function afterPrint(){document.body.classList.remove("printing");$("printPages").innerHTML="";}
 window.addEventListener("afterprint",afterPrint);
 function seedDemo(){if(Object.keys(DemoStore.all()).length)return;const m=todayKey().slice(0,7),data={};for(let i=1;i<=3;i++){const id="demo"+i;data["現場_"+id+".json"]={eTag:"d"+i,data:{id,コード:"52990"+i,名前:"試験現場 "+i,担当:"見本 担当者",段:[{id:"l"+i,区分:"昼",名前:"管布設工",人数:"3"}],バー:[{id:"b"+i,段:"l"+i,作業:"管布設工",開始:m+"-02",終了:m+"-20",人数:"3",社員:["見本 担当者"],色:"青"}]}};}data["マスタ.json"]={eTag:"m",data:{社員:["見本 担当者"],現場:[]}};DemoStore.save(data);}
 async function start(){
- if($("ver").textContent==="__VER__")$("ver").textContent="Vr001 開発中";
+ if($("ver").textContent==="__VER__")$("ver").textContent="Vr002 開発中";
  if(!entryAllowed){$("entryOnly").hidden=false;return;}
  if(DEMO){seedDemo();me.name="試し";$("who").textContent="確認用（このブラウザ内だけに保存）";}
  else{

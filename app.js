@@ -2633,7 +2633,8 @@ if (bukaiButton) bukaiButton.onclick = () => {
   const u=new URL("bukai/",location.href);
   u.searchParams.set("from","kotei"); u.searchParams.set("sourceVersion",/^Vr\d+/.test($("ver").textContent) ? $("ver").textContent : "Vr002 開発中");
   if (DEMO) u.searchParams.set("demo","");
-  window.open(u.href,"_blank","noopener");
+  // 2026-11-13 利用者指定：別窓で開かず同じ窓で切り替える（工程表が2つ開くのを防ぐ）。未保存時はbeforeunloadで確認が出る。
+  location.href = u.href;
 };
 if (!bukaiButton) {
   // 保存済みデータを保持したまま、キャッシュを避ける既存の更新操作へ案内する。
