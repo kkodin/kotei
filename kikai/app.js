@@ -106,7 +106,7 @@ async function resolveFolder() {
   const f = CFG.folder || {};
   if (f.itemId) {
     folderBase = `/drives/${f.driveId}/items/${f.itemId}`;
-    /* 共有されていない人は、フォルダの中の 稼働データ.json も 404 になり「まだ機械がありません」と見えてしまう（2026-10-31）。
+    /* 共有されていない人は、フォルダの中の 稼働データ.json も 404 になり「まだ機械がありません」と見えてしまう（2026-10-31 吉成さん）。
        先にフォルダそのものを開けるか確かめ、開けなければ「共有を頼んで」を出す */
     const res = await g(folderBase + "?$select=id");
     if (!res.ok) throw httpErr(res, "稼働データ フォルダ");
@@ -239,7 +239,7 @@ async function pull() {
     }
   } catch (e) {
     console.error(e);
-    if (e.status === 404 || e.status === 403) toast("稼働データ フォルダを開けません。管理者に共有（編集可）を頼んでください");
+    if (e.status === 404 || e.status === 403) toast("稼働データ フォルダを開けません。北澤さんに共有（編集可）を頼んでください");
     else toast("最新の読み込みに失敗：" + e.message);
   } finally { pulling = false; }
 }
@@ -369,7 +369,9 @@ const resItem = (r, m = machine(r.機械)) => r.単価品 && PRI[r.単価品] &&
 const noteLabel = i => (i.能力2 ? i.能力2 + " " : "") + (i.備考 || "備考なし");
 /* 分類：単価表の品に対応していればその種別、無ければ機械の 分類 */
 const OLD_CATS = ["車両", "重機", "小型機械", "測量", "その他"];
-const catOf = m => itemOf(m)?.種別 || m.分類 || "その他";
+/* 2026-11-13 ユーザー：レベル・光波距離計の分類は 小物 ではなく 測量（単価表では 小物 の行。単価表の品の key で分類だけ替える） */
+const CAT_FIX = { "小物|レベル|": "測量", "小物|光波|": "測量" };
+const catOf = m => { const i = itemOf(m); return i ? CAT_FIX[i.key] || i.種別 : m.分類 || "その他"; };
 const catList = () => [...new Set([...(PR?.種別 || []), ...D.機械.map(catOf), ...OLD_CATS])];
 const catIndex = () => { const L = catList(), o = {}; L.forEach((c, i) => { o[c] = i; }); return c => o[c] ?? 999; };
 
@@ -1614,6 +1616,7 @@ function renderAll() {
   if (S.tab === "chart") { renderChart(); renderLegend(); }
   else if (S.tab === "free") renderFree();
   else if (S.tab === "sum") renderSum();
+  else if (S.tab === "bill") { if (window.renderBill) renderBill(); }   // 請求書（bill.js。2026-11-13）
   else renderMaster();
 }
 
@@ -1772,7 +1775,7 @@ async function start() {
     $("loading").hidden = true;
     $("signin").hidden = false; $("bSignIn").hidden = true;
     $("signinHead").textContent = "サインインは済んでいます（" + me.name + "）。";
-    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。管理者に 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
+    $("signinMsg").textContent = (e.status === 404 || e.status === 403) ? `稼働データ フォルダを開けません（${me.name}）。北澤さんに 03_自社機械稼働表 フォルダの共有（編集可）を頼んでください。` : "読み込めませんでした：" + e.message;
     return;
   }
   $("loading").hidden = true;

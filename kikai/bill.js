@@ -1,0 +1,214 @@
+/* ---------- 請求書（2026-11-13） ----------
+   ユーザー：光波距離計・オートレベルを、月に1回、現場別に分けた請求書にして印刷したい（いまはユーザー1人の作業）。
+   形は 測量機稼働表.xlsx（令和8年8月分 など）：日付×機械（昼・夜）の表＋現場別の 数量・金額。請求書に載せる現場は、その月に使った現場だけ。
+   将来ほかの機械も同じ形にするかもしれない（表の形は変わるかも）→ 機械は「まとまり」に入れるだけで請求書になるようにした。
+   - まとまり：{ id, 名前, 題名, 機械:[機械 id] }。D.請求書.まとまり に持つ（全員で同じ。データの形は足すだけ）。無いあいだは機械の名前（レベル・光波）から作る。
+   - 印刷の分け方（S.billMode）：group＝まとまりごとに1枚（Excel と同じ）／site＝現場ごとに1枚。
+   - 数量＝使った日（昼と夜はそれぞれ1回。同じ日に昼夜使えば2）×台数。使わなかった（申告）の日は数えない（works）。
+   - 金額は集計と同じ costOf（単価表・特別単価・料金の決め方）。積置き（請求する）はその現場（billTo）。置場・整備は請求しない。
+   - 消費税（S.billTax）：載せない（2026-11-13 ユーザー）。仕組みは残す（現場ごとに 税抜×税率 の1円未満を切り捨て）。
+   - 2026-11-13 ユーザー：請求の単価は実行予算（単価表）と別。レベル 200円・光波距離計 1,500円（まとまりの 単価＝{ 機械 id: 円／回 }）。
+     請求単価がある機械は 請求単価×数量（特別単価・単価表は使わない）。無い機械は集計と同じ costOf。
+   - 光波距離計は湘南通商から長期リース（月 30,000円）。まとまりの 月額 があれば、集計の一番上に「本社」＝月額−現場の計 の行（金額だけ）。合計＝月額。
+   - 印刷は A4 縦（印刷の前に @page を差し替える。稼働表の印刷は A3 横のまま）。 */
+const BILL_TAX = 10;
+const reiwa = ym => { const y = +ym.slice(0, 4), m = +ym.slice(5, 7); return (y >= 2019 ? "令和" + (y - 2018) : "平成" + (y - 1988)) + "年" + m + "月分"; };
+const monthLast = ym => { const d = dateOf(ym + "-01"); d.setMonth(d.getMonth() + 1); d.setDate(0); return keyOf(d); };
+const monthMove = (ym, n) => addMonths(ym + "-01", n).slice(0, 7);
+if (!/^\d{4}-\d\d$/.test(S.billMonth || "")) S.billMonth = monthMove(todayKey().slice(0, 7), -1);   // はじめは先月（月はじめに先月分を作る）
+if (!["group", "site"].includes(S.billMode)) S.billMode = "group";
+S.billTax = false;   // 2026-11-13 ユーザー：消費税は入れなくていい（税の行・列は出さない。戻すときはここを true と下のチェックを戻す）
+
+/* 請求単価・月額のはじめの値（2026-11-13 ユーザー：レベル 200円・光波距離計 1,500円、光波は月 30,000円のリース） */
+function billDefaults(g) {
+  if (!g.単価) { g.単価 = {}; g.機械.forEach(id => { const n = machine(id)?.名前 || ""; if (/レベル/.test(n)) g.単価[id] = 200; else if (/光波/.test(n)) g.単価[id] = 1500; }); }
+  if (g.月額 === undefined) g.月額 = g.id === "g_koha" ? 30000 : null;
+  return g;
+}
+/* まとまり：保存したもの、無ければ機械の名前から（レベル／光波） */
+function billGroups() {
+  const g = D.請求書?.まとまり;
+  if (Array.isArray(g)) return g.map(x => billDefaults({ ...x, 機械: (x.機械 || []).filter(id => machine(id)) }));
+  const live = D.機械.filter(m => !m.使わない);
+  const pick = re => live.filter(m => re.test(m.名前)).map(m => m.id);
+  return [
+    { id: "g_level", 名前: "レベル（自社機械）", 題名: "測量機稼働表", 機械: pick(/レベル/) },
+    { id: "g_koha", 名前: "光波距離計（湘南通商）", 題名: "測量機稼働表", 機械: pick(/光波/) }
+  ].filter(x => x.機械.length).map(billDefaults);
+}
+const saveGroups = fn => commit(d => {
+  const L = JSON.parse(JSON.stringify(billGroups()));
+  fn(L);
+  d.請求書 = Object.assign({}, d.請求書, { まとまり: L });
+}, { noUndo: true });
+
+/* 1台の機械のその月：日ごとの行き先（表）と、請求する現場ごとの 数量・金額 */
+function billMachine(m, from, to, price = null) {
+  const rs = D.予約.filter(r => r.機械 === m.id && r.開始 <= to && r.終了 >= from);
+  const cell = {};   // "日|区分" → [{ name, bill }]
+  rs.forEach(r => {
+    for (let k = r.開始 < from ? from : r.開始; k <= to && k <= r.終了; k = dayAdd(k, 1)) {
+      if (!works(r, k)) continue;
+      const name = isTsumi(r.現場) && r.積置き?.現場 ? r.現場 + "（" + r.積置き.現場 + "）" : r.現場;
+      (cell[k + "|" + r.区分] ||= []).push({ name, bill: isBill(r), kari: r.状態 === "仮" });
+    }
+  });
+  const sites = {}, warn = [];
+  rs.filter(isBill).forEach(r => {
+    let c = costOf(r, from, to, false, m);
+    if (price != null) { const q = c.days * c.n; c = { meth: "日", n: c.n, days: c.days, qty: c.days, unit: price, amt: price * q }; }   // 請求単価（単価表・特別単価は使わない）
+    if (!c.days && !c.amt) return;
+    const x = (sites[billTo(r)] ||= { qty: 0, amt: 0, units: new Set(), sp: false, none: false, days: [] });
+    x.qty += c.meth === "日" ? c.days * c.n : c.qty * c.n;
+    if (c.amt == null) x.none = true; else x.amt += c.amt;
+    if (c.unit != null) x.units.add(c.unit);
+    if (special(r) && price == null) x.sp = true;
+    for (let k = r.開始 < from ? from : r.開始; k <= to && k <= r.終了; k = dayAdd(k, 1)) if (works(r, k)) x.days.push(k);
+    x.meth = c.meth;
+    if (r.状態 === "仮") warn.push(`${mLabel(m)} ${r.区分}「${r.現場}」${md(r.開始)}〜${md(r.終了)} が「仮」のまま`);
+    if (special(r) && price != null) warn.push(`${mLabel(m)}「${billTo(r)}」に特別単価（交渉）がありますが、請求書は請求単価 ${yen(price)}円で数えています`);
+    if (c.amt == null) warn.push(`${mLabel(m)}「${billTo(r)}」は単価がありません（金額に入っていません）`);
+  });
+  Object.entries(cell).forEach(([key, a]) => { if (a.length > 1) warn.push(`${mLabel(m)} ${md(key.split("|")[0])} ${key.split("|")[1]} に行き先が2つ（${a.map(x => x.name).join("・")}）`); });
+  return { m, cell, sites, warn };
+}
+const unitText = s => s.meth && s.meth !== "日" ? [...s.units].map(u => yen(u) + "／" + UNIT[s.meth]).join("・") : [...s.units].map(yen).join("・");
+const taxOf = v => S.billTax ? Math.floor(v * BILL_TAX / 100) : 0;
+const siteHead = name => { const s = siteOf(name); return [s.コード, s.正式名 && s.正式名 !== name ? s.正式名 : "", s.元請 ? "元請 " + s.元請 : ""].filter(Boolean).join("　"); };
+const sortSites = names => names.sort((a, b) => (siteOf(a).コード || "999999").localeCompare(siteOf(b).コード || "999999") || a.localeCompare(b, "ja"));
+
+/* まとまりごとの1枚：日付×機械（昼・夜）の表＋使った現場だけの集計 */
+function billGroupPage(g, from, to, made) {
+  const ms = g.機械.map(machine).filter(Boolean), bm = ms.map(m => billMachine(m, from, to, g.単価?.[m.id] ?? null)), one = ms.length === 1;
+  const days = []; for (let k = from; k <= to; k = dayAdd(k, 1)) days.push(k);
+  const names = sortSites([...new Set(bm.flatMap(x => Object.keys(x.sites)))]);
+  const fs = ms.length <= 2 ? 1 : ms.length <= 3 ? .9 : ms.length <= 4 ? .8 : .7;
+  const cellHtml = a => !a ? "" : a.map(x => `<span class="${x.bill ? "" : "nb"}${x.kari ? " kari" : ""}">${esc(x.name)}</span>`).join("<br>");
+  const grid = `<table class="bt bday" style="--bf:${fs}"><thead><tr><th rowspan="2" class="bd">日付</th>${ms.map(m => `<th colspan="2">${esc(mLabel(m))}</th>`).join("")}</tr>
+    <tr>${ms.map(() => "<th>昼</th><th>夜</th>").join("")}</tr></thead><tbody>` +
+    days.map(k => `<tr class="${dayClass(k)}"><td class="bd">${+k.slice(8)}日（${WD[dayDow(k)]}）</td>` +
+      bm.map(x => `<td>${cellHtml(x.cell[k + "|昼"])}</td><td>${cellHtml(x.cell[k + "|夜"])}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
+  let tot = 0; const mTot = bm.map(() => ({ qty: 0, amt: 0 }));
+  const rows = names.map(n => {
+    let sub = 0;
+    const tds = bm.map((x, i) => {
+      const s = x.sites[n]; if (!s) return `<td class="n"></td><td class="n"></td><td class="n"></td>`;
+      sub += s.amt; mTot[i].qty += s.qty; mTot[i].amt += s.amt;
+      return `<td class="n">${unitText(s)}</td><td class="n">${s.qty}</td><td class="n">${s.sp ? '<b class="sp">特</b>' : ""}${s.none ? "単価なし" : yen(s.amt)}</td>`;
+    }).join("");
+    tot += sub;
+    return `<tr><td class="bs">${esc(n)}<div class="bsub">${esc(siteHead(n))}</div></td>${tds}${one ? "" : `<td class="n b">${yen(sub)}</td>`}</tr>`;
+  });
+  /* 月額（リース料）があれば一番上に「本社」＝月額−現場の計（金額だけ） */
+  const lease = g.月額 != null && g.月額 !== "" ? +g.月額 : null, hq = lease != null ? lease - tot : null;
+  const blank = bm.map(() => `<td></td><td></td><td></td>`).join("");
+  const hqRow = lease == null ? "" : one ? `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)}円 − 現場の計 ${yen(tot)}円</div></td><td></td><td></td><td class="n b">${yen(hq)}</td></tr>`
+    : `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)}円 − 現場の計 ${yen(tot)}円</div></td>${blank}<td class="n b">${yen(hq)}</td></tr>`;
+  const grand = lease != null ? lease : tot;
+  const warnHq = lease != null && hq < 0 ? [`${g.名前}：現場の計（${yen(tot)}円）が月額（${yen(lease)}円）を超えています（本社がマイナス）`] : [];
+  const sum = names.length || lease != null ? `<table class="bt bsum"><thead><tr><th${one ? "" : ' rowspan="2"'}>現場名</th>${one ? "<th>単価（円）</th><th>数量</th><th>金額（円）</th>" : ms.map(m => `<th colspan="3">${esc(mLabel(m))}</th>`).join("") + '<th rowspan="2">計（円）</th>'}</tr>
+      ${one ? "" : `<tr>${ms.map(() => "<th>単価</th><th>数量</th><th>金額</th>").join("")}</tr>`}</thead><tbody>${hqRow}${rows.join("")}
+      <tr class="btot"><td>合計</td>${one ? `<td></td><td class="n">${mTot[0].qty}</td><td class="n">${yen(grand)}</td>` : mTot.map(t => `<td></td><td class="n">${t.qty}</td><td class="n">${yen(t.amt)}</td>`).join("") + `<td class="n">${yen(grand)}</td>`}</tr></tbody></table>`
+    : `<p class="bnone">この月に請求する現場はありません。</p>`;
+  return { html: `<div class="bpage">${billHead(g.題名 || "測量機稼働表", g.名前, from, made)}${grid}<h4>現場別の集計（この月に使った現場だけ）</h4>${sum}
+    <p class="bfoot">数量＝使った日（昼・夜はそれぞれ1回）×台数。単価＝請求の単価（実行予算の単価とは別）。${lease != null ? "本社＝月額（リース料）から現場の計を引いた額。" : ""}</p></div>`,
+    warn: [...warnHq, ...bm.flatMap(x => x.warn)], total: grand, sites: names.length };
+}
+function billHead(title, sub, from, made) {
+  return `<div class="bh"><div><div class="bt1">${esc(title)}</div><div class="bt2">${esc(sub)}</div></div>
+    <div class="br"><div class="bt1">${reiwa(from.slice(0, 7))}</div><div class="bt3">${from.replace(/-/g, "/")} 〜 ${monthLast(from.slice(0, 7)).replace(/-/g, "/")}　作成 ${made}</div></div></div>`;
+}
+
+/* 現場ごとの1枚：その現場で使った機械（まとまりごと）と使った日 */
+function billSitePages(groups, from, to, made) {
+  const per = {}, warn = [];
+  groups.forEach(g => g.機械.map(machine).filter(Boolean).forEach(m => {
+    const x = billMachine(m, from, to, g.単価?.[m.id] ?? null); warn.push(...x.warn);
+    Object.entries(x.sites).forEach(([n, s]) => ((per[n] ||= {})[g.id] ||= { g, rows: [] }).rows.push({ m, s }));
+  }));
+  let all = 0;
+  const pages = sortSites(Object.keys(per)).map(n => {
+    let sub = 0;
+    const body = Object.values(per[n]).map(({ g, rows }) => {
+      const gs = rows.reduce((t, r) => t + r.s.amt, 0); sub += gs;
+      return `<tr class="bg"><td colspan="5">${esc(g.名前)}</td></tr>` + rows.map(({ m, s }) => `<tr><td>${esc(mLabel(m))}</td><td class="bdays">${spanText([...new Set(s.days)])}</td>
+        <td class="n">${s.qty}</td><td class="n">${s.sp ? '<b class="sp">特</b>' : ""}${unitText(s)}</td><td class="n">${s.none ? "単価なし" : yen(s.amt)}</td></tr>`).join("");
+    }).join("");
+    const tax = taxOf(sub); all += sub + tax;
+    return `<div class="bpage">${billHead("測量機 使用料", n, from, made)}
+      <p class="bsite">${esc(siteHead(n)) || "&nbsp;"}</p>
+      <table class="bt bone"><thead><tr><th>機械</th><th>使った日</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead><tbody>${body}</tbody></table>
+      <table class="bt btax"><tr><th>${S.billTax ? "税抜金額" : "金額"}</th><td class="n">${yen(sub)}</td></tr>${S.billTax ? `<tr><th>消費税（${BILL_TAX}%）</th><td class="n">${yen(tax)}</td></tr><tr class="btot"><th>税込金額</th><td class="n">${yen(sub + tax)}</td></tr>` : ""}</table>
+      <p class="bfoot">数量＝使った日（昼・夜はそれぞれ1回）×台数。単価＝請求の単価（実行予算の単価とは別）。${S.billTax ? "消費税は1円未満切り捨て。" : ""}</p></div>`;
+  });
+  return { pages, warn, total: all };
+}
+
+function renderBill() {
+  const el = $("pBill"); if (!el) return;
+  const ym = S.billMonth, from = ym + "-01", to = monthLast(ym), made = todayKey().replace(/-/g, "/");
+  const groups = billGroups();
+  let pages = [], warn = [], info = "";
+  if (S.billMode === "site") {
+    const r = billSitePages(groups, from, to, made); pages = r.pages; warn = r.warn;
+    info = `現場 ${r.pages.length}枚　合計 ${yen(r.total)}円${S.billTax ? "（税込）" : ""}`;
+  } else {
+    const rs = groups.map(g => billGroupPage(g, from, to, made)); pages = rs.map(x => x.html); warn = rs.flatMap(x => x.warn);
+    info = rs.map((x, i) => `${esc(groups[i].名前)}：${x.sites}現場 ${yen(x.total)}円`).join("　") + (S.billTax ? "（税込）" : "");
+  }
+  const ci = catIndex();
+  const allM = D.機械.filter(m => !m.使わない).map((m, i) => [m, ci(catOf(m)), i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(x => x[0]);
+  const setHtml = groups.map((g, gi) => `<div class="bgset" data-g="${gi}">
+      <div><label>まとまりの名前 <input data-f="名前" value="${esc(g.名前)}" size="20"></label>
+        <label>題名 <input data-f="題名" value="${esc(g.題名 || "")}" size="14"></label>
+        <button type="button" class="sub" data-up="${gi}" ${gi ? "" : "disabled"}>▲</button><button type="button" class="sub" data-dn="${gi}" ${gi < groups.length - 1 ? "" : "disabled"}>▼</button>
+        <button type="button" class="danger" data-del="${gi}">このまとまりを消す</button></div>
+      <div><label>月額（リース料など） <input data-mo="${gi}" class="num" inputmode="numeric" size="8" value="${g.月額 ?? ""}" placeholder="無し"> 円</label>
+        <span class="note">入れると、集計の一番上に「本社」＝月額−現場の計 を出します</span></div>
+      <div class="bms">${g.機械.map(id => `<span class="bm">${esc(mLabel(machine(id)))} 請求単価 <input data-p="${gi}|${id}" class="num" inputmode="numeric" size="6" value="${g.単価?.[id] ?? ""}" placeholder="単価表"> 円 <button type="button" class="sub" data-rm="${gi}|${id}" title="外す">×</button></span>`).join("") || '<span class="note">機械がありません</span>'}
+        <select data-add="${gi}"><option value="">＋ 機械を足す</option>${allM.filter(m => !g.機械.includes(m.id)).map(m => `<option value="${m.id}">${esc(catOf(m) + "：" + mLabel(m))}</option>`).join("")}</select></div>
+    </div>`).join("");
+  el.innerHTML = `<div class="bctl">
+      <button class="sub" id="bmPrev">◀</button><input type="month" id="bmMonth" value="${ym}"><button class="sub" id="bmNext">▶</button>
+      <b>${reiwa(ym)}</b>
+      <span class="sep"></span>
+      <label class="ck"><input type="radio" name="bmMode" value="group" ${S.billMode === "group" ? "checked" : ""}> まとまりごとに1枚（測量機稼働表の形）</label>
+      <label class="ck"><input type="radio" name="bmMode" value="site" ${S.billMode === "site" ? "checked" : ""}> 現場ごとに1枚</label>
+      <span class="sp"></span><button id="bmPrint">印刷（A4 縦）</button>
+    </div>
+    <div class="note binfo">${info}</div>
+    ${warn.length ? `<div class="bwarn"><b>確かめてください</b><ul>${[...new Set(warn)].map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+    <details class="bset" ${groups.length ? "" : "open"}><summary>請求書にする機械（まとまり）を変える</summary>
+      <p class="note">まとまりごとに1枚の請求書になります。ほかの機械も、ここで足せば同じ形の請求書になります（全員で同じ設定）。
+        請求単価は請求書だけの単価です（実行予算の単価表・集計の金額とは別）。空にすると単価表（集計と同じ）で数えます。</p>
+      ${setHtml}<button type="button" class="sub" id="bmAddG">＋ まとまりを足す</button>
+    </details>
+    <div class="bpages">${pages.join("") || '<p class="note">請求書にする機械がありません。上の「請求書にする機械」でまとまりを作ってください。</p>'}</div>`;
+  $("bmPrev").onclick = () => { S.billMonth = monthMove(ym, -1); saveView(); renderBill(); };
+  $("bmNext").onclick = () => { S.billMonth = monthMove(ym, 1); saveView(); renderBill(); };
+  $("bmMonth").onchange = () => { if (/^\d{4}-\d\d$/.test($("bmMonth").value)) { S.billMonth = $("bmMonth").value; saveView(); renderBill(); } };
+  el.querySelectorAll("[name=bmMode]").forEach(x => x.onchange = () => { S.billMode = x.value; saveView(); renderBill(); });
+  $("bmPrint").onclick = billPrint;
+  const keepOpen = () => { S.billSetOpen = true; };
+  el.querySelector(".bset").open = el.querySelector(".bset").open || !!S.billSetOpen;
+  el.querySelector(".bset").ontoggle = e => { S.billSetOpen = e.target.open; };
+  el.querySelectorAll(".bgset input[data-f]").forEach(x => x.onchange = () => { keepOpen(); const gi = +x.closest(".bgset").dataset.g; saveGroups(L => { L[gi][x.dataset.f] = x.value.trim(); }); });
+  el.querySelectorAll("[data-p]").forEach(x => x.onchange = () => { keepOpen(); const [gi, id] = x.dataset.p.split("|"), v = num(x.value); saveGroups(L => { L[+gi].単価 = { ...L[+gi].単価 }; if (v == null) delete L[+gi].単価[id]; else L[+gi].単価[id] = v; }); });
+  el.querySelectorAll("[data-mo]").forEach(x => x.onchange = () => { keepOpen(); const v = num(x.value); saveGroups(L => { L[+x.dataset.mo].月額 = v; }); });
+  el.querySelectorAll("[data-add]").forEach(x => x.onchange = () => { if (!x.value) return; keepOpen(); const gi = +x.dataset.add; saveGroups(L => { L[gi].機械.push(x.value); }); });
+  el.querySelectorAll("[data-rm]").forEach(x => x.onclick = () => { keepOpen(); const [gi, id] = x.dataset.rm.split("|"); saveGroups(L => { L[+gi].機械 = L[+gi].機械.filter(v => v !== id); }); });
+  el.querySelectorAll("[data-del]").forEach(x => x.onclick = () => { if (!confirm("このまとまりを消します。よろしいですか？（機械や予約は消えません）")) return; keepOpen(); saveGroups(L => { L.splice(+x.dataset.del, 1); }); });
+  el.querySelectorAll("[data-up],[data-dn]").forEach(x => x.onclick = () => { keepOpen(); const i = +(x.dataset.up ?? x.dataset.dn), j = x.dataset.up != null ? i - 1 : i + 1; saveGroups(L => { [L[i], L[j]] = [L[j], L[i]]; }); });
+  $("bmAddG").onclick = () => { keepOpen(); saveGroups(L => { L.push({ id: newId("g"), 名前: "新しいまとまり", 題名: "機械使用料", 機械: [], 単価: {}, 月額: null }); }); };
+}
+
+/* 印刷：請求書のときだけ A4 縦（稼働表の印刷は app.css の A3 横） */
+function billPageStyle(on) {
+  let st = $("billPageStyle");
+  if (!st) { st = document.createElement("style"); st.id = "billPageStyle"; document.head.appendChild(st); }
+  st.textContent = on ? "@media print { @page { size: A4 portrait; margin: 9mm 10mm; } }" : "";
+}
+function billPrint() { billPageStyle(true); setTimeout(() => print(), 50); }
+addEventListener("beforeprint", () => billPageStyle(S.tab === "bill"));
+addEventListener("afterprint", () => billPageStyle(false));
+if (S.tab === "bill" && ready) renderBill();
