@@ -13,7 +13,7 @@
 #bkEd { position:absolute; z-index:5; margin:0; padding:2px 4px; border:2px solid #1e7a34; font:inherit; font-size:13px; resize:none; overflow:hidden; background:transparent; color:transparent; caret-color:transparent; outline:none; white-space:nowrap; box-sizing:border-box; pointer-events:none; }
 #bkEd.editing { background:#fff; color:#000; caret-color:auto; pointer-events:auto; box-shadow:0 1px 6px rgba(0,0,0,.25); }
 /* 表 */
-table.xl { border-collapse:collapse; table-layout:fixed; font-family:"MS PGothic","Meiryo",sans-serif; font-size:13px; color:#000; background:#fff; user-select:none; }
+table.xl { border-collapse:collapse; table-layout:fixed; font-family:"ＭＳ Ｐ明朝","MS PMincho","Yu Mincho",serif; font-size:14px; color:#000; background:#fff; user-select:none; }
 table.xl td, table.xl th { border:1px solid #9aa3ab; padding:0 4px; height:30px; box-sizing:border-box; white-space:nowrap; overflow:hidden; text-overflow:clip; }
 .xl-title td { border:none; height:36px; font-size:20px; }
 .xl-title small { font-size:12px; color:#555; margin-left:10px; }
@@ -90,3 +90,7 @@ body.bukai-open #top > .grp:not(.right) { display:none; }
 #dBkPick small { color:#677; margin-left:4px; }
 #dBkPick .xl-out td:first-child { color:#999; }
 .bk-print-page .xl-hint { display:none; }
+/* 縮小しても入らない文字は2行に折り返す（Excelの「折り返して全体を表示」） */
+table.xl td.cell.xl-wrap { white-space:normal; line-height:1.1; word-break:break-all; padding-top:0; padding-bottom:0; vertical-align:middle; }
+.xl-name { font-size:16px; }
+.xl-head th { font-size:12px; white-space:normal; line-height:1.1; }

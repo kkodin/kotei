@@ -41,13 +41,14 @@
       const m = code ? masters.find(x => String(x.コード || "").trim() === code) || {} : {};
       out.push({key: code ? "code:"+code : "site:"+s.id, siteId:s.id, code, name:s.略称 || s.名前 || "", done:!!s.完了,
         base:{client:m.元請 || m.発注者 || "", handler:s.担当 || m.担当 || "", summary:m.工事概要 || "", plan:"", execPercent:"", remarks:"",
-          pipeDia:"", length:"", count:"", soil:"", amount:m.請負金額 ?? "", phone:m.電話 || "", start:s.工期自 || m.工期自 || "", end:s.工期至 || m.工期至 || ""}, source:s});
+          pipeDia:"", length:"", count:"", soil:"", amount:m.請負金額 ?? "", phone:m.電話 || "", start:s.工期自 || m.工期自 || "", end:s.工期至 || m.工期至 || "",
+          place:m.場所 || "", clientStaff:m.元請担当 || "", subHandler:m.担当補助 || ""}, source:s});
     }
     for (const m of masters) {
       const code=String(m.コード || "").trim();
       if (!code || codes.has(code)) continue;
       codes.set(code,true);
-      out.push({key:"code:"+code,code,name:m.略称 || m.名前 || "",done:true,base:{client:m.元請 || m.発注者 || "",handler:m.担当 || "",summary:m.工事概要 || "",plan:"",execPercent:"",remarks:"",pipeDia:"",length:"",count:"",soil:"",amount:m.請負金額 ?? "",phone:m.電話 || "",start:m.工期自 || "",end:m.工期至 || ""},source:{段:[],バー:[]}});
+      out.push({key:"code:"+code,code,name:m.略称 || m.名前 || "",done:true,base:{client:m.元請 || m.発注者 || "",handler:m.担当 || "",summary:m.工事概要 || "",plan:"",execPercent:"",remarks:"",pipeDia:"",length:"",count:"",soil:"",amount:m.請負金額 ?? "",phone:m.電話 || "",start:m.工期自 || "",end:m.工期至 || "",place:m.場所 || "",clientStaff:m.元請担当 || "",subHandler:m.担当補助 || ""},source:{段:[],バー:[]}});
     }
     return out;
   }

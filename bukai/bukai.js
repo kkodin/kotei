@@ -48,7 +48,8 @@ window.Bukai = (() => {
 
   /* ---------- セルの定義（Excelの列 A〜G） ---------- */
   // c: 0 工事略称・コード / 1 発注者・工期 / 2 担当 / 3 工事概要 / 4 計画 / 5 実行％ / 6 備考
-  const COLS = [["工事略称・コード", 118], ["発注者・工期", 112], ["担当", 54], ["工事概要", 330], ["計画", 36], ["実行%", 38], ["備考", 220]];
+  // 列幅は元のExcel（A17.25 B14 C6.6 D42.4 E5.3 F4.9 G33.5 文字）に合わせた
+  const COLS = [["工事略称・コード", 126], ["発注者・工期", 104], ["担当", 52], ["工事概要", 304], ["計画", 40], ["実行%", 40], ["備考", 240]];
   const LANE_W = 34;
   function cellDef(c, r) {
     if (c === 0) return [{ ro: "code" }, { ro: "name" }, { f: "place" }, { ro: "" }, { f: "amount" }][r];
@@ -138,6 +139,17 @@ window.Bukai = (() => {
       return `<div class="xl-ln${derived ? " xl-derived" : ""}${on}" data-id="${e(l.id)}" style="left:${a * DW}px;width:${(z - a + 1) * DW}px;top:${l.row * LH + 14}px;--c:${ctx.color(l.color || "黒")}" title="${e(l.label)} ${md(l.from)}〜${md(l.to)}"><span class="xl-bar">${offs}</span><span class="xl-tx">${e(l.label)}</span><b class="xl-h l"></b><b class="xl-h r"></b></div>`;
     }).join("");
   }
+  /* Excelの「縮小して全体を表示」と同じ：入りきらない文字は小さくする。小さくしすぎると読めないときは2行に折り返す */
+  function fitCells(root) {
+    root.querySelectorAll("td.cell").forEach(td => {
+      td.style.fontSize = ""; td.classList.remove("xl-wrap");
+      if (!td.textContent || td.scrollWidth <= td.clientWidth + 1) return;
+      const base = parseFloat(getComputedStyle(td).fontSize), r = td.clientWidth / td.scrollWidth;
+      if (r >= 0.62) { td.style.fontSize = (base * r * 0.97).toFixed(2) + "px"; return; }
+      td.classList.add("xl-wrap");
+      for (let f = base * 0.85; f >= 7; f -= 0.5) { td.style.fontSize = f.toFixed(1) + "px"; if (td.scrollHeight <= td.clientHeight + 1 && td.scrollWidth <= td.clientWidth + 1) return; }
+    });
+  }
   function render() {
     if (!ctx || ctx.tab() !== "bukai" || editing || drag) return;
     try {
@@ -150,6 +162,7 @@ window.Bukai = (() => {
       blocks = visible(all);
       $("bkCount").textContent = `掲載 ${all.filter(b => b.included).length}現場（表示 ${blocks.length}）／工程期間 ${period().from} 〜 ${period().end}`;
       $("bkGrid").innerHTML = tableHTML(blocks, period(), false);
+      fitCells($("bkGrid"));
       $("bkSheet").classList.toggle("readonly", ro());
       if (sel && sel.g > maxGr()) sel = anchor = null;
       paintSel();
@@ -276,7 +289,7 @@ window.Bukai = (() => {
     const rows = $("bkGrid").querySelectorAll(`tr[data-b="${bi}"]`);
     if (rows.length !== ROWS) { render(); return; }
     const tmp = document.createElement("tbody"); tmp.innerHTML = blockHTML(b, bi, period(), false);
-    [...tmp.children].forEach((tr, i) => rows[i].replaceWith(tr));
+    [...tmp.children].forEach((tr, i) => { rows[i].replaceWith(tr); fitCells(tr); });
     paintSel();
   }
 
@@ -545,6 +558,7 @@ window.Bukai = (() => {
       const page = document.createElement("div"); page.className = "ppage";
       page.innerHTML = `<div class="bk-print-page">${tableHTML(list.slice(i * n, (i + 1) * n), p, true)}<div class="bk-print-footer"><span>${handlerFilter ? "担当 " + e(handlerFilter) + "　" : ""}工程期間 ${e(p.from)} 〜 ${e(p.end)}　線の白抜きは休工日</span><span>${i + 1} / ${total}</span></div></div>`;
       out.appendChild(page);
+      fitCells(page);
       const sheet = page.firstElementChild;
       sheet.style.zoom = Math.min(1, ctx.printWidth() / sheet.scrollWidth, ctx.printHeight() / sheet.scrollHeight).toFixed(4);
     }
