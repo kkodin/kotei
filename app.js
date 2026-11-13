@@ -2627,10 +2627,17 @@ async function start() {
   setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
 }
 // 部会資料は独立Vr001。最新版の原版（Vr002以降）を正式な入口にする。
-$("bBukai").onclick = () => {
+// 更新時に旧HTMLと新JSが混在しても、存在しないボタンで起動を停止しない。
+const bukaiButton = $("bBukai");
+if (bukaiButton) bukaiButton.onclick = () => {
   const u=new URL("bukai/",location.href);
   u.searchParams.set("from","kotei"); u.searchParams.set("sourceVersion",/^Vr\d+/.test($("ver").textContent) ? $("ver").textContent : "Vr002 開発中");
   if (DEMO) u.searchParams.set("demo","");
   window.open(u.href,"_blank","noopener");
 };
+if (!bukaiButton) {
+  // 保存済みデータを保持したまま、キャッシュを避ける既存の更新操作へ案内する。
+  $("updVer").textContent = "Vr002以降";
+  $("updBar").hidden = false;
+}
 start();
