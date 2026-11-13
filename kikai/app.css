@@ -305,7 +305,7 @@ table.bsum tbody tr:nth-child(even) td { background: var(--soft); }
 table.bsum tr.bhq td { background: #fff8e6 !important; }
 tr.btot td, tr.btot th { font-weight: 700; background: #e3eaf1 !important; border-top: .5mm double var(--ink); font-size: 11px; }
 b.sp { display: inline-block; color: #c62828; border: 1px solid #c62828; border-radius: 2px; font-size: 8px; padding: 0 2px; margin-right: 3px; }
-.bfoot { font-size: 8.5px; color: #5a6672; margin: 2mm 0 0; }
+.bfoot { clear: both; font-size: 8.5px; color: #5a6672; margin: 2mm 0 0; }
 .bnone { font-size: 11px; color: #5a6672; }
 .bsite { font-size: 10px; margin: 0 0 3mm; }
 table.bone { width: 100%; }
@@ -313,6 +313,26 @@ table.bone tr.bg td { background: var(--soft); font-weight: 700; }
 table.bone td.bdays { font-size: 9.5px; }
 table.btax { width: 70mm; margin: 4mm 0 0 auto; font-size: 11.5px; }
 table.btax th { text-align: left; }
+/* 確認印（2026-11-13）：紙では空欄に判子、画面では押すとログインしている人の電子印 */
+table.bsum th.bstampH { width: 14mm; }
+table.bsum td.bstamp, table.bsum td.bnost { width: 14mm; padding: 0; text-align: center; vertical-align: middle; background: #fff !important; }
+table.bsum.tall tbody tr:not(.btot) td { height: 11mm; }
+table.bsum:not(.tall) tbody tr:not(.btot) td { height: 8mm; }
+td.bstamp { cursor: pointer; }
+td.bstamp .bhint { font-size: 8px; color: #b8c2cc; }
+td.bstamp:hover { background: #fff4f4 !important; }
+.seal { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 10mm; height: 10mm; border: .45mm solid #d32f2f; border-radius: 50%;
+  color: #d32f2f; line-height: 1; font-family: "BIZ UDPMincho", "Yu Mincho", "MS Mincho", serif; transform: rotate(-4deg); }
+.seal b { font-size: 10px; font-weight: 700; letter-spacing: -.02em; padding: .4mm 0; border-top: .25mm solid #d32f2f; border-bottom: .25mm solid #d32f2f; width: 100%; text-align: center; }
+.seal b.l3 { font-size: 8px; }
+.seal i { font-style: normal; font-size: 6px; }
+table.bsum:not(.tall) .seal { width: 7.4mm; height: 7.4mm; } table.bsum:not(.tall) .seal b { font-size: 7.5px; } table.bsum:not(.tall) .seal i { font-size: 5px; }
+td.bstamp.old .seal { opacity: .35; }
+.bstamps { float: left; display: flex; gap: 2mm; align-items: flex-start; margin-top: 4mm; }
+.bstl { font-size: 10px; font-weight: 700; padding-top: 1mm; }
+table.bstampbox { width: auto; }
+table.bstampbox th { font-size: 8.5px; font-weight: 400; padding: .4mm 1.5mm; }
+table.bstampbox td.bstamp { width: auto; height: 13mm; }
 @media print {
   body[data-tab=bill] #pBill { padding: 0; background: #fff; }
   body[data-tab=bill] .bctl, body[data-tab=bill] .binfo, body[data-tab=bill] .bwarn, body[data-tab=bill] .bset, body[data-tab=bill] #toast { display: none !important; }
@@ -320,4 +340,5 @@ table.btax th { text-align: left; }
   .bpage { box-shadow: none; margin: 0 auto; padding: 0; width: 180mm; min-height: 0; break-after: page; }
   .bpage:last-child { break-after: auto; }
   table.bt th { position: static; }
+  td.bstamp .bhint { visibility: hidden; }
 }

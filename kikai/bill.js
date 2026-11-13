@@ -78,6 +78,34 @@ const siteCode = name => siteOf(name).コード || "";   // 2026-11-13 ユーザ
 const siteHead = name => siteCode(name) ? "現場コード " + siteCode(name) : "";
 const sortSites = names => names.sort((a, b) => (siteOf(a).コード || "999999").localeCompare(siteOf(b).コード || "999999") || a.localeCompare(b, "ja"));
 
+/* ---------- 確認印（2026-11-13） ----------
+   ユーザー：いまだに捺印文化があるので、計の横に捺印欄。将来は各担当者が Web 上で確認の印を付けたい。
+   ログインしている人の名前の電子印鑑を作れるならそのほうが良い。
+   - 集計の各行（本社・現場）の右に「確認印」の欄。紙では空欄＝そのまま判子を押せる。
+   - 画面で欄を押す → 「○○ の印で確認しますか」→ ログインしている人（me.name）の名前の丸い印（赤）。もう一度押すと取り消し（押した本人だけ）。
+   - D.請求書.確認["YYYY-MM|まとまり id|現場"] = { 名前, 日時, 金額 }。押したときの金額を覚え、金額が変わったら印を薄くして「確かめてください」に出す。 */
+const stampKey = (ym, gid, site) => ym + "|" + gid + "|" + site;
+const stampOf = key => D.請求書?.確認?.[key] || null;
+const sealName = n => { const t = String(n || "").trim().split(/[\s　]+/)[0] || "?"; return t.length > 4 ? t.slice(0, 4) : t; };   // 姓だけ（「北澤 和也」→ 北澤）
+function stampCell(key, amt, warn, label) {
+  const x = stampOf(key);
+  if (!x) return `<td class="bstamp" data-stamp="${esc(key)}" data-amt="${amt}" data-label="${esc(label)}"><span class="bhint">押す</span></td>`;
+  const changed = x.金額 !== amt;
+  if (changed) warn.push(`${label}：確認印のあと金額が変わりました（印のとき ${yen(x.金額)}円 → いま ${yen(amt)}円）。押し直してください`);
+  const nm = sealName(x.名前), d = x.日時 ? x.日時.slice(5, 10).replace("-", "/") : "";
+  return `<td class="bstamp on${changed ? " old" : ""}" data-stamp="${esc(key)}" data-amt="${amt}" data-label="${esc(label)}" title="${esc(x.名前 + "　" + (x.日時 || ""))}">
+    <span class="seal"><i class="sd">${esc(d)}</i><b class="${nm.length >= 3 ? "l3" : ""}">${esc(nm)}</b><i class="sk">確認</i></span></td>`;
+}
+function stampClick(td) {
+  const key = td.dataset.stamp, amt = +td.dataset.amt, x = stampOf(key), who = me.name;
+  if (x && x.名前 !== who && !confirm(`${x.名前} さんの印です。取り消して ${who} の印にしますか？`)) return;
+  if (x && x.名前 === who) { if (!confirm(`${td.dataset.label}\n${who} の確認印を取り消しますか？`)) return;
+    commit(d => { if (d.請求書?.確認) delete d.請求書.確認[key]; }, { noUndo: true }); return; }
+  if (!x && !confirm(`${td.dataset.label}（${yen(amt)}円）\n${who} の印で確認しますか？`)) return;
+  const v = { 名前: who, 日時: new Date().toLocaleString("sv-SE").slice(0, 16), 金額: amt };
+  commit(d => { d.請求書 = Object.assign({}, d.請求書); d.請求書.確認 = Object.assign({}, d.請求書.確認, { [key]: v }); }, { noUndo: true });
+}
+
 /* まとまりごとの1枚：日付×機械（昼・夜）の表＋使った現場だけの集計 */
 function billGroupPage(g, from, to, made) {
   const ms = g.機械.map(machine).filter(Boolean), bm = ms.map(m => billMachine(m, from, to, g.単価?.[m.id] ?? null)), one = ms.length === 1;
@@ -93,7 +121,7 @@ function billGroupPage(g, from, to, made) {
     <tr>${ms.map(() => "<th>昼</th><th>夜</th>").join("")}</tr></thead><tbody>` +
     days.map(k => `<tr class="${dayClass(k)}"><td class="bd">${+k.slice(8)}<small>（${WD[dayDow(k)]}）</small></td>` +
       bm.map(x => `<td>${cellHtml(x.cell[k + "|昼"])}</td><td>${cellHtml(x.cell[k + "|夜"])}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
-  let tot = 0; const mTot = bm.map(() => ({ qty: 0, amt: 0 }));
+  let tot = 0; const mTot = bm.map(() => ({ qty: 0, amt: 0 })), sw = [], ym = from.slice(0, 7);
   const rows = names.map(n => {
     let sub = 0;
     const tds = bm.map((x, i) => {
@@ -102,22 +130,23 @@ function billGroupPage(g, from, to, made) {
       return `<td class="n">${unitText(s)}</td><td class="n">${s.qty}</td><td class="n">${s.sp ? '<b class="sp">特</b>' : ""}${s.none ? "単価なし" : yen(s.amt)}</td>`;
     }).join("");
     tot += sub;
-    return `<tr><td class="bs">${esc(n)}</td><td class="bc">${esc(siteCode(n))}</td>${tds}${one ? "" : `<td class="n b">${yen(sub)}</td>`}</tr>`;
+    return `<tr><td class="bs">${esc(n)}</td><td class="bc">${esc(siteCode(n))}</td>${tds}${one ? "" : `<td class="n b">${yen(sub)}</td>`}${stampCell(stampKey(ym, g.id, n), sub, sw, g.名前 + "　" + n)}</tr>`;
   });
   /* 月額（リース料）があれば一番上に「本社」＝月額−現場の計（金額だけ） */
   const lease = g.月額 != null && g.月額 !== "" ? +g.月額 : null, hq = lease != null ? lease - tot : null;
   const blank = bm.map(() => `<td></td><td></td><td></td>`).join("");
-  const hqRow = lease == null ? "" : one ? `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td><td></td><td></td><td class="n b">${yen(hq)}</td></tr>`
-    : `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td>${blank}<td class="n b">${yen(hq)}</td></tr>`;
+  const hqRow = lease == null ? "" : one ? `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td><td></td><td></td><td class="n b">${yen(hq)}</td>${stampCell(stampKey(ym, g.id, "本社"), hq, sw, g.名前 + "　本社")}</tr>`
+    : `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td>${blank}<td class="n b">${yen(hq)}</td>${stampCell(stampKey(ym, g.id, "本社"), hq, sw, g.名前 + "　本社")}</tr>`;
   const grand = lease != null ? lease : tot;
   const warnHq = lease != null && hq < 0 ? [`${g.名前}：現場の計（${yen(tot)}円）が月額（${yen(lease)}円）を超えています（本社がマイナス）`] : [];
-  const sum = names.length || lease != null ? `<table class="bt bsum"><thead><tr><th${one ? "" : ' rowspan="2"'}>現場名</th><th${one ? "" : ' rowspan="2"'}>現場コード</th>${one ? "<th>単価（円）</th><th>数量</th><th>金額（円）</th>" : ms.map(m => `<th colspan="3">${esc(mLabel(m))}</th>`).join("") + '<th rowspan="2">計（円）</th>'}</tr>
+  const tall = names.length + (lease != null ? 1 : 0) <= 8;   // 行が少なければ判子が押せる高さ（11mm）、多ければ 8mm
+  const sum = names.length || lease != null ? `<table class="bt bsum${tall ? " tall" : ""}"><thead><tr><th${one ? "" : ' rowspan="2"'}>現場名</th><th${one ? "" : ' rowspan="2"'}>現場コード</th>${one ? "<th>単価（円）</th><th>数量</th><th>金額（円）</th>" : ms.map(m => `<th colspan="3">${esc(mLabel(m))}</th>`).join("") + '<th rowspan="2">計（円）</th>'}<th${one ? "" : ' rowspan="2"'} class="bstampH">確認印</th></tr>
       ${one ? "" : `<tr>${ms.map(() => "<th>単価</th><th>数量</th><th>金額</th>").join("")}</tr>`}</thead><tbody>${hqRow}${rows.join("")}
-      <tr class="btot"><td colspan="2">合計</td>${one ? `<td></td><td class="n">${mTot[0].qty}</td><td class="n">${yen(grand)}</td>` : mTot.map(t => `<td></td><td class="n">${t.qty}</td><td class="n">${yen(t.amt)}</td>`).join("") + `<td class="n">${yen(grand)}</td>`}</tr></tbody></table>`
+      <tr class="btot"><td colspan="2">合計</td>${one ? `<td></td><td class="n">${mTot[0].qty}</td><td class="n">${yen(grand)}</td>` : mTot.map(t => `<td></td><td class="n">${t.qty}</td><td class="n">${yen(t.amt)}</td>`).join("") + `<td class="n">${yen(grand)}</td>`}<td class="bnost"></td></tr></tbody></table>`
     : `<p class="bnone">この月に請求する現場はありません。</p>`;
   return { html: `<div class="bpage">${billHead(g.題名 || "測量機稼働表", g.名前, from, made)}<div class="${one ? "bflex" : ""}">${grid}<div class="bsumw"><h4>現場別の集計<small>（この月に使った現場だけ）</small></h4>${sum}</div></div>
     <p class="bfoot">数量＝使った日（昼・夜はそれぞれ1回）×台数。単価＝請求の単価（実行予算の単価とは別）。${lease != null ? "本社＝月額（リース料）から現場の計を引いた額。" : ""}</p></div>`,
-    warn: [...warnHq, ...bm.flatMap(x => x.warn)], total: grand, sites: names.length };
+    warn: [...warnHq, ...sw, ...bm.flatMap(x => x.warn)], total: grand, sites: names.length };
 }
 function billHead(title, sub, from, made) {
   return `<div class="bh"><div><div class="bt1">${esc(title)}</div><div class="bt2">${esc(sub)}</div></div>
@@ -134,8 +163,10 @@ function billSitePages(groups, from, to, made) {
   let all = 0;
   const pages = sortSites(Object.keys(per)).map(n => {
     let sub = 0;
+    const stamps = [];
     const body = Object.values(per[n]).map(({ g, rows }) => {
       const gs = rows.reduce((t, r) => t + r.s.amt, 0); sub += gs;
+      stamps.push(`<table class="bt bsum tall bstampbox"><tr><th>${esc(g.名前)}</th></tr><tr>${stampCell(stampKey(from.slice(0, 7), g.id, n), gs, warn, g.名前 + "　" + n)}</tr></table>`);
       return `<tr class="bg"><td colspan="5">${esc(g.名前)}</td></tr>` + rows.map(({ m, s }) => `<tr><td>${esc(mLabel(m))}</td><td class="bdays">${spanText([...new Set(s.days)])}</td>
         <td class="n">${s.qty}</td><td class="n">${s.sp ? '<b class="sp">特</b>' : ""}${unitText(s)}</td><td class="n">${s.none ? "単価なし" : yen(s.amt)}</td></tr>`).join("");
     }).join("");
@@ -143,6 +174,7 @@ function billSitePages(groups, from, to, made) {
     return `<div class="bpage">${billHead("測量機 使用料", n, from, made)}
       <p class="bsite">${esc(siteHead(n)) || "&nbsp;"}</p>
       <table class="bt bone"><thead><tr><th>機械</th><th>使った日</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead><tbody>${body}</tbody></table>
+      <div class="bstamps"><div class="bstl">確認印</div>${stamps.join("")}</div>
       <table class="bt btax"><tr><th>${S.billTax ? "税抜金額" : "金額"}</th><td class="n">${yen(sub)}</td></tr>${S.billTax ? `<tr><th>消費税（${BILL_TAX}%）</th><td class="n">${yen(tax)}</td></tr><tr class="btot"><th>税込金額</th><td class="n">${yen(sub + tax)}</td></tr>` : ""}</table>
       <p class="bfoot">数量＝使った日（昼・夜はそれぞれ1回）×台数。単価＝請求の単価（実行予算の単価とは別）。${S.billTax ? "消費税は1円未満切り捨て。" : ""}</p></div>`;
   });
@@ -194,6 +226,7 @@ function renderBill() {
   $("bmMonth").onchange = () => { if (/^\d{4}-\d\d$/.test($("bmMonth").value)) { S.billMonth = $("bmMonth").value; saveView(); renderBill(); } };
   el.querySelectorAll("[name=bmMode]").forEach(x => x.onchange = () => { S.billMode = x.value; saveView(); renderBill(); });
   $("bmPrint").onclick = billPrint;
+  el.querySelectorAll("[data-stamp]").forEach(td => td.onclick = () => stampClick(td));
   const keepOpen = () => { S.billSetOpen = true; };
   el.querySelector(".bset").open = el.querySelector(".bset").open || !!S.billSetOpen;
   el.querySelector(".bset").ontoggle = e => { S.billSetOpen = e.target.open; };
