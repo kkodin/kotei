@@ -74,7 +74,8 @@ function billMachine(m, from, to, price = null) {
 }
 const unitText = s => s.meth && s.meth !== "日" ? [...s.units].map(u => yen(u) + "／" + UNIT[s.meth]).join("・") : [...s.units].map(yen).join("・");
 const taxOf = v => S.billTax ? Math.floor(v * BILL_TAX / 100) : 0;
-const siteHead = name => { const s = siteOf(name); return [s.コード, s.正式名 && s.正式名 !== name ? s.正式名 : "", s.元請 ? "元請 " + s.元請 : ""].filter(Boolean).join("　"); };
+const siteCode = name => siteOf(name).コード || "";   // 2026-11-13 ユーザー：正式工事名・元請は要らない。社内の現場名と現場コードだけ
+const siteHead = name => siteCode(name) ? "現場コード " + siteCode(name) : "";
 const sortSites = names => names.sort((a, b) => (siteOf(a).コード || "999999").localeCompare(siteOf(b).コード || "999999") || a.localeCompare(b, "ja"));
 
 /* まとまりごとの1枚：日付×機械（昼・夜）の表＋使った現場だけの集計 */
@@ -83,10 +84,14 @@ function billGroupPage(g, from, to, made) {
   const days = []; for (let k = from; k <= to; k = dayAdd(k, 1)) days.push(k);
   const names = sortSites([...new Set(bm.flatMap(x => Object.keys(x.sites)))]);
   const fs = ms.length <= 2 ? 1 : ms.length <= 3 ? .9 : ms.length <= 4 ? .8 : .7;
-  const cellHtml = a => !a ? "" : a.map(x => `<span class="${x.bill ? "" : "nb"}${x.kari ? " kari" : ""}">${esc(x.name)}</span>`).join("<br>");
-  const grid = `<table class="bt bday" style="--bf:${fs}"><thead><tr><th rowspan="2" class="bd">日付</th>${ms.map(m => `<th colspan="2">${esc(mLabel(m))}</th>`).join("")}</tr>
+  const cellHtml = a => !a ? "" : a.map(x => `<span class="${x.bill ? "" : "nb"}${x.kari ? " kari" : ""}">${esc(x.name)}</span>`).join("・");
+  /* 列の幅は決めておく（2026-11-13 ユーザー：無駄に列幅が広く、印刷すると両端が切れる）。紙の幅 180mm に収める。
+     機械1台なら 日付＋昼夜 で 86mm にして、右に集計を並べる。2台以上は 日付 16mm＋残りを昼夜で等分（1列 40mm まで） */
+  const colW = one ? 35 : Math.min(40, Math.floor(164 / (2 * ms.length)));
+  const cols = `<colgroup><col style="width:16mm">${ms.map(() => `<col style="width:${colW}mm"><col style="width:${colW}mm">`).join("")}</colgroup>`;
+  const grid = `<table class="bt bday" style="--bf:${fs};width:${16 + colW * 2 * ms.length}mm">${cols}<thead><tr><th rowspan="2" class="bd">日付</th>${ms.map(m => `<th colspan="2">${esc(mLabel(m))}</th>`).join("")}</tr>
     <tr>${ms.map(() => "<th>昼</th><th>夜</th>").join("")}</tr></thead><tbody>` +
-    days.map(k => `<tr class="${dayClass(k)}"><td class="bd">${+k.slice(8)}日（${WD[dayDow(k)]}）</td>` +
+    days.map(k => `<tr class="${dayClass(k)}"><td class="bd">${+k.slice(8)}<small>（${WD[dayDow(k)]}）</small></td>` +
       bm.map(x => `<td>${cellHtml(x.cell[k + "|昼"])}</td><td>${cellHtml(x.cell[k + "|夜"])}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
   let tot = 0; const mTot = bm.map(() => ({ qty: 0, amt: 0 }));
   const rows = names.map(n => {
@@ -97,20 +102,20 @@ function billGroupPage(g, from, to, made) {
       return `<td class="n">${unitText(s)}</td><td class="n">${s.qty}</td><td class="n">${s.sp ? '<b class="sp">特</b>' : ""}${s.none ? "単価なし" : yen(s.amt)}</td>`;
     }).join("");
     tot += sub;
-    return `<tr><td class="bs">${esc(n)}<div class="bsub">${esc(siteHead(n))}</div></td>${tds}${one ? "" : `<td class="n b">${yen(sub)}</td>`}</tr>`;
+    return `<tr><td class="bs">${esc(n)}</td><td class="bc">${esc(siteCode(n))}</td>${tds}${one ? "" : `<td class="n b">${yen(sub)}</td>`}</tr>`;
   });
   /* 月額（リース料）があれば一番上に「本社」＝月額−現場の計（金額だけ） */
   const lease = g.月額 != null && g.月額 !== "" ? +g.月額 : null, hq = lease != null ? lease - tot : null;
   const blank = bm.map(() => `<td></td><td></td><td></td>`).join("");
-  const hqRow = lease == null ? "" : one ? `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)}円 − 現場の計 ${yen(tot)}円</div></td><td></td><td></td><td class="n b">${yen(hq)}</td></tr>`
-    : `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)}円 − 現場の計 ${yen(tot)}円</div></td>${blank}<td class="n b">${yen(hq)}</td></tr>`;
+  const hqRow = lease == null ? "" : one ? `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td><td></td><td></td><td class="n b">${yen(hq)}</td></tr>`
+    : `<tr class="bhq"><td class="bs">本社<div class="bsub">月額 ${yen(lease)} − 現場の計 ${yen(tot)}</div></td><td></td>${blank}<td class="n b">${yen(hq)}</td></tr>`;
   const grand = lease != null ? lease : tot;
   const warnHq = lease != null && hq < 0 ? [`${g.名前}：現場の計（${yen(tot)}円）が月額（${yen(lease)}円）を超えています（本社がマイナス）`] : [];
-  const sum = names.length || lease != null ? `<table class="bt bsum"><thead><tr><th${one ? "" : ' rowspan="2"'}>現場名</th>${one ? "<th>単価（円）</th><th>数量</th><th>金額（円）</th>" : ms.map(m => `<th colspan="3">${esc(mLabel(m))}</th>`).join("") + '<th rowspan="2">計（円）</th>'}</tr>
+  const sum = names.length || lease != null ? `<table class="bt bsum"><thead><tr><th${one ? "" : ' rowspan="2"'}>現場名</th><th${one ? "" : ' rowspan="2"'}>現場コード</th>${one ? "<th>単価（円）</th><th>数量</th><th>金額（円）</th>" : ms.map(m => `<th colspan="3">${esc(mLabel(m))}</th>`).join("") + '<th rowspan="2">計（円）</th>'}</tr>
       ${one ? "" : `<tr>${ms.map(() => "<th>単価</th><th>数量</th><th>金額</th>").join("")}</tr>`}</thead><tbody>${hqRow}${rows.join("")}
-      <tr class="btot"><td>合計</td>${one ? `<td></td><td class="n">${mTot[0].qty}</td><td class="n">${yen(grand)}</td>` : mTot.map(t => `<td></td><td class="n">${t.qty}</td><td class="n">${yen(t.amt)}</td>`).join("") + `<td class="n">${yen(grand)}</td>`}</tr></tbody></table>`
+      <tr class="btot"><td colspan="2">合計</td>${one ? `<td></td><td class="n">${mTot[0].qty}</td><td class="n">${yen(grand)}</td>` : mTot.map(t => `<td></td><td class="n">${t.qty}</td><td class="n">${yen(t.amt)}</td>`).join("") + `<td class="n">${yen(grand)}</td>`}</tr></tbody></table>`
     : `<p class="bnone">この月に請求する現場はありません。</p>`;
-  return { html: `<div class="bpage">${billHead(g.題名 || "測量機稼働表", g.名前, from, made)}${grid}<h4>現場別の集計（この月に使った現場だけ）</h4>${sum}
+  return { html: `<div class="bpage">${billHead(g.題名 || "測量機稼働表", g.名前, from, made)}<div class="${one ? "bflex" : ""}">${grid}<div class="bsumw"><h4>現場別の集計<small>（この月に使った現場だけ）</small></h4>${sum}</div></div>
     <p class="bfoot">数量＝使った日（昼・夜はそれぞれ1回）×台数。単価＝請求の単価（実行予算の単価とは別）。${lease != null ? "本社＝月額（リース料）から現場の計を引いた額。" : ""}</p></div>`,
     warn: [...warnHq, ...bm.flatMap(x => x.warn)], total: grand, sites: names.length };
 }
