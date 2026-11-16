@@ -41,7 +41,7 @@ window.Bukai = (() => {
     const d = doc();
     return C.rows(ctx.sites(), ctx.masters()).map(r => ({ row: r, values: C.values(r, d), included: C.selected(r, d) }));
   }
-  const handlersOf = b => [b.values.handler, b.values.subHandler].filter(Boolean);
+  const handlersOf = b => [b.values.handler, b.values.subHandler, b.values.handler3].filter(Boolean);
   const nsp = s => String(s).replace(/[\s　]/g, "");
   const matchHandler = b => !handlerFilter || handlersOf(b).some(h => nsp(h).includes(nsp(handlerFilter)));
   const visible = all => all.filter(b => (showAll || b.included) && matchHandler(b));
@@ -52,9 +52,9 @@ window.Bukai = (() => {
   const COLS = [["工事略称・コード", 126], ["発注者・工期", 104], ["担当", 52], ["工事概要", 304], ["計画", 40], ["実行%", 40], ["備考", 240]];
   const LANE_W = 34;
   function cellDef(c, r) {
-    if (c === 0) return [{ ro: "code" }, { ro: "name" }, { f: "place" }, { ro: "" }, { f: "amount" }][r];
+    if (c === 0) return [{ ro: "code" }, { ro: "name" }, { f: "place" }, { f: "amountNote" }, { f: "amount" }][r];
     if (c === 1) return [{ f: "client" }, { f: "clientStaff" }, { f: "start" }, { f: "end" }, { f: "phone" }][r];
-    if (c === 2) return [{ f: "handler" }, { f: "subHandler" }, { ro: "" }, { ro: "" }, { ro: "" }][r];
+    if (c === 2) return [{ f: "handler" }, { f: "subHandler" }, { f: "handler3" }, { ro: "" }, { ro: "" }][r];
     if (c === 3) return { f: "summary", line: r };
     if (c === 4) return r === 0 ? { f: "plan" } : { ro: "" };
     if (c === 5) return r === 0 ? { f: "execPercent" } : { ro: "" };
@@ -71,7 +71,7 @@ window.Bukai = (() => {
     if (d.line !== undefined) return lineOf(x, d.line);
     if (d.f === "start") return x ? C.era(x) + "～" : "";
     if (d.f === "end") return x ? C.era(x) : "";
-    if (d.f === "amount") return x === "" || x == null ? "" : Number(x).toLocaleString("ja-JP");
+    if (d.f === "amount") return x === "" || x == null ? "" : typeof x === "number" ? x.toLocaleString("ja-JP") : x;
     return x ?? "";
   }
   function rawText(b, c, r) {   // 入力欄・コピーに使う文字
@@ -96,7 +96,7 @@ window.Bukai = (() => {
       if ([10, 20, 30].includes(+k.slice(8))) ticks.push(`<span class="tk" style="left:${i * DW}px">${+k.slice(8)}</span>`);
     });
     const snap = archived();
-    const title = `<tr class="xl-title"><td colspan="7"><b>工事工程計画及び実施報告書</b>　${e(warekiMonth(snap?.yearMonth || month))}工事部会　<small>${e(snap ? "配布版 " + localTime(snap.created.at) : forPrint ? "編集中 " + new Date().toLocaleDateString("ja-JP") + "現在" : "")}</small></td><td colspan="2" class="legend"><span class="donebox"></span> は作業終了分</td></tr>`;
+    const title = `<tr class="xl-title"><td colspan="7"><b>工事工程計画及び実施報告書</b>　${e(warekiMonth(snap?.yearMonth || month))}工事部会　<small>${e((() => { const d = snap ? new Date(snap.created.at) : new Date(); return `${d.getMonth() + 1}.${d.getDate()}現在` + (snap ? "（配布版 " + localTime(snap.created.at) + "）" : ""); })())}</small></td><td colspan="2" class="legend"><span class="donebox"></span> は作業終了分</td></tr>`;
     const head = `<tr class="xl-head">${COLS.map(([t]) => `<th>${t}</th>`).join("")}<th></th><th class="scale"><div class="scale-in" style="width:${chartW}px">${months.join("")}${ticks.join("")}${gridLines(p, false)}</div></th></tr>`;
     const body = list.map((b, bi) => blockHTML(b, bi, p, forPrint)).join("");
     const width = COLS.reduce((a, [, w]) => a + w, 0) + LANE_W + chartW;
@@ -235,6 +235,7 @@ window.Bukai = (() => {
       ls[d.line] = text.replace(/\n/g, " ");
       after = ls.join("\n").replace(/\n+$/, "");
     } else if (f === "start" || f === "end") after = C.parseDate(text);
+    else if (f === "amount" && !/^[\d０-９,，.．円\s]+$/.test(text.trim())) after = text.trim();   // 「予定6,000,000」などは文字のまま
     else if (["amount", "plan", "execPercent"].includes(f)) after = text.replace(/[０-９．]/g, ch => ch === "．" ? "." : String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/[,，円%％\s]/g, "");
     else after = text;
     after = C.validate(f, after);

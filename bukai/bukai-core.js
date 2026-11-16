@@ -6,9 +6,16 @@
     remarks: "備考", pipeDia: "管径・坑径・管種", length: "推進延長・立坑深", count: "数量", soil: "土質",
     amount: "請負金額", phone: "連絡先", start: "工期 自", end: "工期 至",
     // Vr002（Excel風の表）で追加した項目
-    place: "所在地", clientStaff: "元請担当", subHandler: "副担当", summaryDone: "作業終了の行"
+    place: "所在地", clientStaff: "元請担当", subHandler: "担当2", handler3: "担当3", amountNote: "金額の補足", summaryDone: "作業終了の行"
   };
   const LANES = ["計画", "外注", "直労", "機材"];
+  // 在籍していない人（仕様書§4.7・利用者指定）。台帳・工程表から来る担当・副担当に出さない。
+  // 姓名間の空白の違いは無視し、氏名が一致する人だけ外す（同じ姓の別人は外さない）。部会資料で打った値と過去の配布版は変えない。
+  // 岡田：2026-11-13 利用者から退社の報告。資料により名字だけ・フルネームの両方があるので、名字「岡田」で外す
+  //（社内に別の岡田さんが入ったら RETIRED_SURNAMES を見直す）
+  const RETIRED = ["橋本 行男", "武井 秀憲"], RETIRED_SURNAMES = ["岡田"];
+  const nsp = n => String(n || "").replace(/[\s　]+/g, "");
+  const active = n => RETIRED.some(r => nsp(r) === nsp(n)) || RETIRED_SURNAMES.some(f => nsp(n).startsWith(f)) ? "" : (n || "");
   const clone = x => JSON.parse(JSON.stringify(x));
   const equal = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   function period(month) {
@@ -22,6 +29,11 @@
   function validate(field, value) {
     if (!(field in fields)) throw Error("未対応の項目です。");
     if (value === "" || value == null) return "";
+    // 請負金額は元のExcelどおり「予定6,000,000」「80,000,000-」のような文字も入れられる（数字だけなら数値で保存）
+    if (field === "amount" && !/^(\d+(\.\d+)?|\.\d+)$/.test(String(value).trim())) {
+      if (typeof value !== "string" || value.length > 100) throw Error("請負金額は100文字以内で入力してください。");
+      return value;
+    }
     if (["plan", "execPercent", "amount"].includes(field)) {
       if (!/^(\d+(\.\d+)?|\.\d+)$/.test(String(value).trim())) throw Error(fields[field]+"は0以上の数値で入力してください。");
       const n = Number(value);
@@ -40,15 +52,15 @@
       if (code) codes.set(code, true);
       const m = code ? masters.find(x => String(x.コード || "").trim() === code) || {} : {};
       out.push({key: code ? "code:"+code : "site:"+s.id, siteId:s.id, code, name:s.略称 || s.名前 || "", done:!!s.完了,
-        base:{client:m.元請 || m.発注者 || "", handler:s.担当 || m.担当 || "", summary:m.工事概要 || "", plan:"", execPercent:"", remarks:"",
+        base:{client:m.元請 || m.発注者 || "", handler:active(s.担当 || m.担当), summary:m.工事概要 || "", plan:"", execPercent:"", remarks:"",
           pipeDia:"", length:"", count:"", soil:"", amount:m.請負金額 ?? "", phone:m.電話 || "", start:s.工期自 || m.工期自 || "", end:s.工期至 || m.工期至 || "",
-          place:m.場所 || "", clientStaff:m.元請担当 || "", subHandler:m.担当補助 || ""}, source:s});
+          place:m.場所 || "", clientStaff:m.元請担当 || "", subHandler:active(m.担当補助), handler3:"", amountNote:""}, source:s});
     }
     for (const m of masters) {
       const code=String(m.コード || "").trim();
       if (!code || codes.has(code)) continue;
       codes.set(code,true);
-      out.push({key:"code:"+code,code,name:m.略称 || m.名前 || "",done:true,base:{client:m.元請 || m.発注者 || "",handler:m.担当 || "",summary:m.工事概要 || "",plan:"",execPercent:"",remarks:"",pipeDia:"",length:"",count:"",soil:"",amount:m.請負金額 ?? "",phone:m.電話 || "",start:m.工期自 || "",end:m.工期至 || "",place:m.場所 || "",clientStaff:m.元請担当 || "",subHandler:m.担当補助 || ""},source:{段:[],バー:[]}});
+      out.push({key:"code:"+code,code,name:m.略称 || m.名前 || "",done:true,base:{client:m.元請 || m.発注者 || "",handler:active(m.担当),summary:m.工事概要 || "",plan:"",execPercent:"",remarks:"",pipeDia:"",length:"",count:"",soil:"",amount:m.請負金額 ?? "",phone:m.電話 || "",start:m.工期自 || "",end:m.工期至 || "",place:m.場所 || "",clientStaff:m.元請担当 || "",subHandler:active(m.担当補助),handler3:"",amountNote:""},source:{段:[],バー:[]}});
     }
     return out;
   }
@@ -155,7 +167,7 @@
     }
     return {changes,preview};
   }
-  const api={fields,LANES,clone,equal,period,dateOK,validate,rows,values,selected,patch,importData,checkLines,deriveLines,laneCats,era,parseDate};
+  const api={fields,LANES,clone,equal,period,dateOK,validate,rows,values,selected,patch,importData,checkLines,deriveLines,laneCats,era,parseDate,RETIRED,RETIRED_SURNAMES,active};
   if (typeof module !== "undefined" && module.exports) module.exports=api;
   root.BukaiCore=api;
 })(typeof window === "undefined" ? globalThis : window);
