@@ -484,3 +484,8 @@ table.fl.pdf th.sc .sbody { line-height: 1.3; }
 /* 人の流れの行を低くしたとき（1ページに収める）、現場の欄の字が行からはみ出さないように少し小さく */
 table.fl.pdf th.sc .sbody { font-size: 11px; } table.fl.pdf th.sc .snm { font-size: 12px; } table.fl.pdf th.sc .scode, table.fl.pdf th.sc .smeta { font-size: 10px; }
 table.fl.pdf th.sc { padding: 1px 4px; }
+/* ほかのアプリへの移動ボタン（2026-11-17）。同じ窓で開く */
+nav.appjump { display: inline-flex; gap: 4px; margin: 0 8px; vertical-align: middle; }
+nav.appjump a { display: inline-block; background: #fff; color: #1f3a5f; border: 1px solid #fff; border-radius: 4px; padding: 2px 10px; font-size: 13px; font-weight: normal; text-decoration: none; white-space: nowrap; line-height: 1.6; }
+nav.appjump a:hover { background: #e8eef5; }
+@media print { nav.appjump { display: none !important; } }

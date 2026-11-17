@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>詳細日報</title>
+<!-- アイコンは工事日報と同じ。入り口は工事日報の1本（2026-11-03 ユーザー） -->
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="工事日報">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="icon" href="../icon-192.png">   <!-- 工事日報（nippou/）と同じアイコン。詳細日報は工事日報の中（nippou/shousai/）に置く -->
+<link rel="stylesheet" href="app.css?v=202611172013">
+</head>
+<body>
+<header id="top">
+  <span class="ttl">詳細日報</span>
+  <nav id="views">
+    <button data-tab="sheet" class="on" title="1日1枚の作業日報">日報</button>
+    <button data-tab="sum" title="締め期間の集計（日別・作業員別・機材別）">集計</button>
+    <button data-tab="master" title="元請・現場・作業員名簿・職種・機材">現場・名簿</button>
+  </nav>
+  <nav id="apps" title="ほかのアプリ（同じ窓で開きます）">
+    <button id="goNippou" class="sub">工事日報</button>
+    <button id="goKotei" class="sub">全体工程</button>
+    <button id="goKikai" class="sub">機械予定</button>
+  </nav>
+  <span class="grp right">
+    <span id="sync" class="sync"></span>
+    <span id="mstat" class="mstat" title="マスタ（現場一覧・名簿・自社機械）を読んだ時刻"></span>
+    <button id="bSignIn" class="signin" title="会社の Microsoft アカウントでサインインして、現場・名簿・機械のマスタを読む" hidden>サインイン</button>
+    <button id="bRo" class="sub rotg" title="見るだけ／編集">✏ 編集中</button>
+    <button id="bMe" class="sub" title="この端末で使う人の名前（押すと直せる）">👤</button>
+    <span id="who" class="ver"></span>
+    <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
+    <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
+    <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
+    <span id="ver" class="ver">Vr000 11/17 20:13</span>
+  </span>
+</header>
+
+<main id="app">
+  <!-- 日報 -->
+  <section id="pSheet">
+    <details class="sheet-actions"><summary>日報の操作（コピー・取込・出力など）</summary>
+    <div class="ribbon">
+      <button id="bCopyPrev" class="sub" title="カレンダーで日報の入っている日を選び、中身を見てからこの日に写す">選択した日からコピー</button>
+      <button id="bImport" class="sub" title="配置表（確定があれば確定、なければ予定）の作業内容・作業員と、クロジカの CSV の内容（完了報告）を、一覧で選んでからこの日に入れる">配置表・クロジカから取り込む…</button>
+      <button id="bXlsIn" class="sub" title="元の作業日報の Excel（.xlsx・.xls）から、日を選んで読む（その日のまま／いま開いている日へ）">Excel から読む…</button>
+      <input type="file" id="xlsFile" accept=".xlsx,.xls" hidden>
+      <button id="bFind" class="sub" title="名前・会社・作業内容・工種などで日報を探し、当てはまる日の一覧からその日の日報を出す">🔍 日報を探す</button>
+      <span class="rsep"></span>
+      <span id="pgBar" class="pgbar"></span>
+      <span class="rsep"></span>
+      <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
+      <button id="bDelRow" class="sub" title="選んだ行を消す（Ctrl+－）">行の削除</button>
+      <button id="bUndo" class="sub" title="元に戻す（Ctrl+Z）">↶</button>
+      <button id="bRedo" class="sub" title="やり直す（Ctrl+Y）">↷</button>
+      <span class="rsep"></span>
+      <button id="bXlsDay" class="sub" title="この日を Excel（1シート）で出す">Excel（この日）</button>
+      <button id="bPdfDay" class="sub" title="この日を印刷・PDF（A4 横 1枚）">PDF（この日）</button>
+      <button id="bOut" class="sub" title="期間をまとめて Excel・PDF で出す（1シート1日＋集計）">期間で出力…</button>
+      <button id="bClearDay" class="sub danger" title="カレンダーで日を選んで（いくつでも）日報をまとめて消す">日報を消す…</button>
+      <span id="status" class="rstatus"></span>
+    </div>
+    </details>
+    <div id="roBar" class="robar" hidden></div>
+    <div id="sheetWrap">
+      <div class="paper-nav" id="paperNav" aria-label="日報の表示と前後移動">
+        <button id="bPrevD" class="sub paper-arrow" aria-label="前の日報">◀</button>
+        <div class="paper-controls"><span>表示</span>
+          <button id="bySite" class="sub" aria-pressed="true">現場ごと</button><button id="byWriter" class="sub" aria-pressed="false">記入者ごと</button>
+          <span id="writerControl" hidden><button type="button" id="detailWriter" class="sub" aria-haspopup="dialog">記入者を選ぶ</button></span>
+          <span id="detailContext" role="status"></span>
+        </div>
+        <button id="bNextD" class="sub paper-arrow" aria-label="次の日報">▶</button>
+      </div>
+      <div id="detailEmpty" class="detail-empty" hidden><p id="detailEmptyText"></p><button id="detailChooseSite" class="sub">現場名を選ぶ</button></div>
+      <div id="sheet"></div>
+    </div>
+    <div class="tabbar">
+      <button class="tnav" id="tPrev" title="前の締め期間">◀</button>
+      <div id="tabs"></div>
+      <button class="tnav" id="tNext" title="次の締め期間">▶</button>
+    </div>
+    <div class="statusbar"><span id="mode">準備完了</span><span id="stat"></span><span id="saved"></span><span class="keys">矢印・Enter・Tab で移動／打てば上書き／F2・ダブルクリック（iPad は選んだセルをもう一度タップ）で直す</span></div>
+  </section>
+
+  <!-- 集計 -->
+  <section id="pSum" hidden>
+    <div class="ribbon">
+      <span>期間</span>
+      <input type="hidden" id="sumFrom"><input type="hidden" id="sumTo"><button id="sumRange" class="sub daybtn" title="押すと始まり・終わりのカレンダーで選べます"></button>
+      <button id="sumPrev" class="sub" title="前の締め期間">◀</button>
+      <button id="sumNext" class="sub" title="次の締め期間">▶</button>
+      <span class="rsep"></span>
+      <button id="bSumXls" class="sub" title="この期間を Excel に（1シート1日＋集計シート）">Excel（日報＋集計）</button>
+      <button id="bSumPdf" class="sub" title="集計を印刷・PDF">PDF（集計）</button>
+      <span class="rsep"></span><span id="sumShow" class="sumshow"></span>
+    </div>
+    <div class="scroll" id="sumBody"></div>
+  </section>
+
+  <!-- 現場・名簿 -->
+  <section id="pMaster" hidden>
+    <div class="scroll" id="masterBody"></div>
+  </section>
+</main>
+
+<!-- 小窓（見出しの ⠿ で動かせる・外を押しても閉じない） -->
+<!-- 交代のお願い（2026-11-17 ユーザー：編集中の人に目立つように知らせ、待ってもらうか交代するかを選ぶ）。閉じるのはボタンだけ -->
+<dialog id="dSwap" class="swapdlg">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="swapTitle">交代のお願い</h3><span id="swapBtns" class="hbtns"></span></div>
+  <div class="dbody"><p id="swapText"></p></div>
+</dialog>
+<dialog id="dPeople">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>記入者を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="people-tools"><div id="peopleGroups" class="filter-choices" aria-label="人の区分"></div><label>名前で絞る <input id="peopleQuery" type="search" placeholder="入力しなくても一覧から選べます"></label><button id="peopleClear" type="button" class="sub">絞り込み解除</button></div>
+    <div id="peopleResults" class="people-results"></div>
+    <p class="note">新しい方は社員・作業員マスターへ追加してから「マスターを読み直す」を押してください。この画面で名前を新規登録することはできません。</p>
+    <p id="peopleMasterStatus" class="note" role="status"></p>
+    <div class="btns"><button id="peopleReload" type="button" class="sub">マスターを読み直す</button><span class="sp"></span><button type="button" class="sub" data-close>閉じる</button></div>
+  </div>
+</dialog>
+<dialog id="dSite">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>現場名を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note">名前・工事コードや地域・元請名で絞り込み、登録済みの現場を選んでください。</p>
+    <div class="site-filters">    <label>現場名 <input id="siteQuery" type="search" placeholder="現場名・工事コード" aria-label="現場名・工事コードで絞り込み"></label>
+    <select id="inSite" aria-label="選択中の現場" hidden></select>
+    <div hidden><select id="sitePeriod"></select><select id="siteArea"></select><select id="inGen"></select></div>
+    <div id="siteFilterButtons" class="filter-groups">
+      <fieldset><legend>期</legend><div id="periodChoices" class="filter-choices"></div></fieldset>
+      <fieldset><legend>地域</legend><div id="areaChoices" class="filter-choices"></div></fieldset>
+      <p class="note">元請名・地域のボタンは、右クリック（iPad は長押し）で 消す・候補を足す・名前を直す ができます（みんなの画面に出ます）。</p>
+      <fieldset><legend>元請名</legend><div id="genChoices" class="filter-choices"></div></fieldset>
+    </div>
+    <button id="clearSiteFilters" class="sub">絞り込み解除</button>
+    <span id="siteCount" role="status"></span>
+</div>
+    <div id="siteResults" class="site-results"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>閉じる</button></div>
+  </div>
+</dialog>
+<div hidden><button id="inDay"></button><button id="bToday"></button></div>
+
+<dialog id="dSign">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>元請サイン</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="signNote">枠の中に指・ペンでサインしてください。</p>
+    <canvas id="signPad" width="600" height="220"></canvas>
+    <div class="btns"><button type="button" class="sub" id="signClear">書き直す</button><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="signOk">決定</button></div>
+  </div>
+</dialog>
+
+<dialog id="dOut">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>期間で出力</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="grid">
+      <label>期間</label><span><input type="hidden" id="outFrom"><input type="hidden" id="outTo"><button type="button" id="outRange" class="sub daybtn" title="押すと始まり・終わりのカレンダーで選べます"></button></span>
+      <label>入れる日</label><span><label><input type="checkbox" id="outOnlyData" checked> 書いた日だけ</label></span>
+      <label>集計</label><span><label><input type="checkbox" id="outSum" checked> 集計シートも付ける</label></span>
+    </div>
+    <p class="note" id="outInfo"></p>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="outPdf" class="sub">PDF（印刷）</button><button type="button" id="outXls">Excel</button></div>
+  </div>
+</dialog>
+
+<dialog id="dXls">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>Excel から読む</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="xlsInfo"></p>
+    <div class="xlsMode">
+      <label><input type="radio" name="xlsMode" id="xlsModeSame" checked> Excel の日付のまま入れる（選んだ日をその日に）</label>
+      <label><input type="radio" name="xlsMode" id="xlsModeCur"> いま開いている日へ写す：<b id="xlsCurDay"></b>（1日を選ぶ。天気・気温・備考・サインは写さない）</label>
+    </div>
+    <div id="xlsRange" class="btns"><span>日</span><input type="date" id="xlsFrom"> 〜 <input type="date" id="xlsTo"><button type="button" class="sub small" id="xlsAll">全部</button><button type="button" class="sub small" id="xlsNone">外す</button></div>
+    <div id="xlsList" class="xlsList"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="xlsOk">読む</button></div>
+  </div>
+</dialog>
+
+<dialog id="dDayCopy">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>日報の内容をコピー</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p id="dayCopySite" class="note"></p>
+    <div class="copy-calendars"><section><h4>どこから：コピー元</h4><div id="copyFromCal"></div></section><span class="copy-direction" aria-hidden="true">→</span><section><h4>どこへ：コピー先</h4><div id="copyToCal"></div></section></div>
+    <p id="dayCopySummary" role="status"></p><p id="dayCopyWarning" class="note ng"></p>
+    <p class="note">作業予定・作業員・外注・機材・材料をコピーします。コピー先の完了報告欄は空になります。天気・気温・記入者・サイン・高速・燃料はコピー先の値を残します。</p>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="dayCopyRun">指定した日にコピーする</button></div>
+  </div>
+</dialog>
+<dialog id="dCal">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="calH">日を選ぶ</h3><button type="button" id="calTop" class="sub" title="工事日報の1週間の表（入口）に戻る">トップに戻る</button><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="btns cal-actions" id="calActions"><button type="button" id="calDeleteMode" class="sub danger">日報を消す…</button><button type="button" id="calCopyMode" class="sub">指定した日からコピー…</button><button type="button" id="calNormalMode" class="sub" hidden>日を選ぶ画面に戻る</button></div>
+    <div class="calnav"><button type="button" class="sub" id="calPrev" title="前の月">◀</button><b id="calTtl"></b><button type="button" class="sub" id="calNext" title="次の月">▶</button></div>
+    <p class="note" id="calInfo"></p>
+    <div class="calgrid" id="calGrid"></div>
+    <div class="btns" id="calDelBar" hidden><span class="note" id="calDelN"></span><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" class="danger" id="calDelOk">選んだ日の日報を消す</button></div>
+    <p class="note callg"><span class="lg has">●</span> 記入済み　<span class="lg today"></span> 今日　<span class="lg on"></span> 開いている日　<span class="lg inper"></span> 締め期間</p>
+    <div class="btns" id="calBtns"><button type="button" class="sub" id="calPrevHas">◀ 前の記入済み</button><button type="button" class="sub" id="calNextHas">次の記入済み ▶</button><span class="sp"></span><button type="button" class="sub" id="calToday">今日</button></div>
+  </div>
+</dialog>
+
+<dialog id="dName">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>使う人の名前</h3><button type="button" class="sub x" id="nmX" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note">この端末で日報を書く人の名前を入れてください（ほかの人が同じ現場を開いたとき「○○さんが使っています」と出ます）。<br>名簿から選ぶか、打ってください。</p>
+    <div class="nmList" id="nmList"></div>
+    <div class="btns"><input id="nmIn" autocomplete="off" placeholder="名前" style="flex:1"><button type="button" id="nmOk">決める</button></div>
+  </div>
+</dialog>
+
+<dialog id="dYure">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>似た書き方があります</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div id="yrBody"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" data-close>このままにする</button><button type="button" id="yrOk">決める</button></div>
+  </div>
+</dialog>
+
+<dialog id="dRange">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>期間を選ぶ</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <p class="note" id="rgInfo"></p>
+    <div class="rgwrap"><div><div class="rgT">始まり</div><div id="rgA"></div></div><div><div class="rgT">終わり（始まりより前は選べません）</div><div id="rgB"></div></div></div>
+    <div class="btns"><button type="button" class="sub" id="rgPrevPer">◀ 前の締め期間</button><button type="button" class="sub" id="rgPer">締め期間</button><button type="button" class="sub" id="rgNextPer">次の締め期間 ▶</button><button type="button" class="sub" id="rgMonth">その月（1日〜末日）</button><span class="sp"></span><button type="button" class="sub" data-close>やめる</button><button type="button" id="rgOk">決める</button></div>
+  </div>
+</dialog>
+
+<dialog id="dNew">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>一覧に無い言葉</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div id="nwBody"></div>
+    <div class="btns"><span class="sp"></span><button type="button" class="sub" id="nwNo">足さない（もう聞かない）</button><button type="button" id="nwOk">チェックしたものを足す</button></div>
+  </div>
+</dialog>
+
+<dialog id="dKp">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="kpTtl">期間ごとの単価</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody" id="kpBody"></div>
+</dialog>
+
+<dialog id="dForm">
+  <!-- フォームの共通ルール（2026-11-14）：選ぶボタンはハンドルの右（いつも見える）。外を押しても閉じない（選ぶまで閉じない） -->
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>この現場の区分を選んでください</h3><button type="button" data-form="請負" class="sub">請負</button><button type="button" data-form="常用" class="sub">常用</button></div>
+  <div class="dbody">
+    <p class="note"><b id="fmSite"></b><br>常用＝請負とは別に使ったものを請求する仕事／請負＝請負の範囲の仕事（常用の計算に入れません）。<br>次からは前回選んだ区分が入ります。日ごとに変えるときは日報の上の「区分」で。</p>
+  </div>
+</dialog>
+
+<dialog id="dEdit">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3 id="eTtl"></h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody" id="eBody"></div>
+</dialog>
+
+<dialog id="dFind">
+  <div class="dhead"><span class="grip" title="ここを持って動かす">⠿</span><h3>日報を探す</h3><button type="button" class="sub x" data-close>×</button></div>
+  <div class="dbody">
+    <div class="btns fbar"><input id="fQ" type="search" placeholder="名前・会社・作業予定・工種・機材・材料名" autocomplete="off"><select id="fCol" title="どの欄で探すか"></select><label><input type="checkbox" id="fAll"> 全部の現場</label></div>
+    <div id="fRes"></div>
+  </div>
+</dialog>
+
+<div id="printArea"></div>
+<div id="toast" class="toast"></div>
+
+<!-- 共通の部品（設定・サインイン・アプリの行き来・マスタ・Excel の部品。2026-11-16 開発環境の整理） -->
+<script src="../../common/lib/msal-browser.min.js"></script>
+<script src="../../common/config.js?v=202611172013"></script>
+<script src="../../common/auth.js?v=202611172013"></script>
+<script src="../../common/apps.js?v=202611172013"></script>
+<script src="../../common/master.js?v=202611172013"></script>
+<script src="../../common/lib/exceljs.min.js"></script>
+<script src="../../common/lib/xlsx.full.min.js"></script>
+<script src="grid.js?v=202611172013"></script>
+<script src="calendar-tools.js?v=202611172013"></script>
+<script src="navigation.js?v=202611172013"></script>
+<script src="app.js?v=202611172013"></script>
+<script src="link.js?v=202611172013"></script>
+<script src="writer.js?v=202611172013"></script>
+</body>
+</html>

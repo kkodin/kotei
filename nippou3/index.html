@@ -2,69 +2,17 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>工事日報</title>
-<!-- ホーム画面に置くとアドレスバーなしで開く（2026-11-01 ユーザー：PC・iPad・iPhone SE で入力する所を広く） -->
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1f3a5f">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="工事日報">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611012317">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作業予定・報告（工事日報）（新しいアドレスへ）</title>
+<!-- 2026-11-17 kotei-test の形に置き換えた。このアドレス（kotei/nippou3/）は旧版。新しいアドレス（kotei/nippou/）へ移る。
+     付いていた ?…（開く現場・日など）はそのまま渡す。旧版のプログラムはこのフォルダに残している（index.html だけ置き換え） -->
+<script>location.replace("../nippou/" + location.search + location.hash);</script>
+<style>body{font-family:"BIZ UDPGothic","Yu Gothic UI",sans-serif;margin:40px 20px;line-height:1.8;color:#1d2321}a{color:#1f3a5f;font-weight:bold}</style>
 </head>
 <body>
-<header id="top">
-  <button id="bPrev" class="nav" aria-label="前の日">◀</button>
-  <label class="date"><span id="dLabel"></span><input type="date" id="inDay" aria-label="日付"></label>
-  <button id="bNext" class="nav" aria-label="次の日">▶</button>
-  <button id="bToday" class="today">今日</button>
-  <span class="sp"></span>
-  <span id="sync" class="sync"></span>
-  <button id="bMe" class="me" title="名前を選び直す"></button>
-</header>
-
-<div id="signin" class="center" hidden>
-  <h1>工事日報</h1>
-  <p>会社の Microsoft アカウントでサインインしてください。</p>
-  <button id="bSignIn" class="big">サインイン</button>
-  <p id="signinMsg" class="ng"></p>
-</div>
-
-<main id="app" hidden>
-  <div id="dayHead"></div>
-  <div id="cards"></div>
-  <p id="empty" class="emptyMsg" hidden></p>
-  <section id="all" hidden></section>
-</main>
-
-<!-- いつも見えるボタン（2026-11-01 ユーザー：一番下に「現場名(行先)を追加」「現場別詳細工程」。ほかは「…」の中） -->
-<footer id="bar" hidden>
-  <button id="bAdd" class="add">＋ 現場名(行先)を追加</button>
-  <button id="bSite" class="sub">現場別詳細工程</button>
-  <button id="bReport" class="go">報告する</button>
-  <button id="bMore" class="more" aria-label="ほかの機能">…</button>
-</footer>
-
-<div id="menu" class="menu" hidden>
-  <button data-m="same">前の日と同じにする</button>
-  <button data-m="list">この月の一覧（名前を選べば、ほかの人も）</button>
-  <button data-m="mysum">この月の集計</button>
-  <button data-m="all">この日の全員の日報</button>
-  <button data-m="reload">最新を読み直す</button>
-  <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
-  <button data-m="me">名前を選び直す</button>
-  <button data-m="find" id="mFind" hidden>日報のフォルダを調べる（管理者）</button>
-  <span class="ver">Vr003 11/01 23:17</span>
-</div>
-
-<dialog id="dlg"><div id="dlgBody"></div></dialog>
-<div id="toast"></div>
-
-<script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=202611012317"></script>
-<script src="app.js?v=202611012317"></script>
+<h1 style="font-size:20px">作業予定・報告（工事日報）は新しいアドレスに移りました</h1>
+<p>自動で移らないときは、次を押してください：<a id="go" href="../nippou/">作業予定・報告（工事日報）を開く</a></p>
+<p>ホーム画面やブックマークに置いている人は、新しいアドレス（<code>kotei/nippou/</code>）で置き直してください。</p>
+<script>document.getElementById("go").href = "../nippou/" + location.search + location.hash;</script>
 </body>
 </html>

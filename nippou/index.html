@@ -2,120 +2,91 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>工事日報</title>
-<link rel="stylesheet" href="app.css?v=202610301928">
+<!-- ホーム画面に置くとアドレスバーなしで開く（2026-11-01 ユーザー：PC・iPad・iPhone SE で入力する所を広く） -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="工事日報">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css?v=202611172013">
 </head>
 <body>
 <header id="top">
-  <span class="ttl">工事日報</span>
-  <nav id="views">
-    <button data-tab="sheet" class="on" title="1日1枚の日報（施工・社員・作業員・外注・材料・機械）">日報</button>
-    <button data-tab="haichi" title="全現場のその日の予定・報告（人員配置表へ写す）">配置まとめ</button>
-    <button data-tab="month" title="この現場の月の出面・人数・機械">月の集計</button>
-  </nav>
-  <span class="grp">
-    <select id="inSite" title="現場（全体工程表の現場）"></select>
-    <button id="bPrevD" class="sub" title="前の日（Alt+PageUp）">◀</button>
-    <input type="date" id="inDay" title="日">
-    <button id="bNextD" class="sub" title="次の日（Alt+PageDown）">▶</button>
-    <button id="bToday" class="sub" title="今日の日誌">今日</button>
-    <button id="bTomorrow" class="sub" title="明日の日誌（予定を直しておく）">明日</button>
-  </span>
-  <span class="grp right">
-    <span id="sync" class="sync"></span>
-    <button id="bReload" class="sub" title="ほかの人の書き込み・工程の変更を読み直す">↻ 最新にする</button>
-    <span id="who"></span>
-    <span id="ver" class="ver">Vr002 10/30 19:28</span>
-  </span>
+  <button id="bPrev" class="nav" aria-label="前の日">◀</button>
+  <label class="date"><span id="dLabel"></span><input type="date" id="inDay" aria-label="日付"></label>
+  <button id="bNext" class="nav" aria-label="次の日">▶</button>
+  <button id="bToday" class="today">今日</button>
+  <!-- Vr005：いつも見える。1週間に戻る・今日の日報（目立つ色）。2026-11-15 ユーザー -->
+  <button id="bWeek" class="wkbtn" title="1週間の表に戻る">1週間</button>
+  <button id="bTodayRep" class="todayrep" title="自分の今日の日報を開く">今日の日報</button>
+  <span class="sp"></span>
+  <!-- ほかのアプリへ（同じ窓で切り替え。2026-11-17 ユーザー：工程管理のアプリ全部に 工事日報・全体工程・機械予定） -->
+  <nav data-hx-apps="nippou,kotei,kikai" class="apps" title="ほかのアプリ（同じ窓で開きます）"></nav>
+  <span id="sync" class="sync"></span>
+  <button id="bMe" class="me" title="名前を選び直す"></button>
 </header>
 
 <div id="signin" class="center" hidden>
+  <h1>工事日報</h1>
   <p>会社の Microsoft アカウントでサインインしてください。</p>
-  <button id="bSignIn">サインイン</button>
+  <button id="bSignIn" class="big">サインイン</button>
   <p id="signinMsg" class="ng"></p>
 </div>
 
-<main id="app">
-  <!-- 日報（6つの欄。セルの動きは Excel と同じ） -->
-  <section id="pSheet">
-    <div class="ribbon">
-      <button id="bReport" title="この日の日誌を報告する（予定と違う所は色が付いたまま残る）">予定どおりで報告する</button>
-      <span class="rsep"></span>
-      <button id="bCopyPrev" class="sub" title="前に書いた日の内容をこの日に写す">前の日と同じ</button>
-      <button id="bResetPlan" class="sub" title="工程から予定を作り直して、この日を予定に戻す">予定に戻す</button>
-      <span class="rsep"></span>
-      <button id="bInsRow" class="sub" title="選んだ行の上に行を入れる（Ctrl+Shift+＋）">行の挿入</button>
-      <button id="bDelRow" class="sub" title="選んだ行を消す（Ctrl+－）">行の削除</button>
-      <button id="bUndo" class="sub" title="元に戻す（Ctrl+Z）">↶</button>
-      <button id="bRedo" class="sub" title="やり直す（Ctrl+Y）">↷</button>
-      <span class="rsep"></span>
-      <button id="bPrint" class="sub" title="B5 縦で印刷（Ctrl+P）。1日1ページ">印刷</button>
-      <span id="status" class="rstatus"></span>
-    </div>
-    <div class="fbar">
-      <input id="nameBox" class="namebox" readonly title="いま選んでいるセル（欄・行・項目）">
-      <span class="fxl">fx</span>
-      <input id="fx" class="fx" autocomplete="off" title="数式バー（選んだセルの中身。ここでも直せる）">
-    </div>
-    <div class="body">
-      <div id="sheetWrap"><p id="noSite" class="empty" hidden>現場がありません。全体工程表に現場を入れると、ここに出ます。</p><div id="sheet"></div></div>
-      <aside id="side"></aside>
-    </div>
-    <div class="tabbar">
-      <button id="bTabL" class="tnav" title="前の日（Alt+PageUp・Ctrl+PageUp）">◀</button>
-      <button id="bTabR" class="tnav" title="次の日（Alt+PageDown・Ctrl+PageDown）">▶</button>
-      <button id="bCal" class="tnav cal" title="日付を選ぶ">📅</button>
-      <div id="tabs"></div>
-    </div>
-    <div class="statusbar"><span id="mode">準備完了</span><span id="stat"></span><span class="keys">Enter↓ Tab→ F2・ダブルクリック 直す　Alt+PageUp/Down 日を移る　Alt+↓ 候補　Ctrl+D 下へコピー</span></div>
-  </section>
-
-  <!-- 配置まとめ（配置の担当者） -->
-  <section id="pHaichi" hidden>
-    <div class="ribbon">
-      <button id="hPrev" class="sub">◀</button>
-      <input type="date" id="hDay">
-      <button id="hNext" class="sub">▶</button>
-      <button id="hToday" class="sub">今日</button>
-      <button id="hTomorrow" class="sub">明日</button>
-      <b id="hTtl" class="httl"></b>
-      <span class="rsep"></span>
-      <button id="hCopy" class="sub" title="この表を Excel に貼れる形でコピー">表をコピー</button>
-      <span class="note">工程（予定）と各現場の日報（報告）を並べています。<span class="chg">色付き</span>＝予定から変わった所、<s class="del">取り消し線</s>＝予定にあって無くなったもの。配置表に入れたらチェック。</span>
-    </div>
-    <div id="haichi" class="scroll"></div>
-  </section>
-
-  <!-- 月の集計 -->
-  <section id="pMonth" hidden>
-    <div class="ribbon"><b id="mTtl" class="httl"></b><span class="rsep"></span><button id="bMonthCopy" class="sub">表をコピー</button></div>
-    <div id="month" class="scroll"></div>
-  </section>
+<main id="app" hidden>
+  <div id="dayHead"></div>
+  <div id="cards"></div>
+  <p id="empty" class="emptyMsg" hidden></p>
+  <section id="all" hidden></section>
 </main>
 
-<div id="wxPick" class="wxpick" hidden></div>
-<div id="menu" class="ctx" hidden></div>
-<div id="printArea"></div>
+<!-- いつも見えるボタン（2026-11-01 ユーザー：一番下に「現場名(行先)を追加」「現場別詳細工程」。ほかは「…」の中） -->
+<footer id="bar" hidden>
+  <button id="bAdd" class="add">＋ 現場名(行先)を追加</button>
+  <!-- 「現場別詳細工程」「報告する」は 2026-11-17 ユーザーの指定で消した（ほかのアプリへは上の移動ボタン、報告は詳細日報で書く） -->
+  <button id="bSite" class="sub" hidden>現場別詳細工程</button>
+  <button id="bReport" class="go" hidden>報告する</button>
+  <button id="bMore" class="more" aria-label="ほかの機能">…</button>
+</footer>
 
-<dialog id="dCal">
-  <h3 id="calTtl"></h3>
-  <div id="calGrid" class="calgrid"></div>
-  <button type="button" id="calToday" class="link"></button>
-  <div class="btns"><span class="sp"></span><button type="button" id="bCalClose" class="sub">閉じる</button></div>
-</dialog>
+<div id="menu" class="menu" hidden>
+  <button data-m="cal">カレンダー（週・日・月・人別・現場別）</button>
+  <button data-m="cards">日報（カードで書く）</button>
+  <button data-m="kuro">クロジカから取り込む（CSV）</button>
+  <button data-m="haichi">配置表から取り込む（過去の作業内容を一人ずつの日報に）</button>
+  <button data-m="same">前の日と同じにする</button>
+  <button data-m="list">この月の一覧（名前を選べば、ほかの人も）</button>
+  <button data-m="mysum">この月の集計</button>
+  <button data-m="all">この日の全員の日報</button>
+  <button data-m="fs">文字の大きさ（5段階）</button>
+  <button data-m="reload">最新を読み直す</button>
+  <button data-m="install">ホーム画面に置く（アドレスバーを消す）</button>
+  <button data-m="me">名前を選び直す</button>
+  <button data-m="find" id="mFind" hidden>日報のフォルダを調べる（管理者）</button>
+  <span class="ver">Vr005 11/17 20:13</span>
+</div>
 
-<dialog id="dPrint">
-  <h3>印刷（B5 縦）</h3>
-  <p class="note" style="padding:0 16px">1日を1ページ（施工・社員・作業員・外注・材料・機械の順）で出します。</p>
-  <div class="btns"><span class="sp"></span><button type="button" id="bPrCancel" class="sub">やめる</button>
-    <button type="button" id="bPrMonth" class="sub">この月の書いた日すべて</button><button type="button" id="bPrDay">この日</button></div>
-</dialog>
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<div id="toast"></div>
 
-<div id="toast" class="toast"></div>
-<script src="config.js?v=202610301928"></script>
-<script src="lib/msal-browser.min.js"></script>
-<script src="grid.js?v=202610301928"></script>
-<script src="app.js?v=202610301928"></script>
+<!-- 共通の部品（設定・サインイン・アプリの行き来・マスタ。2026-11-16 開発環境の整理） -->
+<script src="../common/lib/msal-browser.min.js"></script>
+<script src="../common/config.js?v=202611172013"></script>
+<script src="../common/auth.js?v=202611172013"></script>
+<script src="../common/apps.js?v=202611172013"></script>
+<script src="../common/master.js?v=202611172013"></script>
+<script src="app.js?v=202611172013"></script>
+<script src="imp.js?v=202611172013"></script>
+<script src="kuro.js?v=202611172013"></script>
+<script src="haichi.js?v=202611172013"></script>
+<script src="diff.js?v=202611172013"></script>
+<script src="link.js?v=202611172013"></script>
+<script src="reconcile.js?v=202611172013"></script>
+<script src="cal.js?v=202611172013"></script>
 </body>
 </html>

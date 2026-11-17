@@ -398,3 +398,8 @@ table.bsum.wide th, table.bsum.wide td { padding: .6mm 1mm; }
 #bEdit input { font-size: 16px; width: 90px; text-align: right; }
 #ctx .off { color: #aaa; pointer-events: none; }
 @media print { #pBill td.sel { outline: 0; background-color: transparent !important; } #bEdit { display: none; } table.bday td.co { background: none; } }
+/* ほかのアプリへの移動ボタン（2026-11-17）。同じ窓で開く */
+nav.appjump { display: inline-flex; gap: 4px; margin: 0 8px; vertical-align: middle; }
+nav.appjump a { display: inline-block; background: #fff; color: #1f3a5f; border: 1px solid #fff; border-radius: 4px; padding: 2px 10px; font-size: 13px; font-weight: normal; text-decoration: none; white-space: nowrap; line-height: 1.6; }
+nav.appjump a:hover { background: #e8eef5; }
+@media print { nav.appjump { display: none !important; } }

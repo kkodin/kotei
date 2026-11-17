@@ -1685,11 +1685,13 @@ function laneRow(l, dep = 0) {
   const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
   const kb = laneKubun(l), gai = isGai(l), jg = jointGai(l);
   const own = gai ? "" : l.人数, gy = gai ? l.業者 || "" : jg ? l.業者 || "" : "", gn = gai ? l.人数 : jg ? l.外注人数 : "";
+  const fp = i => gai ? "" : lanePart(l, i);   // 職長・作業員の人数（入れた欄のまま出す）
   return `<div class="ln" data-id="${esc(l.id)}" data-depth="${dep}" style="--d:${dep}"><span class="lhandle" title="つかんで上下に動かすと順番を入れ替え（下位の工種も一緒に動く）">⠿</span><span class="lind"></span>` +
     `<select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
     `<input type="text" class="wk" value="${esc(laneWork(l))}" placeholder="作業名（例：立坑工）">` +
-    `<span class="lhd" title="自社の作業員のふだんの人数（バーで人数を入れなければこの人数）"><b>作業員</b><input type="text" class="hn" data-h="0" inputmode="numeric" value="${headPart(own, 0)}">人＋` +
-    `<input type="text" class="hn" data-h="1" inputmode="numeric" value="${headPart(own, 1)}">人</span>` +
+    `<span class="lsha" title="この工種の社員（名前。2人以上は ・ で区切る）"><b>社員</b><input type="text" class="sha" list="shaList" value="${esc((l.社員 || []).join("・"))}" placeholder="名前"></span>` +
+    `<span class="lhd" title="自社のふだんの人数（職長＋作業員。バーで人数を入れなければこの人数）"><b>職長</b><input type="text" class="hn" data-h="0" inputmode="numeric" value="${fp(0)}">人＋` +
+    `<b>作業員</b><input type="text" class="hn" data-h="1" inputmode="numeric" value="${fp(1)}">人</span>` +
     `<span class="lgai" title="外注の業者名とふだんの人数（作業員と両方入れると共同作業）"><b>外注</b><input type="text" class="gy" list="gyoList" value="${esc(gy)}" placeholder="業者名">` +
     `<input type="text" class="hn" data-h="g" inputmode="numeric" value="${gn ? esc(String(parseHead(gn)?.total ?? "")) : ""}">人</span>` +
     ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
@@ -1707,6 +1709,14 @@ function dPrevSib(r) { const rows = dRows(), d = dDep(r); for (let j = rows.inde
 const LANE_DEPTH_MAX = 4;
 // 工種の行の 〇人＋〇人。片方だけなら1つの数（"3"）、両方なら "1+3"
 function headPart(t, i) { const p = parseHead(t || ""); return p && p.parts[i] != null ? p.parts[i] : ""; }
+/* 2026-11-17 ユーザー：「作業員 0人＋1人」と入れると「1人＋0人」になる → 段.人数 は 0 の側を書かないので、どちらの欄かが分からなくなっていた。
+   欄を 職長＋作業員 にして、入れたとおりを 段.職長数・段.作業員数 に残す（段.人数 は今までどおり "1+3"／"1"。ほかの画面・アプリはこれを読む）。
+   前に保存した工種（職長数・作業員数が無い）は 段.人数 から出す */
+function lanePart(l, i) {
+  const k = i ? "作業員数" : "職長数";
+  if (l && (l.職長数 != null || l.作業員数 != null)) return l[k] != null ? String(l[k]) : "";
+  return headPart(l && l.人数, i);
+}
 function laneHeadOf(r) {
   const [a, b] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
   if (!a && !b) return "";
@@ -1730,6 +1740,8 @@ function openSite(id) {
   if (s && s.地図) loadMap(s).then(u => { if (siteCtx && siteCtx.id === s.id && siteCtx.map === undefined) showMapBox(u); });
   const T = treeInfo(s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }]);
   $("sLanes").innerHTML = T.order.map(l => laneRow(l, T.depth[l.id])).join("");
+  // 社員の候補：マスタの社員
+  $("shaList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
   // 業者名の候補：どの現場でも前に入れた業者名
   $("gyoList").innerHTML = [...new Set(Object.values(S.files).flatMap(f => (f.doc && f.doc.段 || []).filter(hasGai).map(l => l.業者).filter(Boolean)))]
     .sort((a, b) => a.localeCompare(b, "ja")).map(g => `<option value="${esc(g)}">`).join("");
@@ -1831,6 +1843,12 @@ $("fSite").addEventListener("submit", e => {
     // 外注だけなら前の形（種別＝外注・人数＝外注の人数）、作業員も入っていれば 人数＝作業員・業者・外注人数
     if (!own && (gy || gn)) { l.種別 = "外注"; if (gy) l.業者 = gy; if (gn) l.人数 = gn; }
     else { if (own) l.人数 = own; if (gy) l.業者 = gy; if (gn) l.外注人数 = gn; }
+    // 職長・作業員は入れた欄のまま残す（空の欄は残さない。0 は 0 として残す）
+    const [hA, hB] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
+    if (hA !== "") l.職長数 = parseInt(hA, 10) || 0;
+    if (hB !== "") l.作業員数 = parseInt(hB, 10) || 0;
+    const sha = splitNames(r.querySelector("input.sha").value).map(x => resolveName(x, namesFor("社員")));
+    if (sha.length) l.社員 = [...new Set(sha)];
     return l;
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ

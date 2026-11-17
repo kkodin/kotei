@@ -222,7 +222,7 @@ const papers={A3:[420,297],A4:[297,210]},margin=7;
 function pageStyle(){let el=$("bukaiPageStyle");if(!el){el=document.createElement("style");el.id="bukaiPageStyle";document.head.appendChild(el);}el.textContent=`@page { size: ${paper} landscape; margin: ${margin}mm; }`;}
 function openKotei(id){const u=new URL("../",location.href);if(id)u.searchParams.set("site",id);if(DEMO)u.searchParams.set("demo","");location.href=u.href;/* 2026-11-13 同じ窓で全体工程表へ戻る */}
 $("bHelp").onclick=()=>window.open("help.html#pc","_blank","noopener");
-if(DEMO)$("backToKotei").href="../?demo";
+if(DEMO)document.querySelectorAll("nav.appjump a").forEach(a=>{a.href+=(a.href.includes("?")?"&":"?")+"demo";});
 Bukai.init({holiday:k=>!!holidayOf(k) || isRest(k),files:()=>S.files,sites,masters:()=>S.files["マスタ.json"]?.doc?.現場 || [],store:()=>store,who:()=>me.name,today:todayKey,tab:()=>"bukai",id:uid,sync:showSync,pull,works:barWorks,own:ownAt,outside:gaiAt,color:colorOf,openSite:openKotei,paper:value=>{paper=value;pageStyle();},printWidth:()=>(papers[paper][0]-margin*2)*96/25.4*0.98,printHeight:()=>(papers[paper][1]-margin*2)*96/25.4*0.96});
 window.addEventListener("beforeprint",()=>{if(ready)Bukai.preparePrint();});
 function afterPrint(){document.body.classList.remove("printing");$("printPages").innerHTML="";}
