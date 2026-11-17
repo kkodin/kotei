@@ -292,6 +292,20 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 .pickrow input { flex: 1; min-width: 0; }
 select.pick { width: 7.5em; flex: none; font-size: 14px; }
 #dBar { width: 560px; }
+/* 社員：名簿に無い名前は赤い枠（2026-11-18） */
+.srow input.bad, .lsha input.sha.bad { border-color: #c62828; background: #fff3f3; }
+.lanesha { margin: -2px 0 4px; }
+.lanesha b { color: #1f3a5f; }
+/* 来ない日（工種の人が来ない期間・代わりの人） */
+.arow { border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: #fafbfc; }
+.arow .a1 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.arow .a1 select { max-width: 10em; }
+.arow .a1 input[type=date] { width: 9.5em; }
+.arow .a1 .sp { flex: 1; }
+.arow .a2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 14px; }
+.arow .chip2 { display: inline-flex; align-items: center; gap: 4px; background: #e8eef5; border-radius: 12px; padding: 2px 4px 2px 10px; }
+.arow .chip2 button { border: none; background: transparent; color: #c62828; padding: 0 4px; font-size: 14px; cursor: pointer; }
+.arow select.aPick { width: auto; font-size: 14px; }
 
 /* 右クリックのメニュー */
 .ctx { position: fixed; z-index: 60; background: #fff; border: 1px solid #9aa3ad; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; min-width: 200px; }
@@ -499,3 +513,10 @@ nav.appjump { display: inline-flex; gap: 4px; margin: 0 8px; vertical-align: mid
 nav.appjump a { display: inline-block; background: #fff; color: #1f3a5f; border: 1px solid #fff; border-radius: 4px; padding: 2px 10px; font-size: 13px; font-weight: normal; text-decoration: none; white-space: nowrap; line-height: 1.6; }
 nav.appjump a:hover { background: #e8eef5; }
 @media print { nav.appjump { display: none !important; } }
+
+/* 月の境（2026-11-18 ユーザー：月末と月初めの間に、少し太く目立つ色の縦線）。1日の列の左に引く。工程表と人の流れ */
+:root { --monline: #e65100; }
+.hd.m1, table.fl th.m1, table.fl td.m1 { box-shadow: inset 2px 0 0 var(--monline); }
+.col.m1 { border-left: 2px solid var(--monline); z-index: 0; }
+.hd.mon.m1 { color: var(--monline); }
+@media print { .hd.m1, table.fl th.m1, table.fl td.m1 { box-shadow: inset 2px 0 0 #e65100 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .col.m1 { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

@@ -85,7 +85,8 @@ const GraphStore = {
     return out;
   },
   async get(name) {
-    const p = this.base() + ":/" + encodeURIComponent(name);
+    // "マスタ/人.json" のように下のフォルダも読める（区切りの / はそのまま）
+    const p = this.base() + ":/" + name.split("/").map(encodeURIComponent).join("/");
     const res = await g(p);
     if (res.status === 404) return null;
     if (!res.ok) throw httpErr(res, "読み込み");
@@ -253,6 +254,7 @@ async function pull() {
       S.files[it.name] = { doc: r.data, eTag: r.eTag, pending: [], saving: false, timer: null, err: null };
       changed = true;
     }
+    if (await loadPeople()) changed = true;
     if (changed) render();
     showSync();
   } catch (e) {
@@ -300,9 +302,62 @@ function goneNow(n) {
   return !!g && ym > (g.最後の月 || "0000-00");
 }
 function namesFor(field) {
+  if (field === "社員") return staffNames();
   const base = (M()[field] || []).filter(n => !notPerson(n) && !goneNow(n));
   const extra = [...usedNames(field)].filter(n => !base.includes(n) && !notPerson(n) && !goneNow(n)).sort((a, b) => a.localeCompare(b, "ja"));
   return [...base, ...extra];
+}
+/* 社員は名簿に載っている人だけ（2026-11-18 ユーザー：人の流れで人が足りているかを見るので、「佐相幸一＋1人」のような
+   勝手な名前を入れさせない。新しい人は 名簿（meibo/）で足す）。
+   名簿＝マスタ.json の社員（配置表の名簿から）＋ 工程データ\マスタ\人.json・人_手直し.json の区分「社員」（名簿の画面で足した人も入る。
+   合わせ方は common/master.js の HX.people）。候補には辞めた人を出さない。前からバーにあるだけの名前は候補に出さない */
+function peopleStaff() {
+  const P = S.people;
+  if (!P || !P.base || !window.HX || !HX.people) return [];
+  return HX.people(P.base, P.fix, S.files["退職者.json"] && S.files["退職者.json"].doc).filter(p => p.区分 === "社員" && !notPerson(p.名前));
+}
+function staffNames() {
+  const ym = keyOf(new Date()).slice(0, 7), out = [], seen = new Set();
+  const add = n => { const k = nk(n); if (!seen.has(k)) { seen.add(k); out.push(n); } };
+  const ppl = peopleStaff(), offK = new Set(ppl.filter(p => !HX.activeOn(p, ym)).map(p => nk(p.名前)));
+  (M().社員 || []).filter(n => !notPerson(n) && !goneNow(n) && !offK.has(nk(n))).forEach(add);
+  ppl.filter(p => HX.activeOn(p, ym) && !goneNow(p.名前)).forEach(p => add(p.名前));
+  return out;
+}
+// 名簿にある社員か（辞めた人も「ある」とする：前の工程を直して保存できるように。新しく選ぶ候補には出ない）
+function staffKnown(n) {
+  if (!n || notPerson(n)) return false;
+  const k = nk(n);
+  return (M().社員 || []).some(x => nk(x) === k) || peopleStaff().some(p => nk(p.名前) === k);
+}
+// 名前を名簿の書き方に寄せて、名簿に無い名前を返す
+function badStaff(names) { return names.map(n => resolveName(n, namesFor("社員"))).filter(n => !staffKnown(n)); }
+const STAFF_NG = bad => `名簿に無い名前です：${bad.join("、")}\n\n社員は名簿の人を候補から選んでください（「＋1人」などの書き足しも入れられません。人数は作業員の欄へ）。\n新しい人は、左上のメニューの「名簿」で足してから選びます。`;
+/* 工程（バー）の社員（2026-11-18 ユーザー：工種に社員を入れても、工程を直すに名前が出ず、人の流れで数えられない）
+   バーに社員が無ければ工種の社員（人数と同じ考え）。バー.不在＝[{ 社員, 開始, 終了, 代わり:[名前] }]：その期間は来ない（社員が空なら全員）・代わりの人が来る */
+const staffOwn = b => !!(b && b.社員 && b.社員.length);
+const staffBase = (b, ln) => staffOwn(b) ? b.社員 : (ln && ln.社員) || [];
+function staffAt(b, k, ln) {
+  let st = [...staffBase(b, ln)];
+  for (const r of (b && b.不在) || []) {
+    if (!(k >= r.開始 && k <= r.終了)) continue;
+    st = st.filter(n => r.社員 && nk(n) !== nk(r.社員));
+    (r.代わり || []).forEach(n => { if (!st.some(x => nk(x) === nk(n))) st.push(n); });
+  }
+  return st;
+}
+const absTxt = r => `${md(r.開始)}〜${md(r.終了)} ${r.社員 || "全員"} 来ない` + ((r.代わり || []).length ? "→代わり " + r.代わり.join("・") : "");
+/* 名簿（人.json・人_手直し.json）は 工程データ\マスタ\ の中。読むだけ。5分に1回まで読み直す */
+let peopleAt = 0;
+async function loadPeople(force) {
+  if (!force && Date.now() - peopleAt < 300000) return false;
+  peopleAt = Date.now();
+  try {
+    const [b, f] = await Promise.all([store.get("マスタ/人.json"), store.get("マスタ/人_手直し.json")]);
+    const was = JSON.stringify(S.people || null);
+    S.people = { base: b ? b.data : null, fix: f ? f.data : null };
+    return JSON.stringify(S.people) !== was;
+  } catch (e) { console.warn("名簿を読めません", e); return false; }
 }
 
 /* ---------- 表示する期間 ---------- */
@@ -455,7 +510,10 @@ function moveLaneBlock(doc, id, beforeId) {
   doc.段 = rest;
 }
 
-function dayClass(k) {
+/* 月の境（2026-11-18 ユーザー：どこで月が替わったか見にくい）。1日の列の左に太い色の縦線（app.css の .m1）。工程表・人の流れの両方 */
+const monCls = k => k.endsWith("-01") ? " m1" : "";
+function dayClass(k) { return (dayClass0(k) + monCls(k)).trim(); }
+function dayClass0(k) {
   if (isRest(k)) return "rest";
   if (k === todayKey()) return "today";
   if (holidayOf(k)) return "hol";
@@ -476,7 +534,7 @@ const noSpace = n => String(n).replace(/[\s　]+/g, "");
 // 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
 function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
 function barLabel(b, avail, ln) {
-  const w = b.作業 || "", num = headLabel(b, ln), st = b.社員 || [];
+  const w = b.作業 || "", num = headLabel(b, ln), st = staffBase(b, ln);
   const cands = [
     [w, num, st.map(noSpace).join("・")],
     [w, num, st.map(shortStaff).join("・")],
@@ -499,7 +557,8 @@ function barTitle(s, b) {
   let work = 0;
   for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
   return `${nm(s)}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
-    (b.社員 && b.社員.length ? "\n社員：" + b.社員.join("・") : "") + (isGai(ln) ? "\n外注：" + gaiName(ln) + (headTxt(b, ln) ? " " + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") :
+    (staffBase(b, ln).length ? "\n社員：" + staffBase(b, ln).join("・") + (staffOwn(b) ? "" : "（工種の社員）") : "") +
+    ((b.不在 || []).length ? "\n来ない日：" + b.不在.map(absTxt).join("、") : "") + (isGai(ln) ? "\n外注：" + gaiName(ln) + (headTxt(b, ln) ? " " + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") :
       headTxt(b, ln) ? "\n作業員：" + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") + (jointGai(ln) ? "\n外注：" + jointGai(ln).業者 + " " + fmtHead(jointGai(ln).人数) + "（工種の人数）" : "") +
     (dayHeads(b).length ? "\n日ごとの人数：" + dayHeads(b).map(k => md(k) + " " + (fmtHead(b.人数日[k]) || "0名")).join("、") : "") + (b.メモ ? "\n" + b.メモ : "");
 }
@@ -567,7 +626,7 @@ function renderChart() {
   const h = [];
   // 見出し：月・日・曜
   h.push(`<div class="hrow m"><div class="corner">${esc(from.slice(0, 4))}年 <button type="button" class="sub small fold" data-fold="all">▸ 全部たたむ</button><button type="button" class="sub small fold" data-fold="none">▾ 全部ひらく</button></div>` +
-    days.map((k, i) => { const m = k.endsWith("-01") || (i === 0 && +k.slice(8) < 25); return `<div class="hd ${m ? "mon" : ""}">${m ? (+k.slice(5, 7)) + "月" : ""}</div>`; }).join("") + "</div>");
+    days.map((k, i) => { const m = k.endsWith("-01") || (i === 0 && +k.slice(8) < 25); return `<div class="hd ${m ? "mon" : ""}${monCls(k)}">${m ? (+k.slice(5, 7)) + "月" : ""}</div>`; }).join("") + "</div>");
   h.push(`<div class="hrow d"><div class="corner"></div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
   h.push(`<div class="hrow w"><div class="corner">現場／工種</div>` +
@@ -732,7 +791,7 @@ function renderList() {
   for (const s of shownSites()) for (const b of s.バー) {
     if (only && (b.終了 < from || b.開始 > end)) continue;
     const ln = s.段.find(l => l.id === b.段);
-    const text = [nm(s), officialOf(s), ln && laneName(ln), b.作業, (b.社員 || []).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
+    const text = [nm(s), officialOf(s), ln && laneName(ln), b.作業, staffBase(b, ln).join(" "), (b.従業員 || []).join(" "), b.メモ].join(" ");
     if (q && !q.split(/\s+/).every(w => text.includes(w))) continue;
     rows.push({ s, b, ln });
   }
@@ -741,7 +800,7 @@ function renderList() {
   $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員</th><th>メモ</th><th>更新</th></tr>` +
     rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(nm(s))}</td><td>${esc(ln ? laneName(ln) : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
-      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc((b.社員 || []).join("・"))}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${esc(headLabel(b, ln))}</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc(staffBase(b, ln).join("・"))}${(b.不在 || []).length ? `<small class="note" title="${esc(b.不在.map(absTxt).join("\n"))}">（来ない日あり）</small>` : ""}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${esc(headLabel(b, ln))}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
@@ -796,7 +855,7 @@ function renderFlow() {
   const all = shownSites(), list = S.print || flowIdle ? all : all.filter(s => working.has(s.id));
   const cap = capOf();
   const empAt = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + ownAt(x.b, k, x.ln), 0);
-  const stfAt = (k, f) => new Set((at[k] || []).filter(f).flatMap(x => x.b.社員 || [])).size;
+  const stfAt = (k, f) => new Set((at[k] || []).filter(f).flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size;   // 工種の社員・来ない日・代わりを入れて
 
   const head = `<thead><tr><th class="nm corner" colspan="2" rowspan="2"><span>月日</span><span>工種</span></th>` +
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
@@ -866,7 +925,7 @@ function renderFlow() {
     const v = stfAt(k, () => true);
     // 同じ人が同じ日に2現場以上
     const by = {};
-    (at[k] || []).forEach(x => (x.b.社員 || []).forEach(n => (by[n] = by[n] || new Set()).add(nm(x.s))));
+    (at[k] || []).forEach(x => staffAt(x.b, k, x.ln).forEach(n => (by[n] = by[n] || new Set()).add(nm(x.s))));
     const dup = Object.entries(by).filter(([, ss]) => ss.size > 1);
     h.push(dup.length ? `<td class="${dayClass(k)} ${v > cap.社員 ? "over" : ""} dupx" title="${esc(md(k) + " 2現場以上：" + dup.map(([n, ss]) => n + "（" + [...ss].join("・") + "）").join("、"))}">${v || ""}<sup>!</sup></td>` : cell(k, v, v > cap.社員 ? "over" : ""));
   }
@@ -884,18 +943,18 @@ function renderFlow() {
     for (const n of staff) {
       h.push(`<tr><th class="nm" colspan="2">${esc(n)}</th>`);
       for (const k of days) {
-        const hits = (at[k] || []).filter(x => (x.b.社員 || []).includes(n));
+        const hits = (at[k] || []).filter(x => staffAt(x.b, k, x.ln).some(y => nk(y) === nk(n)));
         const siteIds = [...new Set(hits.map(x => x.s.id))];
         if (!hits.length) h.push(`<td class="${dayClass(k)}"></td>`);
-        else if (siteIds.length > 1) h.push(`<td class="dup" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
+        else if (siteIds.length > 1) h.push(`<td class="dup${monCls(k)}" data-site="${esc(hits[0].s.id)}" data-bar="${esc(hits[0].b.id)}" title="${esc(md(k) + " 重複：" + hits.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${siteIds.length}現場</td>`);
         else { const x = hits[0];
-          h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + nm(x.s) + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
+          h.push(`<td class="as ${isLight(x.b.色) ? "dark" : ""}${monCls(k)}" style="background:${colorOf(x.b.色)}" data-site="${esc(x.s.id)}" data-bar="${esc(x.b.id)}" title="${esc(md(k) + " " + nm(x.s) + "／" + (x.b.作業 || "") + (x.ln ? "（" + laneName(x.ln) + "）" : ""))}">${esc(shortOf(x.s))}</td>`); }
       }
       h.push(`</tr>`);
     }
     h.push(`<tr><th class="nm" colspan="2" style="color:#c62828">社員 未定</th>`);
     for (const k of days) {
-      const un = (at[k] || []).filter(x => !(x.b.社員 || []).length);
+      const un = (at[k] || []).filter(x => !staffAt(x.b, k, x.ln).length);
       const ss = [...new Set(un.map(x => shortOf(x.s)))];
       h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
     }
@@ -1320,6 +1379,7 @@ function openBar(site, b, init) {
   $("bWork").value = v.作業 || "";
   $("bFrom").value = v.開始; $("bTo").value = v.終了;
   setStaffRows(joinSplit(v.社員 || [], M().社員 || []));
+  setAbsRows(v.不在 || []);
   $("bEmp").value = joinSplit(v.従業員 || [], M().従業員 || []).join("、");
   $("bNum").value = headOwn(v);
   autoNum = SHOW_EMP && (!v.人数 || v.人数 === (v.従業員 || []).length);
@@ -1330,7 +1390,7 @@ function openBar(site, b, init) {
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
   $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
   openDlg($("dBar"));
-  showOffInfo(); showHeadInfo(); numPlaceholder();
+  showOffInfo(); showHeadInfo(); numPlaceholder(); showStaffLane();
   if (!b && !IS_TOUCH()) $("bWork").focus();
 }
 let lastColor = "青";
@@ -1344,6 +1404,7 @@ function readBarForm() {
   return {
     段: $("bLane").value, 作業: $("bWork").value.trim(), 開始: a, 終了: z,
     社員: [...new Set(getStaffRows().map(x => resolveName(x, namesFor("社員"))))],
+    不在: getAbsRows(a, z),
     従業員: [...new Set(splitNames($("bEmp").value).map(x => resolveName(x, namesFor("従業員"))))], 人数: p ? p.total : "", 人数内訳: p && p.parts.length > 1 ? p.txt : undefined, 人数日: Object.keys(hd).length ? hd : undefined,
     色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim(),
     // 期間の外になった休工日は捨てる
@@ -1465,7 +1526,11 @@ $("fBar").addEventListener("submit", e => {
   e.preventDefault();
   if (!$("bFrom").value || !$("bTo").value) return;
   if ($("bNum").value.trim() && !parseHead($("bNum").value)) { alert("作業員は数字で入れてください（例：3、1+3）。"); $("bNum").focus(); return; }
-  const v = readBarForm(), { siteId, barId } = barCtx;
+  // 社員は名簿の人だけ（2026-11-18 ユーザー）
+  const bad = badStaff(getStaffRows());
+  if (bad.length) { markStaffRows(); alert(STAFF_NG(bad)); return; }
+  if ([...$("bAbsRows").children].some(r => !r.querySelector(".aFrom").value || !r.querySelector(".aTo").value)) { alert("来ない日の「いつから」「いつまで」を入れてください（要らない行は ✕ で消す）。"); return; }
+  const v = readBarForm(), { siteId, barId } = barCtx;   // 不在 が undefined なら保存で消える（全部 ✕ した）
   lastColor = v.色;
   const id = barId || newId("b");
   mutate(fileOfSite(siteId), doc => {
@@ -1488,6 +1553,8 @@ function copyBarForm() {
   barCtx = { siteId: barCtx.siteId, barId: null, 休み: barCtx.休み.map(sh), 出勤: barCtx.出勤.map(sh),
     人数日: Object.fromEntries(Object.entries(barCtx.人数日 || {}).map(([k, v]) => [sh(k), v])) };
   $("bFrom").value = sh(a); $("bTo").value = sh(z);
+  // 来ない日も同じだけずらす
+  [...$("bAbsRows").children].forEach(r => ["aFrom", "aTo"].forEach(c => { const i = r.querySelector("." + c); if (i.value) i.value = sh(i.value); }));
   $("dBarTtl").textContent = "工程を足す（コピー）";
   $("dBarWho").textContent = "コピーです。工種・日付を直して「保存」すると新しい工程になります（元の工程はそのまま）。";
   $("bBarDel").hidden = true; $("bBarCopy").hidden = true;
@@ -1596,9 +1663,72 @@ $("bStaffRows").addEventListener("click", e => {
   if (!("del" in e.target.dataset)) return;
   const rows = $("bStaffRows").children;
   if (rows.length <= 1) rows[0].querySelector("input").value = ""; else e.target.closest(".srow").remove();
+  showStaffLane();
 });
-// 名字だけ打って欄を離れたら、名簿のフルネームに直して見せる
-$("bStaffRows").addEventListener("change", e => { if (e.target.matches("input")) e.target.value = resolveName(e.target.value.trim(), namesFor("社員")); });
+// 名字だけ打って欄を離れたら、名簿のフルネームに直して見せる。名簿に無い名前は赤い枠
+$("bStaffRows").addEventListener("change", e => { if (e.target.matches("input")) { e.target.value = resolveName(e.target.value.trim(), namesFor("社員")); markStaffRows(); showStaffLane(); } });
+function markStaffRows() { $("bStaffRows").querySelectorAll("input").forEach(i => { const v = i.value.trim(); i.classList.toggle("bad", !!v && !staffKnown(resolveName(v, namesFor("社員")))); i.title = i.classList.contains("bad") ? "名簿に無い名前です。候補から選んでください" : ""; }); }
+/* 工種の社員を見せる（2026-11-18 ユーザー：工種に社員を入れても、工程を直すに名前が出ない）。
+   この工程の社員の欄が空なら、工種の社員がこの工程の社員（人の流れでも数える） */
+function showStaffLane() {
+  const ln = calLane(), ls = (ln && ln.社員) || [], own = getStaffRows().length, el = $("bStaffLane");
+  const first = $("bStaffRows").querySelector("input");
+  if (first) first.placeholder = !own && ls.length ? ls.join("・") + "（工種の社員）" : "名前（候補から選ぶ）";
+  markStaffRows();
+  el.hidden = !ls.length;
+  el.innerHTML = !ls.length ? "" : own ? `工種の社員 <b>${esc(ls.join("・"))}</b> ではなく、上の名前にします` :
+    `工種の社員 <b>${esc(ls.join("・"))}</b> がこの工程に来ます（違う人のときだけ上に名前を入れる）`;
+  refreshAbsWho();
+}
+$("bLane").addEventListener("change", showStaffLane);
+$("bStaffRows").addEventListener("input", () => { clearTimeout(showStaffLane.t); showStaffLane.t = setTimeout(showStaffLane, 300); });
+
+/* 来ない日（2026-11-18 ユーザー：工種で載っている人が来ない期間を足せる。代わりに来る人（複数可））。
+   1行＝だれが・いつから・いつまで 来ない ＋ 代わりに来る人（名簿から選ぶ。何人でも） */
+const curStaff = () => { const own = getStaffRows().map(x => resolveName(x, namesFor("社員"))); return own.length ? own : ((calLane() || {}).社員 || []); };
+const subOpts = () => `<option value="">＋ 代わりの人を選ぶ</option>` + namesFor("社員").map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+function whoOpts(sel) {
+  const list = curStaff(), has = !sel || list.some(n => nk(n) === nk(sel));
+  return list.map(n => `<option value="${esc(n)}"${sel && nk(n) === nk(sel) ? " selected" : ""}>${esc(n)}</option>`).join("") +
+    (has ? "" : `<option value="${esc(sel)}" selected>${esc(sel)}（いまはこの工程にいない）</option>`) +
+    `<option value=""${sel ? "" : " selected"}>全員</option>`;   // sel が空＝全員
+}
+function absRow(r, isNew) {
+  const subs = (r.代わり || []);
+  return `<div class="arow"><div class="a1"><select class="aWho" title="来ない人">${whoOpts(isNew ? curStaff()[0] || "" : r.社員 || "")}</select>が` +
+    `<input type="date" class="aFrom" value="${esc(r.開始 || "")}" title="いつから">〜<input type="date" class="aTo" value="${esc(r.終了 || "")}" title="いつまで">来ない<span class="sp"></span>` +
+    `<button type="button" class="danger small" data-adel title="この行を消す">✕</button></div>` +
+    `<div class="a2">代わり：<span class="subs">${subs.map(subChip).join("")}</span><select class="aPick" title="代わりに来る人（何人でも）">${subOpts()}</select></div></div>`;
+}
+const subChip = n => `<span class="chip2" data-n="${esc(n)}">${esc(n)}<button type="button" data-sdel title="外す">✕</button></span>`;
+function setAbsRows(list) { $("bAbsRows").innerHTML = list.map(absRow).join(""); }
+function refreshAbsWho() { $("bAbsRows").querySelectorAll(".aWho").forEach(s => { const v = s.value; s.innerHTML = whoOpts(v); }); }
+function getAbsRows(a, z) {
+  const out = [...$("bAbsRows").children].map(r => {
+    let f = r.querySelector(".aFrom").value, t = r.querySelector(".aTo").value;
+    if (!f || !t) return null;
+    if (t < f) [f, t] = [t, f];
+    const o = { 社員: r.querySelector(".aWho").value, 開始: f, 終了: t, 代わり: [...r.querySelectorAll(".chip2")].map(c => c.dataset.n) };
+    if (!o.代わり.length) delete o.代わり;
+    return o;
+  }).filter(Boolean).filter(o => !(a && z) || (o.終了 >= a && o.開始 <= z)).sort((x, y) => x.開始.localeCompare(y.開始));   // 工程の期間にかからない行は捨てる
+  return out.length ? out : undefined;
+}
+$("bAbsAdd").onclick = () => {
+  const a = $("bFrom").value || "";
+  $("bAbsRows").insertAdjacentHTML("beforeend", absRow({ 開始: a, 終了: a }, true));
+  if (!curStaff().length) toast("この工程と工種に社員がいません。来ない人は「全員」になります", 3000);
+};
+$("bAbsRows").addEventListener("click", e => {
+  if ("adel" in e.target.dataset) { e.target.closest(".arow").remove(); return; }
+  if ("sdel" in e.target.dataset) e.target.closest(".chip2").remove();
+});
+$("bAbsRows").addEventListener("change", e => {
+  if (!e.target.matches("select.aPick") || !e.target.value) return;
+  const n = e.target.value, box = e.target.closest(".arow").querySelector(".subs");
+  if (![...box.children].some(c => nk(c.dataset.n) === nk(n))) box.insertAdjacentHTML("beforeend", subChip(n));
+  e.target.value = "";
+});
 function drawPick(field) {
   const [inp, box] = PICK[field], list = namesFor(field);
   const cur = splitNames($(inp).value).map(x => resolveName(x, list));
@@ -1752,6 +1882,7 @@ function openSite(id) {
   $("sLanes").innerHTML = T.order.map(l => laneRow(l, T.depth[l.id])).join("");
   // 社員の候補：マスタの社員
   $("shaList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
+  markSha();
   // 業者名の候補：どの現場でも前に入れた業者名
   $("gyoList").innerHTML = [...new Set(Object.values(S.files).flatMap(f => (f.doc && f.doc.段 || []).filter(hasGai).map(l => l.業者).filter(Boolean)))]
     .sort((a, b) => a.localeCompare(b, "ja")).map(g => `<option value="${esc(g)}">`).join("");
@@ -1839,6 +1970,9 @@ $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
+  // 工種の社員は名簿の人だけ（2026-11-18 ユーザー）
+  const badSha = [...new Set(dRows().flatMap(r => badStaff(splitNames(r.querySelector("input.sha").value))))];
+  if (badSha.length) { markSha(); alert(STAFF_NG(badSha) + "\n（2人以上は ・ で区切ります）"); return; }
   const stack = [];
   const lanes = dRows().map(r => {
     const l = { id: r.dataset.id, 区分: r.querySelector("select.kb").value, 名前: r.querySelector("input.wk").value.trim() };
@@ -2588,6 +2722,9 @@ function seedDemo() {
     .forEach(([f, d]) => { a[f] = { data: d, eTag: "d0" }; });
   a["マスタ.json"] = { eTag: "d0", data: { 社員: ["試し　太郎", "試し　次郎", "例題　花子"], 従業員: ["見本　一郎", "見本　二郎", "見本　三郎"],
     現場: [{ 名前: "E現場 新設工事", 略称: "E新設", コード: "520009", 担当: "試し" }] } };
+  // 名簿（工程データ\マスタ\）：名簿の画面で足した社員も候補に出る（2026-11-18）
+  a["マスタ/人.json"] = { eTag: "d0p", data: { 形式: "人", 人: [{ 名前: "試し　太郎", 区分: "社員" }, { 名前: "試し　次郎", 区分: "社員" }] } };
+  a["マスタ/人_手直し.json"] = { eTag: "d0f", data: { 形式: "人_手直し", 人: { "名簿足子": { 名前: "名簿　足子", 区分: "社員", 追加: true } } } };
   DemoStore.save(a);
 }
 
@@ -2670,3 +2807,17 @@ if (!bukaiButton) {
   $("updBar").hidden = false;
 }
 start();
+
+/* 工種の社員の欄：名簿に無い名前があれば赤い枠（2026-11-18 ユーザー）。欄を離れたら名簿の書き方に寄せる */
+function markSha() {
+  document.querySelectorAll("#sLanes input.sha").forEach(i => {
+    const bad = badStaff(splitNames(i.value));
+    i.classList.toggle("bad", bad.length > 0);
+    i.title = bad.length ? "名簿に無い名前：" + bad.join("、") + "（候補から選ぶ。2人以上は ・ で区切る）" : "この工種の社員（名簿の人。2人以上は ・ で区切る）";
+  });
+}
+$("sLanes").addEventListener("change", e => {
+  if (!e.target.matches("input.sha")) return;
+  e.target.value = splitNames(e.target.value).map(x => resolveName(x, namesFor("社員"))).join("・");
+  markSha();
+});

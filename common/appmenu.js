@@ -7,13 +7,17 @@
   "use strict";
   const me = document.currentScript && document.currentScript.src;
   const ROOT = me ? new URL("../", me).href : new URL("/", location.href).href;
+  // ヒントをポインターに隠れない所に出す部品（common/tip.js。2026-11-18 ユーザー：どのアプリも同じに）
+  if (me && !window.__hxTip) { const s = document.createElement("script"); s.src = new URL("tip.js", me).href; document.head.appendChild(s); }
   const APPS = [
     { name: "作業報告カレンダー", path: "nippou/", note: "工事日報（1週間の表・人別・現場別）" },
     { name: "作業日報", path: "nippou/shousai/", note: "詳細日報（作業日報の用紙・集計）" },
     { name: "全体工程表", path: "", note: "現場ごとの工程" },
     { name: "自社機械稼働表", path: "kikai/", note: "機械の予定・稼働" },
     // 2026-11-18 ユーザー：工事部会資料はプルダウンに出さず、代わりに配置表（閲覧のみ）を置く
-    { name: "配置表（閲覧のみ）", path: "haichi/", note: "人の配置（見るだけ）" }
+    { name: "配置表（閲覧のみ）", path: "haichi/", note: "人の配置（見るだけ）" },
+    // 2026-11-18 ユーザー：マスターを直す仕組みもここから開く。社員は名簿の人しか選べないので、新しい人はここで足す
+    { name: "名簿（人のマスター）", path: "meibo/", note: "人を確かめる・直す・足す・退職" }
   ];
   const demo = new URLSearchParams(location.search).has("demo");
   const urlOf = a => new URL(a.path + (demo ? "?demo" : ""), ROOT).href;

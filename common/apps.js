@@ -5,6 +5,8 @@
 window.HX = window.HX || {};
 (function (HX) {
   if (!HX.root) { const me = document.currentScript && document.currentScript.src; HX.root = me ? new URL("../", me).href : new URL("/", location.href).href; }
+  // ヒントをポインターに隠れない所に出す部品（2026-11-18 ユーザー。appmenu.js を読まない名簿などのため）
+  if (!window.__hxTip) { const s = document.createElement("script"); s.src = new URL("common/tip.js", HX.root).href; document.head.appendChild(s); }
   HX.APPS = [
     { id: "kotei", name: "全体工程", path: "", title: "全体工程表" },
     { id: "nippou", name: "工事日報", path: "nippou/", title: "工事日報（1週間の表・人別の一覧）" },

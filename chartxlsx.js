@@ -126,7 +126,7 @@ function chartXlsx(list, from, end, logo) {
   }
   const totalOf = (name, k) => {
     const xs = at[k] || [];
-    if (name === "職員") return new Set(xs.flatMap(x => x.b.社員 || [])).size;
+    if (name === "職員") return new Set(xs.flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size;
     return xs.reduce((a, x) => a + (name === "外注" ? gaiAt : ownAt)(x.b, k, x.ln), 0);   // 共同作業の工種は両方に数える
   };
 
@@ -268,7 +268,7 @@ function cxSheet({ ST, g, a, z, noOf, lastGroup, totals, totalOf, pageWpx, pageH
         }
         if (run) shapes.push(run);
         // 文字：作業・人数・社員（名字）。工程線の始まりの日（ページの最初の日）の下に
-        const label = [b.作業 || "", headLabel(b, bk.ln), (b.社員 || []).map(shortStaff).join("・")].filter(Boolean).join(" ");
+        const label = [b.作業 || "", headLabel(b, bk.ln), staffBase(b, bk.ln).map(shortStaff).join("・")].filter(Boolean).join(" ");
         if (label) put(rb + 1, CX_FIRST + dayDiff(a, ba), str(label));
       }
       r += bk.n * 2;
