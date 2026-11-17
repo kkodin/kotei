@@ -99,7 +99,7 @@ async function renderCal() {
   $("cHai").onclick = haichiOpen;
   $("cFs").onchange = () => { setFs(+$("cFs").value); fitCal(); };
   $("cDiff").onclick = diffOpen;
-  $("cCards").onclick = () => { S.view = "me"; render(); };
+  $("cCards").hidden = true; $("cCards").onclick = null;   // 2026-11-17 ユーザー：カードの日報はもう使わない
   if (!$("all").querySelector(".cal")) $("all").innerHTML = `<p>読んでいます…</p>`;
   let docs;
   try { docs = await docsFor(days); } catch (e) { $("all").innerHTML = `<p class="ng">日報を読めませんでした：${esc(e.message)}</p>`; return; }
@@ -535,8 +535,7 @@ async function openDay(k, who) {
     return;
   }
   if (nk(who) === nk(S.me.name)) {   // 自分の日で現場の日報がまだ無い：PC・タブレットは用紙（現場名を上の欄に入れる）、スマホはカード
-    if (window.innerWidth >= 760) { location.href = detailUrl("", "", k); return; }
-    S.view = "me"; return setDay(k);
+    location.href = detailUrl("", "", k); return;   // 2026-11-17：スマホもカードでなく作業日報で開く（カードの日報はもう使わない）
   }
   if (xs.length) return showEv(xs[0]);
   toast(`${who} さんの ${fmtDay(k)} の日報はありません`);

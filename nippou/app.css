@@ -406,3 +406,6 @@ html:has(dialog#dlg[open]), html:has(dialog#dlg[open]) body { overflow: hidden; 
 @media (max-width: 759px) { #top nav.apps { display: none; } }   /* スマホは「…」の「開く」から */
 #top .appTitle { color: #fff; font-size: calc(15px * var(--fs)); min-height: 32px; }   /* 左上のタイトル（2026-11-17） */
 @media (max-width: 759px) { #top .appTitle { font-size: 13px; padding: 2px 6px; } }
+/* 2026-11-17 ユーザー：月の一覧・この月の集計・この日の全員の日報は上の帯を出さない。「…」のいま見ている画面はグレー */
+body.noTop #top { display: none; }
+#menu button:disabled { color: #a3abb3; cursor: default; background: transparent; }

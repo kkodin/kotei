@@ -476,6 +476,11 @@ function render() {
   const mc = document.querySelector('#menu [data-m="cards"]'); if (mc) mc.textContent = `${S.me.name || ""} の日報（カードで書く）`;
   $("bAdd").textContent = S.view === "site" ? "＋ この現場に書く" : "＋ 現場名(行先)を追加";
   $("bSite").hidden = true;   // 2026-11-17 ユーザー：要らないので出さない
+  $("bAdd").hidden = S.view !== "cal";   // 2026-11-17 ユーザー：「現場名(行先)を追加」はどの画面でも消す。カレンダーの「新規日報を書く」だけ残す
+  // 月の一覧・この月の集計・この日の全員の日報は、上の帯を出さない（2026-11-17 ユーザー）。戻るのは「作業報告カレンダーに戻る」
+  document.body.classList.toggle("noTop", ["list", "mysum", "all"].includes(S.view));
+  // 「…」メニュー：いま見ている画面は押せない（グレー）
+  document.querySelectorAll("#menu [data-m]").forEach(b => { b.disabled = (b.dataset.m === "list" && S.view === "list") || (b.dataset.m === "mysum" && S.view === "mysum") || (b.dataset.m === "all" && S.view === "all") || (b.dataset.m === "cal" && S.view === "cal"); });
   $("app").classList.toggle("wide", S.view === "cal");
   if (S.view === "cal") $("bAdd").textContent = "＋ 新規日報を書く";   // 2026-11-17 ユーザー：「予定・報告を登録」から名前を変えた。今日の日付で新しい詳細日報
   if (S.view === "all") return renderAll();
@@ -879,7 +884,7 @@ function workSum(rs) {
 }
 async function renderList() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
-  $("dayHead").innerHTML = `<button id="bBack" class="wkback">← 1週間に戻る</button>`;
+  $("dayHead").innerHTML = `<button id="bBack" class="wkback">← 作業報告カレンダーに戻る</button>`;
   $("bBack").onclick = () => goWeek();
   const m = monthOf(S.day);
   if (!$("all").querySelector(".mlist")) $("all").innerHTML = `<p>読んでいます…</p>`;
@@ -903,8 +908,8 @@ async function renderList() {
 // 私の月の集計（「…」→ この月の集計）
 async function renderMySum() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
-  $("dayHead").innerHTML = `<button id="bBack">← ${esc(S.me.name)} の日報に戻る</button>`;
-  $("bBack").onclick = () => { S.view = "me"; render(); };
+  $("dayHead").innerHTML = `<button id="bBack" class="wkback">← 作業報告カレンダーに戻る</button>`;
+  $("bBack").onclick = () => goWeek();   // 2026-11-17 ユーザー：カードの日報はもう使わない
   const m = monthOf(S.day);
   await loadMonth(m);
   if (S.view !== "mysum") return;
@@ -917,8 +922,8 @@ async function renderMySum() {
 /* ---------- この日の全員の日報（行先ごと） ---------- */
 async function renderAll() {
   $("cards").hidden = true; $("empty").hidden = true; $("all").hidden = false;
-  $("dayHead").innerHTML = `<button id="bBack">← ${esc(S.me.name)} の日報に戻る</button>`;
-  $("bBack").onclick = () => { S.view = "me"; render(); };
+  $("dayHead").innerHTML = `<button id="bBack" class="wkback">← 作業報告カレンダーに戻る</button>`;
+  $("bBack").onclick = () => goWeek();   // 2026-11-17 ユーザー：カードの日報はもう使わない
   $("all").innerHTML = `<p>読んでいます…</p>`;
   const k = S.day, m = monthOf(k);
   try {
