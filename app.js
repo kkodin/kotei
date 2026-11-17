@@ -289,9 +289,19 @@ function usedNames(field) {
   sites().forEach(s => { if (field === "社員" && s.担当) set.add(s.担当); s.バー.forEach(b => (b[field] || []).forEach(n => set.add(n))); });
   return set;
 }
+/* 候補に出さない名前（2026-11-17 ユーザー：バーに「佐相　幸一+ハシックス１名」と書いたものが、人の名前として候補に出た）
+   ・人の名前でない書き方：＋・数字を含む、「名」で終わる（人数の書き添え）
+   ・退職した人：工程データ\退職者.json の最後の月を過ぎた人（工事日報・作業日報と同じ一覧。岡田さんなど）
+   バーに書いてある名前そのもの（データ）は変えない。候補に出さないだけ */
+const notPerson = n => !String(n || "").trim() || /[+＋0-9０-９]/.test(n) || /名\s*$/.test(n);
+function goneNow(n) {
+  const r = S.files["退職者.json"] && S.files["退職者.json"].doc, ym = keyOf(new Date()).slice(0, 7);
+  const g = r && (r.人 || []).find(x => x && nk(x.名前) === nk(n));
+  return !!g && ym > (g.最後の月 || "0000-00");
+}
 function namesFor(field) {
-  const base = M()[field] || [];
-  const extra = [...usedNames(field)].filter(n => !base.includes(n)).sort((a, b) => a.localeCompare(b, "ja"));
+  const base = (M()[field] || []).filter(n => !notPerson(n) && !goneNow(n));
+  const extra = [...usedNames(field)].filter(n => !base.includes(n) && !notPerson(n) && !goneNow(n)).sort((a, b) => a.localeCompare(b, "ja"));
   return [...base, ...extra];
 }
 
