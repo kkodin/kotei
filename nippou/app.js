@@ -958,6 +958,8 @@ function dlgTidy() {
     B.prepend(head);
   }
   if (!head.querySelector(":scope > .grip")) head.insertAdjacentHTML("afterbegin", `<span class="grip" title="ここを持って動かす">⠿</span>`);
+  // 帯へ移すのは、中身ごとに1回だけ（2026-11-17：2回目に別の並び（全部・全部外す）で置き換えて「決める」「やめる」が消えていた）
+  if (head.querySelector(":scope > .hbtns > button")) return;
   const bars = [...B.querySelectorAll(".btns")].filter(b => !head.contains(b) && !b.classList.contains("hoisted")), bar = bars[bars.length - 1];
   if (!bar || !bar.querySelector(":scope > button")) return;
   const x = head.querySelector(":scope > button[data-close]");

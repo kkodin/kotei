@@ -891,7 +891,7 @@ function buildSheet() {
     <div id="chkBar"></div>
     <div class="mid">
       <div class="left sec" data-key="up">
-        <div class="secT"><b>作業予定・完了報告</b><span class="cnt" id="cntUp"></span></div>
+        <div class="secT"><b>作業予定・完了報告</b><span class="cnt" id="cntUp"></span><button type="button" class="sub small planToDone" id="bPlanToDone" title="作業予定の列に書いたことを、同じ行の完了報告の列に写す（Ctrl+Z で戻せます）">作業予定を完了報告へコピー</button></div>
         <div class="g1" id="g_up"></div>
       </div>
       <div class="right" id="kouSum"></div>
@@ -1059,13 +1059,32 @@ function openMenu(key, x, y, sel) {
     ...(key === "up" ? [] : [["行の挿入", "Ctrl+Shift+＋", () => rowOp(key, "insert", sel.r0, sel.r1 - sel.r0 + 1)]]),   // 作業内容は5行だけなので出さない
     ["行の削除", "Ctrl+－", () => rowOp(key, "delete", sel.r0, sel.r1 - sel.r0 + 1)],
     ["数式と値のクリア", "Delete", () => { const ch = []; for (let r = sel.r0; r <= sel.r1; r++) for (let c = sel.c0; c <= sel.c1; c++) if (!SECS[key][c].ro) ch.push({ r: r + pgOff(key), c: di(key, c), v: "" }); applyCells(key, ch); }],
-    ...(key === "up" ? [] : [null, ["候補から選ぶ", "Alt+↓", () => grids[key].showList()]])
+    ...(key === "up" ? [null, ["作業予定を完了報告へコピー（選んだ行）", "", () => planToDone(sel.r0 + pgOff("up"), sel.r1 + pgOff("up"))]] : [null, ["候補から選ぶ", "Alt+↓", () => grids[key].showList()]])
   ];
   m.innerHTML = items.map((it, i) => it ? `<div data-i="${i}"><span>${it[0]}</span><kbd>${it[1]}</kbd></div>` : "<hr>").join("");
   document.body.appendChild(m);
   m.style.left = Math.min(x, innerWidth - m.offsetWidth - 4) + "px"; m.style.top = Math.min(y, innerHeight - m.offsetHeight - 4) + "px";
   m.addEventListener("mousedown", e => { e.preventDefault(); const d = e.target.closest("[data-i]"); if (d) { closeMenu(); items[+d.dataset.i][2](); grids[key].focus(); } });
 }
+/* 作業予定 → 完了報告（2026-11-17 ユーザー）：上[行][1]（作業予定）を同じ行の 上[行][4]（完了報告）へ写す。
+   r0〜r1 を渡せばその行だけ（右クリック）、渡さなければその日の全部の行（見出しのボタン）。
+   完了報告に別のことが書いてある行は、上書きするか聞く（「キャンセル」なら空いている行だけ写す）。Ctrl+Z で戻せる（applyCells） */
+function planToDone(r0, r1) {
+  const s = site(), d = day();
+  if (!s) { toast("先に区分と現場名を選んでください"); return; }
+  if (!canEdit()) return;
+  const rows = (d && d.上) || [], a = r0 ?? 0, b = r1 ?? rows.length - 1;
+  const todo = [], clash = [];
+  for (let r = a; r <= b; r++) { const x = rows[r]; if (!x || !String(x[1] ?? "").trim()) continue; const v = String(x[1]), cur = String(x[4] ?? ""); if (cur === v) continue; (cur.trim() ? clash : todo).push({ r, c: 4, v }); }
+  if (!todo.length && !clash.length) { toast(rows.some(x => x && String(x[1] ?? "").trim()) ? "完了報告はもう作業予定と同じです" : "作業予定に何も書いていません"); return; }
+  let ch = todo;
+  if (clash.length && confirm(`完了報告にほかのことが書いてある行が ${clash.length} 行あります。作業予定で上書きしますか？
+［OK］上書きする　［キャンセル］空いている行だけ写す`)) ch = [...todo, ...clash];
+  if (!ch.length) { toast("空いている完了報告の行はありませんでした"); return; }
+  applyCells("up", ch);
+  toast(`作業予定を完了報告へ ${ch.length} 行コピーしました（Ctrl+Z で戻せます）`);
+}
+document.addEventListener("click", e => { if (e.target.closest("#bPlanToDone")) planToDone(); });
 function closeMenu() { const m = $("ctx"); m && m.remove(); }
 document.addEventListener("pointerdown", e => { if (!e.target.closest("#ctx")) closeMenu(); });
 

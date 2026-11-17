@@ -12,17 +12,18 @@
 <meta name="apple-mobile-web-app-title" content="工事日報">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
 <link rel="icon" href="../icon-192.png">   <!-- 工事日報（nippou/）と同じアイコン。詳細日報は工事日報の中（nippou/shousai/）に置く -->
-<link rel="stylesheet" href="app.css?v=202611172030">
+<link rel="stylesheet" href="app.css?v=202611172050">
 </head>
 <body>
 <header id="top">
-  <span class="ttl">詳細日報</span>
+  <!-- 左上のタイトルを押すと、アプリを切り替えるプルダウン（2026-11-17 ユーザー。common/appmenu.js。帯の移動ボタンはやめた） -->
+  <button type="button" class="ttl appTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">作業日報</button>
   <nav id="views">
     <button data-tab="sheet" class="on" title="1日1枚の作業日報">日報</button>
     <button data-tab="sum" title="締め期間の集計（日別・作業員別・機材別）">集計</button>
     <button data-tab="master" title="元請・現場・作業員名簿・職種・機材">現場・名簿</button>
   </nav>
-  <nav id="apps" title="ほかのアプリ（同じ窓で開きます）">
+  <nav id="apps" title="ほかのアプリ（同じ窓で開きます）" hidden><!-- タイトルのプルダウンにした（ボタンは link.js が使うので残して隠す） -->
     <button id="goNippou" class="sub">工事日報</button>
     <button id="goKotei" class="sub">全体工程</button>
     <button id="goKikai" class="sub">機械予定</button>
@@ -37,7 +38,7 @@
     <button id="bSaveFile" class="sub" title="この現場の日報をファイル（.json）に保存">保存</button>
     <button id="bLoadFile" class="sub" title="保存したファイル（.json）を取り込む">取込</button>
     <input type="file" id="fileIn" accept=".json,application/json,.xlsx,.xls" hidden>
-    <span id="ver" class="ver">Vr000 11/17 20:30</span>
+    <span id="ver" class="ver">Vr000 11/17 20:50</span>
   </span>
 </header>
 
@@ -271,17 +272,18 @@
 
 <!-- 共通の部品（設定・サインイン・アプリの行き来・マスタ・Excel の部品。2026-11-16 開発環境の整理） -->
 <script src="../../common/lib/msal-browser.min.js"></script>
-<script src="../../common/config.js?v=202611172030"></script>
-<script src="../../common/auth.js?v=202611172030"></script>
-<script src="../../common/apps.js?v=202611172030"></script>
-<script src="../../common/master.js?v=202611172030"></script>
+<script src="../../common/config.js?v=202611172050"></script>
+<script src="../../common/auth.js?v=202611172050"></script>
+<script src="../../common/apps.js?v=202611172050"></script>
+<script src="../../common/appmenu.js?v=202611172050"></script>
+<script src="../../common/master.js?v=202611172050"></script>
 <script src="../../common/lib/exceljs.min.js"></script>
 <script src="../../common/lib/xlsx.full.min.js"></script>
-<script src="grid.js?v=202611172030"></script>
-<script src="calendar-tools.js?v=202611172030"></script>
-<script src="navigation.js?v=202611172030"></script>
-<script src="app.js?v=202611172030"></script>
-<script src="link.js?v=202611172030"></script>
-<script src="writer.js?v=202611172030"></script>
+<script src="grid.js?v=202611172050"></script>
+<script src="calendar-tools.js?v=202611172050"></script>
+<script src="navigation.js?v=202611172050"></script>
+<script src="app.js?v=202611172050"></script>
+<script src="link.js?v=202611172050"></script>
+<script src="writer.js?v=202611172050"></script>
 </body>
 </html>

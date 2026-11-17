@@ -467,3 +467,5 @@ dialog .btns.hoisted { display: none; }
 .ttlRow .copyWork { position: absolute; left: 0; top: 2px; font-size: 12px; letter-spacing: 0; font-weight: normal; }
 @media print { #hGen:empty::before, #hSite:empty::before, .ttlRow .copyWork { display: none; } }
 .calgrid button .pp.what { color: #8a5a00; }   /* 人のいない記入済みの日：休工・燃料など（2026-11-17） */
+.secT .planToDone { margin-left: 10px; font-size: 11px; padding: 1px 8px; font-weight: normal; }   /* 作業予定→完了報告（2026-11-17） */
+@media print { .secT .planToDone { display: none; } }

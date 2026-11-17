@@ -12,13 +12,13 @@
 <meta name="theme-color" content="#1f4e79">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="自社機械">
-<link rel="stylesheet" href="app.css?v=Vr001 11/17 20:14">
+<link rel="stylesheet" href="app.css?v=Vr001 11/17 20:50">
 </head>
 <body>
 <header>
-  <h1>自社機械稼働表 <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 11/17 20:14</small></h1>
-  <!-- ほかのアプリへ（同じ窓で切り替え。2026-11-17 ユーザー：工程管理のアプリ全部に 工事日報・全体工程・機械予定）。工事日報は版の番号のないアドレス nippou/（開発環境の整理案） -->
-  <nav class="appjump" aria-label="ほかのアプリ"><a href="../nippou/">工事日報</a><a href="../">全体工程</a></nav>
+  <h1><button type="button" class="appTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">自社機械稼働表</button> <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 11/17 20:50</small></h1>
+  <!-- 左上のタイトルを押すと、アプリを切り替えるプルダウン（2026-11-17 ユーザー。common/appmenu.js。帯の移動ボタンはやめた） -->
+
   <nav id="tabs">
     <button data-tab="chart" class="on">稼働表</button>
     <button data-tab="free">空き探し</button>
@@ -175,10 +175,10 @@
 <div id="toast" hidden></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 11/17 20:14"></script>
-<script src="app.js?v=Vr001 11/17 20:14"></script>
-<script src="excel.js?v=Vr001 11/17 20:14"></script>
-<script src="bill.js?v=Vr001 11/17 20:14"></script>
-<script>/* 試し（?demo）のまま移る */ if (new URLSearchParams(location.search).has("demo")) document.querySelectorAll("nav.appjump a").forEach(a => { a.href += (a.href.includes("?") ? "&" : "?") + "demo"; });</script>
+<script src="config.js?v=Vr001 11/17 20:50"></script>
+<script src="app.js?v=Vr001 11/17 20:50"></script>
+<script src="excel.js?v=Vr001 11/17 20:50"></script>
+<script src="bill.js?v=Vr001 11/17 20:50"></script>
+<script src="../common/appmenu.js"></script>
 </body>
 </html>

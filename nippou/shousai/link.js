@@ -17,6 +17,8 @@ async function linkGo(id, q) {
   location.href = linkUrl(id, q);
 }
 $("goNippou").onclick = () => linkGo("nippou", "?stay=1");
+// タイトルのプルダウン（common/appmenu.js）で移るときも、入力中の欄を確定して共有してから（2026-11-17）
+window.appMenuBefore = async () => { for (const k of ["up", "dn", "gai", "car"]) if (grids[k] && grids[k].editing()) grids[k].commit(); try { await Promise.race([sync(), new Promise(r => setTimeout(r, 2500))]); } catch (e) { } };
 $("goKotei").onclick = () => linkGo("kotei");
 $("goKikai").onclick = () => linkGo("kikai");
 $("calTop").onclick = () => linkGo("nippou", "?stay=1");   // 「日を選ぶ」から入口（1週間の表）へ（2026-11-15 ユーザー）

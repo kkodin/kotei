@@ -404,3 +404,5 @@ html:has(dialog#dlg[open]), html:has(dialog#dlg[open]) body { overflow: hidden; 
 #top nav.apps { display: flex; gap: 4px; }
 #top nav.apps button { background: #fff; color: #1f3a5f; border: 1px solid #fff; border-radius: 6px; padding: 3px 10px; font-size: calc(13px * var(--fs)); min-height: 32px; cursor: pointer; }
 @media (max-width: 759px) { #top nav.apps { display: none; } }   /* スマホは「…」の「開く」から */
+#top .appTitle { color: #fff; font-size: calc(15px * var(--fs)); min-height: 32px; }   /* 左上のタイトル（2026-11-17） */
+@media (max-width: 759px) { #top .appTitle { font-size: 13px; padding: 2px 6px; } }
