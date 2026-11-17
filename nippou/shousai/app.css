@@ -466,3 +466,4 @@ dialog .btns.hoisted { display: none; }
 #hGen:empty::before, #hSite:empty::before { content: "押して選ぶ"; color: #b0b7bf; font-size: 12px; }
 .ttlRow .copyWork { position: absolute; left: 0; top: 2px; font-size: 12px; letter-spacing: 0; font-weight: normal; }
 @media print { #hGen:empty::before, #hSite:empty::before, .ttlRow .copyWork { display: none; } }
+.calgrid button .pp.what { color: #8a5a00; }   /* 人のいない記入済みの日：休工・燃料など（2026-11-17） */

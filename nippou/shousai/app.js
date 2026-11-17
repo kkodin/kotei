@@ -2092,6 +2092,16 @@ function openCal(mode) {
   $("calBtns").hidden = !!calMode;
   renderCal(); openDlg($("dCal"));
 }
+// 人のいない記入済みの日に書いてあるもの：休工・高速・燃料・作業予定・天気など（カレンダーのます目に出す）
+function calWhat(d) {
+  const up = (d.上 || []).filter(r => r && (r[1] || r[4])).map(r => String(r[1] || r[4]));
+  if (up.some(t => /休工|休み|中止/.test(t))) return "休工";
+  const car = (d.車 || []).filter(r => r && r[0]).map(r => r[0]);
+  if (car.length) return [...new Set(car.map(c => c === "高速" ? "高速" : "燃料"))].join("・");
+  if (up.length) return "予定";
+  if (d.天気 || d.気温) return "天気";
+  return "記入あり";
+}
 function renderCal() {
   const s = site(), [y, m] = calYM.split("-").map(Number);
   const first = new Date(y, m - 1, 1), n = new Date(y, m, 0).getDate(), today = ymd(new Date());
@@ -2104,8 +2114,10 @@ function renderCal() {
     const k = `${y}-${pad(m)}-${pad(d)}`, w = wd(k), dd = s && s.日[k], has = hasData(dd);
     if (has) cnt++;
     const ppl = has ? rowsOf(dd).filter(r => r && r[0]).length : 0;
-    h.push(`<button type="button" data-d="${k}" class="${w === 0 ? "sun " : w === 6 ? "sat " : ""}${has ? "has " : ""}${k === UI.day ? "on " : ""}${k === today ? "today " : ""}${k >= pa && k <= pb ? "inper" : ""}" title="${jpDate(k)}${has ? "　記入済み" + (ppl ? " " + ppl + "名" : "") + "" : ""}">` +
-      `<span class="dn">${d}</span>${has ? `<span class="mk">●</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : ""}</button>`);
+    // 人がいない記入済みの日は、何が書いてあるかを小さく出す（2026-11-17 ユーザー：何も書いていない土日が記入済みに見えた。実際は「休工」や燃料の行があった）
+    const what = has && !ppl ? calWhat(dd) : "";
+    h.push(`<button type="button" data-d="${k}" class="${w === 0 ? "sun " : w === 6 ? "sat " : ""}${has ? "has " : ""}${k === UI.day ? "on " : ""}${k === today ? "today " : ""}${k >= pa && k <= pb ? "inper" : ""}" title="${jpDate(k)}${has ? "　記入済み" + (ppl ? " " + ppl + "名" : what ? "（" + what + "）" : "") : ""}">` +
+      `<span class="dn">${d}</span>${has ? `<span class="mk">●</span>` : ""}${ppl ? `<span class="pp">${ppl}名</span>` : what ? `<span class="pp what">${esc(what)}</span>` : ""}</button>`);
   }
   $("calGrid").innerHTML = h.join("");
   if (calMode === "del") { calSel.forEach(k => { const b = $("calGrid").querySelector(`[data-d="${k}"]`); if (b) b.classList.add("delsel"); }); $("calDelN").textContent = calSel.size ? `${calSel.size} 日を選んでいます：${[...calSel].sort().map(k => +k.slice(5, 7) + "/" + +k.slice(8)).join("・")}` : "日報の入っている日（●）を押して選んでください"; }
