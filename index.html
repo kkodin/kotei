@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr002 11/18 19:37">
+<link rel="stylesheet" href="app.css?v=Vr002 11/18 19:52">
 </head>
 <body>
 <header id="top">
@@ -45,6 +45,7 @@
       <option value="start">並び：開始日</option>
     </select>
     <label class="chk" title="完了にした現場も表示する"><input type="checkbox" id="inShowDone"> 完了も出す</label>
+    <label class="chk" title="工程表の下に、人の流れと同じ 労務人数（従業員・社員・合計）を出す（画面の下に固定。印刷には出ない。自分の画面だけ）"><input type="checkbox" id="inLabor"> 労務人数を出す</label>
     <button id="bOnly" class="sub" title="表示する現場を選ぶ（自分の画面だけ）">現場：すべて</button>
   </span>
   <span class="grp zoom" title="表だけを拡大縮小（Ctrl＋ホイール・2本指ピンチでも）。数字を押すと 100%">
@@ -59,7 +60,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 19:37</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 19:52</span>
   </span>
 </header>
 
@@ -290,10 +291,10 @@
 
 <script src="lib/msal-browser.min.js"></script>
 <script src="common/master.js"></script>
-<script src="config.js?v=Vr002 11/18 19:37"></script>
-<script src="app.js?v=Vr002 11/18 19:37"></script>
-<script src="weekxlsx.js?v=Vr002 11/18 19:37"></script>
-<script src="chartxlsx.js?v=Vr002 11/18 19:37"></script>
+<script src="config.js?v=Vr002 11/18 19:52"></script>
+<script src="app.js?v=Vr002 11/18 19:52"></script>
+<script src="weekxlsx.js?v=Vr002 11/18 19:52"></script>
+<script src="chartxlsx.js?v=Vr002 11/18 19:52"></script>
 <script src="common/appmenu.js"></script>
 </body>
 </html>

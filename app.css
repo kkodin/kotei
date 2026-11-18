@@ -520,3 +520,15 @@ nav.appjump a:hover { background: #e8eef5; }
 .col.m1 { border-left: 2px solid var(--monline); z-index: 0; }
 .hd.mon.m1 { color: var(--monline); }
 @media print { .hd.m1, table.fl th.m1, table.fl td.m1 { box-shadow: inset 2px 0 0 #e65100 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .col.m1 { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+/* 2026-11-18 夜 工程表の下の労務人数（画面の下に固定。印刷には出さない） */
+#chart { min-height: 100%; display: inline-flex; flex-direction: column; }
+#chart > #body { flex: none; }
+.lfoot { position: sticky; bottom: 0; z-index: 8; margin-top: auto; background: #fff; border-top: 2px solid #888; box-shadow: 0 -2px 4px rgba(0,0,0,.12); }
+.lfoot .hrow.lf { position: static; }
+.lfoot .hrow.lf > div { height: 20px; line-height: 20px; }
+.lfoot .corner { font-size: 12px; font-weight: bold; color: #1f3a5f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--line); }
+.lfoot .lfn { font-size: 12px; border-bottom: 1px solid var(--line); }
+.lfoot .hrow.sum > div { background: #eef3f8; }
+.lfoot .lfn.over { background: #d93a36 !important; color: #fff; font-weight: bold; }
+@media print { .lfoot { display: none !important; } .pchart { min-height: 0 !important; } }

@@ -750,6 +750,7 @@ function renderChart() {
   h.push(`</div><div class="addsite"><button id="bAddSite" class="sub">＋ 現場を追加</button></div>`);
   const hidden = sites().length - shownSites().length;
   if (hidden) h.push(`<div class="addsite note">完了した現場 ${hidden} 件を隠しています（上の「完了も出す」で表示）</div>`);
+  if (showLabor && !S.print) h.push(laborFoot(from, end, days));
   $("chart").innerHTML = h.join("");
   fitLaneWidth();
   calibrateLeft();
@@ -860,6 +861,28 @@ function siteKubun(s) {
   return ks.size === 2 ? "昼夜" : ks.has("夜") ? "夜間" : ks.size ? "昼間" : "";
 }
 
+/* 2026-11-18 夜 ユーザー：人の流れの最下行（従業員・社員・合計）を工程表の下にも。画面の下に固定。
+   上の「労務人数を出す」で出す／隠す（自分の画面だけ kotei_labor）。工程表の印刷には出さない。
+   数え方は人の流れと同じ（全部の現場。隠している現場も数える） */
+let showLabor = true;
+try { showLabor = localStorage.getItem("kotei_labor") !== "0"; } catch (e) { }
+function laborAt(from, end) {
+  const at = {};
+  for (const s of sites()) for (const b of s.バー) {
+    if (b.終了 < from || b.開始 > end) continue;
+    const ln = s.段.find(l => l.id === b.段);
+    for (let k = b.開始 < from ? from : b.開始; k <= b.終了 && k <= end; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) (at[k] = at[k] || []).push({ s, b, ln });
+  }
+  return at;
+}
+function laborFoot(from, end, days) {
+  const at = laborAt(from, end), cap = capOf(), capAll = cap.従業員 + cap.社員;
+  const emp = k => (at[k] || []).reduce((a, x) => a + ownAt(x.b, k, x.ln), 0), stf = k => staffCount(at[k] || [], k);
+  const row = (cls, label, f, max) => `<div class="hrow lf ${cls}"><div class="corner" title="全部の現場の合計（人の流れの最下行と同じ。隠している現場も数える）。この人数を超えた日は赤">${label}</div>` +
+    days.map(k => { const v = f(k); return `<div class="hd lfn ${dayClass(k)}${v > max ? " over" : ""}" title="${esc(hmd(k) + " " + label + " " + v + "名")}">${v || ""}</div>`; }).join("") + `</div>`;
+  return `<div class="lfoot">` + row("", `労務人数（従業員 ${cap.従業員}名）`, emp, cap.従業員) + row("", `労務人数（社員 ${cap.社員}名）`, stf, cap.社員) +
+    row("sum", `労務人数 合計（${capAll}名）`, k => emp(k) + stf(k), capAll) + `</div>`;
+}
 function renderFlow() {
   const { from, end, days } = range();
   // 日ごとに、その日に作業する工程（バー）を集める（全部の現場）
@@ -2251,9 +2274,12 @@ $("tabs").addEventListener("click", e => {
   try { localStorage.setItem("kotei_tab", t); } catch (e) { }
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("pChart").hidden = t !== "chart"; $("pFlow").hidden = t !== "flow"; $("pList").hidden = t !== "list";
+  $("inLabor").parentElement.hidden = t !== "chart";
   render();
 });
 $("inShowDone").checked = showDone;
+$("inLabor").checked = showLabor;
+$("inLabor").onchange = e => { showLabor = e.target.checked; try { localStorage.setItem("kotei_labor", showLabor ? "1" : "0"); } catch (x) { } render(); };
 $("inSort").value = sortBy;
 $("inSort").onchange = e => { sortBy = e.target.value; try { localStorage.setItem("kotei_sort", sortBy); } catch (x) { } render(); };
 $("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
