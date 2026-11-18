@@ -200,7 +200,8 @@ function xlSheet(s, mon, pics, mono) {
     }
     if (!xs.length) return "";
     const st = staffCount(xs, k), wk = xs.reduce((a, x) => a + ownAt(x.b, k, x.ln), 0);
-    return st ? st + "+" + wk : wk ? String(wk) : "";
+    // 2026-11-18 夜 ユーザー：どちらの人数か分かるように「社1・作4」（社＝社員・作＝作業員）
+    return [st ? "社" + st : "", wk ? "作" + wk : ""].filter(Boolean).join("・");
   };
   box(rPlan, 1, rPlan + 3, 4, XS.label, str("人員予定"));
   box(rPlan, 5, rPlan + 1, 5, XS.week, str("昼間")); box(rPlan + 2, 5, rPlan + 3, 5, XS.week, str("夜間"));

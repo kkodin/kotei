@@ -478,10 +478,12 @@ const hasGai = ln => isGai(ln) || !!jointGai(ln);
 const ownAt = (b, k, ln) => isGai(ln) ? 0 : headAt(b, k, ln);
 const gaiAt = (b, k, ln) => isGai(ln) ? headAt(b, k, ln) : jointGai(ln) ? ((parseHead(jointGai(ln).人数) || {}).total || 0) : 0;
 // バーに出す人数：ふだんの人数。日ごとに変えた日があれば ※。外注の工種は業者名を前に。共同なら「3名 ＋ 業者 2名」
+/* 2026-11-18 夜 ユーザー：「1名」だけでは作業員か社員か分からない → 自社の人数は「作業員1名」、外注は「業者名 5名」、社員は「社員1名」（名前があれば名前） */
 const headLabel = (b, ln) => {
   let t = fmtHead(headTxt(b, ln));
   if (dayHeads(b).length) t = (t || "0名") + "※";
   if (isGai(ln)) return [gaiName(ln), t].filter(Boolean).join(" ");
+  if (t) t = "作業員" + t;
   const g = jointGai(ln);
   return g ? [t, [g.業者, fmtHead(g.人数)].filter(Boolean).join(" ")].filter(Boolean).join(" ＋ ") : t;
 };
@@ -559,7 +561,7 @@ function barLabel(b, avail, ln) {
   const fmt = c => [esc(c[0]), esc(c[1]), c[2] ? `<span class="st">${esc(c[2])}</span>` : ""].filter(Boolean).join(" ");
   for (const c of cands.slice(0, 3)) if (textW(c.filter(Boolean).join(" ")) <= avail) return { html: fmt(c), two: false };
   // 略して「埋戻 1+3」（同日 ユーザー：字が長すぎるなら 1+3 と略してよい）
-  const raw = headTxt(b, ln), short = raw ? (raw.includes("+") ? raw : raw + "名") + (dayHeads(b).length ? "※" : "") : "";
+  const raw = headTxt(b, ln), short = raw ? (isGai(ln) ? gaiName(ln) + " " : "作業員") + (raw.includes("+") ? raw : raw + "名") + (dayHeads(b).length ? "※" : "") : "";
   if (short && w && textW(w + " " + short) <= avail) return { html: fmt([w, short, ""]), two: false };
   // 1行に入らないときは、人数（と社員）を2行目へ（2026-10-14 ユーザー：短い工程で人数が消えた）。その工種の行は少し高くなる
   if (num && w) {
@@ -813,10 +815,10 @@ function renderList() {
   }
   rows.sort((x, y) => x.b.開始.localeCompare(y.b.開始) || (x.s.並び ?? 0) - (y.s.並び ?? 0));
   const tot = rows.reduce((a, r) => a + (dayDiff(r.b.開始, r.b.終了) + 1), 0);
-  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員</th><th>メモ</th><th>更新</th></tr>` +
+  $("list").innerHTML = `<table><tr><th>現場</th><th>段</th><th>作業</th><th>開始</th><th>終了</th><th>日数</th><th>社員</th>${SHOW_EMP ? "<th>従業員</th>" : ""}<th>作業員・外注</th><th>メモ</th><th>更新</th></tr>` +
     rows.map(({ s, b, ln }) => `<tr class="r" data-site="${esc(s.id)}" data-bar="${esc(b.id)}"><td>${esc(nm(s))}</td><td>${esc(ln ? laneName(ln) : "")}</td>` +
       `<td><span class="chip" style="background:${colorOf(b.色)}"></span>${esc(b.作業)}</td><td>${md(b.開始)}（${WD[dayDow(b.開始)]}）</td><td>${md(b.終了)}（${WD[dayDow(b.終了)]}）</td>` +
-      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc(staffBase(b, ln).join("・"))}${(b.不在 || []).length ? `<small class="note" title="${esc(b.不在.map(absTxt).join("\n"))}">（来ない日あり）</small>` : ""}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${esc(headLabel(b, ln))}</td>` +
+      `<td class="n">${dayDiff(b.開始, b.終了) + 1}</td><td>${esc(staffBase(b, ln).join("・") || staffAnonTxt(b, ln))}${(b.不在 || []).length ? `<small class="note" title="${esc(b.不在.map(absTxt).join("\n"))}">（来ない日あり）</small>` : ""}</td>${SHOW_EMP ? `<td>${esc((b.従業員 || []).join("・"))}</td>` : ""}<td class="n">${esc(headLabel(b, ln))}</td>` +
       `<td>${esc(b.メモ)}</td><td class="note">${esc(b.更新 ? b.更新.だれ : "")}</td></tr>`).join("") +
     `</table><p class="note">${rows.length} 件（のべ ${tot} 日）</p>`;
 }
@@ -1614,7 +1616,7 @@ function drawHeadCal() {
       if (k < a || k > z) { h.push(`<div class="cald out">${num}</div>`); continue; }
       if (!barWorks(ln, b, k)) { h.push(`<div class="cald hd hoff" title="休み">${num}<i>休</i></div>`); continue; }
       const v = barCtx.人数日[k] || "";
-      h.push(`<div class="cald hd ${v ? "ov" : ""}">${num}<input type="text" inputmode="tel" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" title="${esc(md(k) + "の人数（空＝ふだん " + (fmtHead(ph) || "なし") + "）")}"></div>`);
+      h.push(`<div class="cald hd ${v ? "ov" : ""}">${num}<input type="text" inputmode="tel" data-k="${k}" value="${esc(v)}" placeholder="${esc(ph)}" title="${esc(md(k) + "の作業員の人数（空＝ふだん " + (fmtHead(ph) || "なし") + "）")}"></div>`);
     }
     h.push(`</div></div>`);
   }
