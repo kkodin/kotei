@@ -268,7 +268,7 @@ function cxSheet({ ST, g, a, z, noOf, lastGroup, totals, totalOf, pageWpx, pageH
         }
         if (run) shapes.push(run);
         // 文字：作業・人数・社員（名字）。工程線の始まりの日（ページの最初の日）の下に
-        const label = [b.作業 || "", headLabel(b, bk.ln), staffBase(b, bk.ln).map(shortStaff).join("・")].filter(Boolean).join(" ");
+        const label = [b.作業 || "", headLabel(b, bk.ln), (staffBase(b, bk.ln).map(shortStaff).join("・") || staffAnonTxt(b, bk.ln))].filter(Boolean).join(" ");
         if (label) put(rb + 1, CX_FIRST + dayDiff(a, ba), str(label));
       }
       r += bk.n * 2;

@@ -349,6 +349,8 @@ function staffAnonAt(b, k, ln) {
   if (((b && b.不在) || []).some(r => !r.社員 && k >= r.開始 && k <= r.終了)) return 0;
   return laneStaffN(ln);
 }
+// 工程線の文字に出す、名前の無い社員（2026-11-18 夜 ユーザー：推進工に社員1名と入れたのに線に出ない）
+const staffAnonTxt = (b, ln) => !staffOwn(b) && laneStaffN(ln) ? "社員" + laneStaffN(ln) + "名" : "";
 // その日の社員の人数（xs＝[{b, ln}]）：名前のある人は重ねず、名前の無い人は足す
 const staffCount = (xs, k) => new Set(xs.flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size + xs.reduce((a, x) => a + staffAnonAt(x.b, k, x.ln), 0);
 function staffAt(b, k, ln) {
@@ -548,10 +550,10 @@ const noSpace = n => String(n).replace(/[\s　]+/g, "");
 // 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
 function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
 function barLabel(b, avail, ln) {
-  const w = b.作業 || "", num = headLabel(b, ln), st = staffBase(b, ln);
+  const w = b.作業 || "", num = headLabel(b, ln), st = staffBase(b, ln), an = staffAnonTxt(b, ln);
   const cands = [
-    [w, num, st.map(noSpace).join("・")],
-    [w, num, st.map(shortStaff).join("・")],
+    [w, num, st.map(noSpace).join("・") || an],
+    [w, num, st.map(shortStaff).join("・") || an],
     [w, num, ""], [w, "", ""]
   ];
   const fmt = c => [esc(c[0]), esc(c[1]), c[2] ? `<span class="st">${esc(c[2])}</span>` : ""].filter(Boolean).join(" ");
@@ -561,7 +563,7 @@ function barLabel(b, avail, ln) {
   if (short && w && textW(w + " " + short) <= avail) return { html: fmt([w, short, ""]), two: false };
   // 1行に入らないときは、人数（と社員）を2行目へ（2026-10-14 ユーザー：短い工程で人数が消えた）。その工種の行は少し高くなる
   if (num && w) {
-    const l2 = [[num, st.map(shortStaff).join("・")], [num, ""], [short, ""]].find(c => c[0] && textW(c.filter(Boolean).join(" ")) <= avail) || [short || num, ""];
+    const l2 = [[num, st.map(shortStaff).join("・") || an], [num, ""], [short, ""]].find(c => c[0] && textW(c.filter(Boolean).join(" ")) <= avail) || [short || num, ""];
     return { html: esc(w) + "<br>" + [esc(l2[0]), l2[1] ? `<span class="st">${esc(l2[1])}</span>` : ""].filter(Boolean).join(" "), two: true };
   }
   return { html: fmt(cands[cands.length - 1]), two: false };
