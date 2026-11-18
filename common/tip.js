@@ -30,6 +30,7 @@
   }
   function show() {
     if (!cur || !text) return;
+    if (!cur.isConnected) { release(); return; }
     if (!tip) { tip = document.createElement("div"); tip.className = "hxTip"; tip.setAttribute("role", "tooltip"); if (POP) tip.setAttribute("popover", "manual"); }
     tip.textContent = text;
     if (POP) {
@@ -59,7 +60,14 @@
     lx = e.clientX; ly = e.clientY;
     clearTimeout(timer); timer = setTimeout(show, 350);
   }, true);
-  document.addEventListener("mousemove", e => { lx = e.clientX; ly = e.clientY; if (tip && tip.parentNode) place(); }, true);
+  /* 動かしている間はそのまま付いていく。消したあと（ホイールで送った・押した・キーを打った）や、まだ出ていないときは、
+     止まって 350ms で出す（2026-11-18 ユーザー：祝日の名前が出なくなった。ホイールで横へ送ると消えたまま出なかった） */
+  document.addEventListener("mousemove", e => {
+    lx = e.clientX; ly = e.clientY;
+    if (cur && !cur.isConnected) { release(); return; }   // 画面を描き直して、元の所が無くなった
+    if (tip && tip.parentNode) { place(); return; }
+    if (cur && text) { clearTimeout(timer); timer = setTimeout(show, 350); }
+  }, true);
   document.addEventListener("mouseout", e => { if (cur && (!e.relatedTarget || !cur.contains(e.relatedTarget))) release(); }, true);
   ["pointerdown", "wheel", "keydown"].forEach(ev => document.addEventListener(ev, () => { hide(); }, true));
   window.addEventListener("blur", release);

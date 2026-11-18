@@ -45,6 +45,8 @@ function jpHolidays(y) {
   return JP_HOL[y] = h;
 }
 const holidayOf = k => jpHolidays(+k.slice(0, 4))[k] || "";
+// 日付＋祝日の名前（ヒント用。2026-11-18 ユーザー：祝日の名前が出なくなった）
+const hmd = k => md(k) + (holidayOf(k) ? "（" + holidayOf(k) + "）" : "");
 
 /* ---------- 色 ---------- */
 const COLORS = [
@@ -630,7 +632,7 @@ function renderChart() {
   h.push(`<div class="hrow d"><div class="corner"></div>` +
     days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${+k.slice(8)}</div>`).join("") + "</div>");
   h.push(`<div class="hrow w"><div class="corner">現場／工種</div>` +
-    days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="押すと会社の休みにする／戻す">${isRest(k) ? "休" : WD[dayDow(k)]}</div>`).join("") + "</div>");
+    days.map(k => `<div class="hd ${dayClass(k)}" data-day="${k}" title="${esc((holidayOf(k) ? holidayOf(k) + "\n" : "") + "押すと会社の休みにする／戻す")}">${isRest(k) ? "休" : WD[dayDow(k)]}</div>`).join("") + "</div>");
   // 本体
   h.push(`<div id="body">`);
   const left = `calc((var(--sw) + var(--lw)) * var(--lz, 1))`;
@@ -859,7 +861,7 @@ function renderFlow() {
 
   const head = `<thead><tr><th class="nm corner" colspan="2" rowspan="2"><span>月日</span><span>工種</span></th>` +
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
-    `</tr><tr>` + days.map(k => `<th class="${dayClass(k)}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
+    `</tr><tr>` + days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
   const cols = days.length + 2;
   const h = [`<table class="fl pdf${S.print ? " prt" : ""}">`, head, `<tbody>`];   // prt：印刷用の字（app.css）
   const cell = (k, v, extra = "") => `<td class="${v ? "" : "n0"} ${dayClass(k)} ${extra}">${v || ""}</td>`;
@@ -890,7 +892,7 @@ function renderFlow() {
       for (const k of days) {
         const on = bars.filter(x => k >= x.開始 && k <= x.終了).sort((a, b) => pk.pos[a.id] - pk.pos[b.id]);
         if (!on.length) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
-        const tip = md(k) + " " + nm(s) + "\n" + on.map(b => { const ln = s.段.find(l => l.id === b.段); return (ln ? laneWork(ln) || laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (barWorks(ln, b, k) ? "" : "（休工）"); }).join("\n");
+        const tip = hmd(k) + " " + nm(s) + "\n" + on.map(b => { const ln = s.段.find(l => l.id === b.段); return (ln ? laneWork(ln) || laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (barWorks(ln, b, k) ? "" : "（休工）"); }).join("\n");
         h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(on[0].id)}" title="${esc(tip)}">` + on.map(b => {
           const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
           return `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)};height:${lh}px;margin-top:${((pk.pos[b.id] - R / 2) * (lh + 1)).toFixed(1)}px"></i>`;
@@ -904,7 +906,7 @@ function renderFlow() {
         const b = bars.find(x => pk.pos[x.id] === r && k >= x.開始 && k <= x.終了);
         if (!b) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
         const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
-        h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(b.id)}" title="${esc(md(k) + " " + nm(s) + "／" + (ln ? laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (w ? "" : "（休工）"))}">` +
+        h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(b.id)}" title="${esc(hmd(k) + " " + nm(s) + "／" + (ln ? laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (w ? "" : "（休工）"))}">` +
           `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)}"></i></td>`);
       }
       h.push(`</tr>`);
