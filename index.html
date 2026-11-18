@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr002 11/18 15:38">
+<link rel="stylesheet" href="app.css?v=Vr002 11/18 18:55">
 </head>
 <body>
 <header id="top">
@@ -59,7 +59,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 15:38</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 18:55</span>
   </span>
 </header>
 
@@ -153,12 +153,12 @@
       <label for="sDone">完了</label><label class="chk2"><input type="checkbox" id="sDone"> 終わった現場（工程表・人の流れ・一覧に出さない）</label>
       <label>工種</label>
       <div>
-        <div class="lnhead"><span class="h0"></span><span class="h1">区分</span><span class="h2">作業名</span><span class="h5">社員・職長＋作業員・外注（ふだんの人数）</span><span class="h3">作業する曜日</span><span class="h4">完了・階層</span></div>
-        <div id="sLanes"></div><datalist id="gyoList"></datalist><datalist id="shaList"></datalist>
+        <div class="lnhead"><span class="h0"></span><span class="h1">区分</span><span class="h2">作業名</span><span class="h5">社員＋作業員・外注（ふだんの人数。社員が行かない工種は社員を空に）</span><span class="h3">作業する曜日</span><span class="h4">完了・階層</span></div>
+        <div id="sLanes"></div><datalist id="gyoList"></datalist>
         <div class="note">工種は工程表の1行です。区分（昼／夜）と作業名（例：立坑工・25tクレーン）を入れます。昼夜の現場は昼と夜の2行にします。<br>
           ⠿ をつかんで上下に動かすと順番を入れ替え（下位の工種も一緒）。▶＝すぐ上の工種の下位にする、◀＝上の階層へ戻す。＋＝下に空の行を足す。<br>
           作業する曜日：チェックした曜日も作業する（平日はいつも作業）。工程ごとの休みは、バーの「休工日を設定」。<br>
-          作業員・外注：自社の作業員の ふだんの人数（〇人＋〇人）と、外注の 業者名＋人数。両方入れると共同作業。バーで人数を入れなければこの人数。日によって違うときはバーの「日ごとの人数」。<br>
+          社員＋作業員・外注：その工種に行く社員の人数（社員が行かない工種は空のまま）と自社の作業員の ふだんの人数、外注の 業者名＋人数。人の流れの労務人数（社員）・（従業員）はこの人数で数えます。両方入れると共同作業。バーで人数を入れなければこの人数。日によって違うときはバーの「日ごとの人数」。<br>
           完了：終わった工種。工程表ではたたんで隠し、現場の下の「▸ 完了 n工種」で出せます。✕で消すとその工種のバーも消えます。</div>
       </div>
       <label>並び</label>
@@ -290,10 +290,10 @@
 
 <script src="lib/msal-browser.min.js"></script>
 <script src="common/master.js"></script>
-<script src="config.js?v=Vr002 11/18 15:38"></script>
-<script src="app.js?v=Vr002 11/18 15:38"></script>
-<script src="weekxlsx.js?v=Vr002 11/18 15:38"></script>
-<script src="chartxlsx.js?v=Vr002 11/18 15:38"></script>
+<script src="config.js?v=Vr002 11/18 18:55"></script>
+<script src="app.js?v=Vr002 11/18 18:55"></script>
+<script src="weekxlsx.js?v=Vr002 11/18 18:55"></script>
+<script src="chartxlsx.js?v=Vr002 11/18 18:55"></script>
 <script src="common/appmenu.js"></script>
 </body>
 </html>

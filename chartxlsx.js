@@ -126,7 +126,7 @@ function chartXlsx(list, from, end, logo) {
   }
   const totalOf = (name, k) => {
     const xs = at[k] || [];
-    if (name === "職員") return new Set(xs.flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size;
+    if (name === "職員") return staffCount(xs, k);   // 名前のある社員＋工種の社員数（2026-11-18 夕）
     return xs.reduce((a, x) => a + (name === "外注" ? gaiAt : ownAt)(x.b, k, x.ln), 0);   // 共同作業の工種は両方に数える
   };
 

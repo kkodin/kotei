@@ -253,7 +253,7 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 #sLanes .ln .lgai { flex: none; white-space: nowrap; font-size: 13px; }
 #sLanes .ln .lhd b, #sLanes .ln .lgai b, #sLanes .ln .lsha b { font-weight: normal; color: #555; margin: 0 3px 0 4px; }
 #sLanes .ln .lsha { flex: none; white-space: nowrap; font-size: 13px; }
-#sLanes .ln input.sha { width: 5.5em; min-width: 0; }   /* 2026-11-17 工種の社員（名前） */
+
 #sLanes .ln input.gy { width: 8em; min-width: 0; }
 /* 工種の行：ハンドル・階層の字下げ（2026-11-11） */
 #sLanes .ln .lhandle { flex: none; width: 18px; text-align: center; color: #8a96a3; cursor: grab; touch-action: none; user-select: none; font-size: 16px; }
@@ -293,7 +293,7 @@ dialog .who { padding: 0 16px; font-size: 12px; color: #777; }
 select.pick { width: 7.5em; flex: none; font-size: 14px; }
 #dBar { width: 560px; }
 /* 社員：名簿に無い名前は赤い枠（2026-11-18） */
-.srow input.bad, .lsha input.sha.bad { border-color: #c62828; background: #fff3f3; }
+.srow input.bad { border-color: #c62828; background: #fff3f3; }
 .lanesha { margin: -2px 0 4px; }
 .lanesha b { color: #1f3a5f; }
 /* 来ない日（工種の人が来ない期間・代わりの人） */

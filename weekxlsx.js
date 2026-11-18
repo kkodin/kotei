@@ -189,18 +189,18 @@ function xlSheet(s, mon, pics, mono) {
     });
   }
   // 人員予定（昼間／夜間）：その日に作業する自社の工種のバーの人数を「1+4」の形で足す（外注は入れない）
+  /* 2026-11-18 夕 ユーザー：工種の人数を 社員＋作業員 に → 「社員+作業員」（社員が 0 なら作業員だけ）。
+     社員＝バーの社員の名前（無ければ工種の社員数）、作業員＝バー（無ければ工種）の作業員の人数。外注の工種は社員だけ数える */
   const planAt = (k, night) => {
-    const ps = [];
+    const xs = [];
     for (const b of s.バー) {
       const ln = laneOf(b);
-      if (isGai(ln) || !!(ln && isNight(ln)) !== night || k < b.開始 || k > b.終了 || !barWorks(ln, b, k)) continue;
-      const p = parseHead(headTxtAt(b, k, ln));
-      if (p && p.total) ps.push(p.parts);
+      if (!!(ln && isNight(ln)) !== night || k < b.開始 || k > b.終了 || !barWorks(ln, b, k)) continue;
+      xs.push({ b, ln });
     }
-    if (!ps.length) return "";
-    const w = Math.max(...ps.map(p => p.length)), sum = Array(w).fill(0);
-    ps.forEach(p => p.forEach((x, j) => { sum[w - p.length + j] += x; }));   // 「4」だけのものは右（作業員）に足す
-    return sum.join("+");
+    if (!xs.length) return "";
+    const st = staffCount(xs, k), wk = xs.reduce((a, x) => a + ownAt(x.b, k, x.ln), 0);
+    return st ? st + "+" + wk : wk ? String(wk) : "";
   };
   box(rPlan, 1, rPlan + 3, 4, XS.label, str("人員予定"));
   box(rPlan, 5, rPlan + 1, 5, XS.week, str("昼間")); box(rPlan + 2, 5, rPlan + 3, 5, XS.week, str("夜間"));

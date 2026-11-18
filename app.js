@@ -337,8 +337,20 @@ function badStaff(names) { return names.map(n => resolveName(n, namesFor("社員
 const STAFF_NG = bad => `名簿に無い名前です：${bad.join("、")}\n\n社員は名簿の人を候補から選んでください（「＋1人」などの書き足しも入れられません。人数は作業員の欄へ）。\n新しい人は、左上のメニューの「名簿」で足してから選びます。`;
 /* 工程（バー）の社員（2026-11-18 ユーザー：工種に社員を入れても、工程を直すに名前が出ず、人の流れで数えられない）
    バーに社員が無ければ工種の社員（人数と同じ考え）。バー.不在＝[{ 社員, 開始, 終了, 代わり:[名前] }]：その期間は来ない（社員が空なら全員）・代わりの人が来る */
+/* 2026-11-18 夕 ユーザー：工種の社員の名前の欄は廃止。工種の行は「社員 □人＋作業員 □人」（社員が行かない工種は空）。
+   段.社員数＝その工種に行く社員の人数。バーに社員の名前があれば名前で数え、無ければ工種の社員数で数える（名前は未定）。
+   前に入れた工種の社員の名前（段.社員）は人数として読む（保存し直すと 段.社員数 になる） */
 const staffOwn = b => !!(b && b.社員 && b.社員.length);
-const staffBase = (b, ln) => staffOwn(b) ? b.社員 : (ln && ln.社員) || [];
+const staffBase = (b, ln) => staffOwn(b) ? b.社員 : [];
+const laneStaffN = ln => !ln ? 0 : ln.社員数 != null ? (+ln.社員数 || 0) : ((ln.社員 || []).length);
+// 名前の無い社員の人数（バーに名前が無いときの工種の社員数。「全員来ない」日は 0）
+function staffAnonAt(b, k, ln) {
+  if (staffOwn(b)) return 0;
+  if (((b && b.不在) || []).some(r => !r.社員 && k >= r.開始 && k <= r.終了)) return 0;
+  return laneStaffN(ln);
+}
+// その日の社員の人数（xs＝[{b, ln}]）：名前のある人は重ねず、名前の無い人は足す
+const staffCount = (xs, k) => new Set(xs.flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size + xs.reduce((a, x) => a + staffAnonAt(x.b, k, x.ln), 0);
 function staffAt(b, k, ln) {
   let st = [...staffBase(b, ln)];
   for (const r of (b && b.不在) || []) {
@@ -559,7 +571,7 @@ function barTitle(s, b) {
   let work = 0;
   for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
   return `${nm(s)}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
-    (staffBase(b, ln).length ? "\n社員：" + staffBase(b, ln).join("・") + (staffOwn(b) ? "" : "（工種の社員）") : "") +
+    (staffOwn(b) ? "\n社員：" + b.社員.join("・") : laneStaffN(ln) ? "\n社員：" + laneStaffN(ln) + "名（工種の人数・名前は未定）" : "") +
     ((b.不在 || []).length ? "\n来ない日：" + b.不在.map(absTxt).join("、") : "") + (isGai(ln) ? "\n外注：" + gaiName(ln) + (headTxt(b, ln) ? " " + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") :
       headTxt(b, ln) ? "\n作業員：" + fmtHead(headTxt(b, ln)) + (headOwn(b) ? "" : "（工種の人数）") : "") + (jointGai(ln) ? "\n外注：" + jointGai(ln).業者 + " " + fmtHead(jointGai(ln).人数) + "（工種の人数）" : "") +
     (dayHeads(b).length ? "\n日ごとの人数：" + dayHeads(b).map(k => md(k) + " " + (fmtHead(b.人数日[k]) || "0名")).join("、") : "") + (b.メモ ? "\n" + b.メモ : "");
@@ -857,7 +869,7 @@ function renderFlow() {
   const all = shownSites(), list = S.print || flowIdle ? all : all.filter(s => working.has(s.id));
   const cap = capOf();
   const empAt = (k, f) => (at[k] || []).filter(f).reduce((a, x) => a + ownAt(x.b, k, x.ln), 0);
-  const stfAt = (k, f) => new Set((at[k] || []).filter(f).flatMap(x => staffAt(x.b, k, x.ln).map(nk))).size;   // 工種の社員・来ない日・代わりを入れて
+  const stfAt = (k, f) => staffCount((at[k] || []).filter(f), k);   // 名前のある人（来ない日・代わりを入れて）＋工種の社員数
 
   const head = `<thead><tr><th class="nm corner" colspan="2" rowspan="2"><span>月日</span><span>工種</span></th>` +
     days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${k.endsWith("-01") || k === from ? `<b>${+k.slice(5, 7)}/</b>` : ""}${+k.slice(8)}</th>`).join("") +
@@ -956,7 +968,7 @@ function renderFlow() {
     }
     h.push(`<tr><th class="nm" colspan="2" style="color:#c62828">社員 未定</th>`);
     for (const k of days) {
-      const un = (at[k] || []).filter(x => !staffAt(x.b, k, x.ln).length);
+      const un = (at[k] || []).filter(x => staffAnonAt(x.b, k, x.ln) > 0);   // 社員が行くが名前が決まっていない（社員が行かない工種は出さない）
       const ss = [...new Set(un.map(x => shortOf(x.s)))];
       h.push(un.length ? `<td class="un ${dayClass(k)}" data-site="${esc(un[0].s.id)}" data-bar="${esc(un[0].b.id)}" title="${esc(md(k) + " 社員未定：" + un.map(x => nm(x.s) + "／" + (x.b.作業 || "")).join("、"))}">${ss.length > 1 ? ss.length + "件" : esc(ss[0])}</td>` : `<td class="${dayClass(k)}"></td>`);
     }
@@ -1672,14 +1684,15 @@ $("bStaffRows").addEventListener("change", e => { if (e.target.matches("input"))
 function markStaffRows() { $("bStaffRows").querySelectorAll("input").forEach(i => { const v = i.value.trim(); i.classList.toggle("bad", !!v && !staffKnown(resolveName(v, namesFor("社員")))); i.title = i.classList.contains("bad") ? "名簿に無い名前です。候補から選んでください" : ""; }); }
 /* 工種の社員を見せる（2026-11-18 ユーザー：工種に社員を入れても、工程を直すに名前が出ない）。
    この工程の社員の欄が空なら、工種の社員がこの工程の社員（人の流れでも数える） */
+/* 2026-11-18 夕：工種の社員は名前でなく人数（段.社員数）。名前が空なら、工種の社員の人数で数える */
 function showStaffLane() {
-  const ln = calLane(), ls = (ln && ln.社員) || [], own = getStaffRows().length, el = $("bStaffLane");
+  const ln = calLane(), n = laneStaffN(ln), own = getStaffRows().length, el = $("bStaffLane");
   const first = $("bStaffRows").querySelector("input");
-  if (first) first.placeholder = !own && ls.length ? ls.join("・") + "（工種の社員）" : "名前（候補から選ぶ）";
+  if (first) first.placeholder = !own && n ? `（工種の社員 ${n}名・名前は未定）` : "名前（候補から選ぶ）";
   markStaffRows();
-  el.hidden = !ls.length;
-  el.innerHTML = !ls.length ? "" : own ? `工種の社員 <b>${esc(ls.join("・"))}</b> ではなく、上の名前にします` :
-    `工種の社員 <b>${esc(ls.join("・"))}</b> がこの工程に来ます（違う人のときだけ上に名前を入れる）`;
+  el.hidden = !n;
+  el.innerHTML = !n ? "" : own ? `工種の社員 ${n}名 ではなく、上の名前の人で数えます` :
+    `工種の社員 <b>${n}名</b> で数えます（名前が決まったら上に入れる）`;
   refreshAbsWho();
 }
 $("bLane").addEventListener("change", showStaffLane);
@@ -1827,13 +1840,12 @@ function laneRow(l, dep = 0) {
   const ck = (key, label, def) => `<label class="dw"><input type="checkbox" data-k="${key}" ${(l[key] ?? def) ? "checked" : ""}>${label}</label>`;
   const kb = laneKubun(l), gai = isGai(l), jg = jointGai(l);
   const own = gai ? "" : l.人数, gy = gai ? l.業者 || "" : jg ? l.業者 || "" : "", gn = gai ? l.人数 : jg ? l.外注人数 : "";
-  const fp = i => gai ? "" : lanePart(l, i);   // 職長・作業員の人数（入れた欄のまま出す）
+  const sn = laneStaffN(l), wn = gai ? "" : laneWorkers(l);   // 社員・作業員の人数
   return `<div class="ln" data-id="${esc(l.id)}" data-depth="${dep}" style="--d:${dep}"><span class="lhandle" title="つかんで上下に動かすと順番を入れ替え（下位の工種も一緒に動く）">⠿</span><span class="lind"></span>` +
     `<select class="kb"><option ${kb === "昼" ? "selected" : ""}>昼</option><option ${kb === "夜" ? "selected" : ""}>夜</option></select>` +
     `<input type="text" class="wk" value="${esc(laneWork(l))}" placeholder="作業名（例：立坑工）">` +
-    `<span class="lsha" title="この工種の社員（名前。2人以上は ・ で区切る）"><b>社員</b><input type="text" class="sha" list="shaList" value="${esc((l.社員 || []).join("・"))}" placeholder="名前"></span>` +
-    `<span class="lhd" title="自社のふだんの人数（職長＋作業員。バーで人数を入れなければこの人数）"><b>職長</b><input type="text" class="hn" data-h="0" inputmode="numeric" value="${fp(0)}">人＋` +
-    `<b>作業員</b><input type="text" class="hn" data-h="1" inputmode="numeric" value="${fp(1)}">人</span>` +
+    `<span class="lhd" title="この工種のふだんの人数（社員＋作業員）。社員が行かない工種は社員を空のまま。人の流れの 労務人数（社員）・（従業員）で数える"><b>社員</b><input type="text" class="hn" data-h="0" inputmode="numeric" value="${sn || ""}">人＋` +
+    `<b>作業員</b><input type="text" class="hn" data-h="1" inputmode="numeric" value="${wn}">人</span>` +
     `<span class="lgai" title="外注の業者名とふだんの人数（作業員と両方入れると共同作業）"><b>外注</b><input type="text" class="gy" list="gyoList" value="${esc(gy)}" placeholder="業者名">` +
     `<input type="text" class="hn" data-h="g" inputmode="numeric" value="${gn ? esc(String(parseHead(gn)?.total ?? "")) : ""}">人</span>` +
     ck("土", "土", true) + ck("日", "日", false) + ck("祝", "祝", false) +
@@ -1849,21 +1861,18 @@ function dBlock(r) { const rows = dRows(), i = rows.indexOf(r), d = dDep(r), out
 function dParent(r) { const rows = dRows(), d = dDep(r); for (let j = rows.indexOf(r) - 1; j >= 0; j--) if (dDep(rows[j]) < d) return rows[j]; return null; }
 function dPrevSib(r) { const rows = dRows(), d = dDep(r); for (let j = rows.indexOf(r) - 1; j >= 0; j--) { const x = dDep(rows[j]); if (x < d) return null; if (x === d) return rows[j]; } return null; }
 const LANE_DEPTH_MAX = 4;
-// 工種の行の 〇人＋〇人。片方だけなら1つの数（"3"）、両方なら "1+3"
-function headPart(t, i) { const p = parseHead(t || ""); return p && p.parts[i] != null ? p.parts[i] : ""; }
-/* 2026-11-17 ユーザー：「作業員 0人＋1人」と入れると「1人＋0人」になる → 段.人数 は 0 の側を書かないので、どちらの欄かが分からなくなっていた。
-   欄を 職長＋作業員 にして、入れたとおりを 段.職長数・段.作業員数 に残す（段.人数 は今までどおり "1+3"／"1"。ほかの画面・アプリはこれを読む）。
-   前に保存した工種（職長数・作業員数が無い）は 段.人数 から出す */
-function lanePart(l, i) {
-  const k = i ? "作業員数" : "職長数";
-  if (l && (l.職長数 != null || l.作業員数 != null)) return l[k] != null ? String(l[k]) : "";
-  return headPart(l && l.人数, i);
+/* 2026-11-17：職長＋作業員の欄（段.職長数・段.作業員数）を作った → 2026-11-18 夕 社員＋作業員に変えた（下） */
+/* 2026-11-18 夕 ユーザー：職長＋作業員 → 社員＋作業員。作業員の欄＝自社の作業員（従業員）の人数で、段.人数 にも同じ数を書く。
+   前の 職長＋作業員（段.職長数・段.作業員数、または 段.人数 "1+3"）は、どちらも作業員なので足して作業員の欄に出す（人の流れの従業員の数は変わらない） */
+function laneWorkers(l) {
+  if (!l) return "";
+  if (l.職長数 != null || l.作業員数 != null) return String((+l.職長数 || 0) + (+l.作業員数 || 0));
+  const p = parseHead(l.人数 || "");
+  return p ? String(p.total) : "";
 }
 function laneHeadOf(r) {
-  const [a, b] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
-  if (!a && !b) return "";
-  const x = parseInt(a || "0", 10) || 0, y = parseInt(b || "0", 10) || 0;
-  return x && y ? x + "+" + y : String(x || y);   // 片方だけ（もう片方が空か 0）なら「1」
+  const b = toHalf(r.querySelector('.lhd input.hn[data-h="1"]').value).trim();
+  return b ? String(parseInt(b, 10) || 0) : "";
 }
 function openSite(id) {
   const s = id ? S.files[fileOfSite(id)].doc : null;
@@ -1882,9 +1891,6 @@ function openSite(id) {
   if (s && s.地図) loadMap(s).then(u => { if (siteCtx && siteCtx.id === s.id && siteCtx.map === undefined) showMapBox(u); });
   const T = treeInfo(s ? s.段 : [{ id: newId("l"), 区分: "昼", 名前: "" }]);
   $("sLanes").innerHTML = T.order.map(l => laneRow(l, T.depth[l.id])).join("");
-  // 社員の候補：マスタの社員
-  $("shaList").innerHTML = namesFor("社員").map(n => `<option value="${esc(n)}">`).join("");
-  markSha();
   // 業者名の候補：どの現場でも前に入れた業者名
   $("gyoList").innerHTML = [...new Set(Object.values(S.files).flatMap(f => (f.doc && f.doc.段 || []).filter(hasGai).map(l => l.業者).filter(Boolean)))]
     .sort((a, b) => a.localeCompare(b, "ja")).map(g => `<option value="${esc(g)}">`).join("");
@@ -1972,9 +1978,6 @@ $("fSite").addEventListener("submit", e => {
   e.preventDefault();
   const name = $("sName").value.trim();
   if (!name) return;
-  // 工種の社員は名簿の人だけ（2026-11-18 ユーザー）
-  const badSha = [...new Set(dRows().flatMap(r => badStaff(splitNames(r.querySelector("input.sha").value))))];
-  if (badSha.length) { markSha(); alert(STAFF_NG(badSha) + "\n（2人以上は ・ で区切ります）"); return; }
   const stack = [];
   const lanes = dRows().map(r => {
     const l = { id: r.dataset.id, 区分: r.querySelector("select.kb").value, 名前: r.querySelector("input.wk").value.trim() };
@@ -1989,12 +1992,10 @@ $("fSite").addEventListener("submit", e => {
     // 外注だけなら前の形（種別＝外注・人数＝外注の人数）、作業員も入っていれば 人数＝作業員・業者・外注人数
     if (!own && (gy || gn)) { l.種別 = "外注"; if (gy) l.業者 = gy; if (gn) l.人数 = gn; }
     else { if (own) l.人数 = own; if (gy) l.業者 = gy; if (gn) l.外注人数 = gn; }
-    // 職長・作業員は入れた欄のまま残す（空の欄は残さない。0 は 0 として残す）
-    const [hA, hB] = [...r.querySelectorAll('.lhd input.hn')].map(i => toHalf(i.value).trim());
-    if (hA !== "") l.職長数 = parseInt(hA, 10) || 0;
-    if (hB !== "") l.作業員数 = parseInt(hB, 10) || 0;
-    const sha = splitNames(r.querySelector("input.sha").value).map(x => resolveName(x, namesFor("社員")));
-    if (sha.length) l.社員 = [...new Set(sha)];
+    // 社員の人数（空・0 は残さない＝社員は行かない）。作業員は 段.人数 と同じ数を 段.作業員数 にも（前の 職長数・社員の名前は残さない）
+    const sA = parseInt(toHalf(r.querySelector('.lhd input.hn[data-h="0"]').value).trim() || "0", 10) || 0;
+    if (sA) l.社員数 = sA;
+    if (own) l.作業員数 = +own;
     return l;
   });
   // その日だけの休み・出勤は、保存するときの最新の中身から引き継ぐ
@@ -2810,16 +2811,3 @@ if (!bukaiButton) {
 }
 start();
 
-/* 工種の社員の欄：名簿に無い名前があれば赤い枠（2026-11-18 ユーザー）。欄を離れたら名簿の書き方に寄せる */
-function markSha() {
-  document.querySelectorAll("#sLanes input.sha").forEach(i => {
-    const bad = badStaff(splitNames(i.value));
-    i.classList.toggle("bad", bad.length > 0);
-    i.title = bad.length ? "名簿に無い名前：" + bad.join("、") + "（候補から選ぶ。2人以上は ・ で区切る）" : "この工種の社員（名簿の人。2人以上は ・ で区切る）";
-  });
-}
-$("sLanes").addEventListener("change", e => {
-  if (!e.target.matches("input.sha")) return;
-  e.target.value = splitNames(e.target.value).map(x => resolveName(x, namesFor("社員"))).join("・");
-  markSha();
-});
