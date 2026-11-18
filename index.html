@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr002 11/18 20:36">
+<link rel="stylesheet" href="app.css?v=Vr002 11/18 22:18">
 </head>
 <body>
 <header id="top">
@@ -60,7 +60,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 20:36</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 22:18</span>
   </span>
 </header>
 
@@ -107,6 +107,8 @@
       <label for="bFrom">開始</label><input type="date" id="bFrom" required>
       <label for="bTo">終了</label><input type="date" id="bTo" required>
       <label>休工日</label><div><button type="button" id="bOffBtn" class="sub small">休工日を設定</button> <span id="bOffInfo" class="note"></span></div>
+      <!-- 2026-11-18 夜 ユーザー：日にちを動かせない工程に印（人が足りない時に見分ける） -->
+      <label for="bFix">確定</label><div><label class="fixchk"><input type="checkbox" id="bFix"> 日にちを動かせない</label> <span class="note">工程表・人の流れに赤い枠で出ます。ドラッグでは動きません</span></div>
       <!-- 2026-11-18 夜 ユーザー：社員の名前はやめて人数。社員 □名・作業員 □名・外注 業者名 □名（業者は何社でも）。空の欄は工種の人数 -->
       <label for="bStf">社員</label><div><input type="text" id="bStf" class="num" inputmode="numeric"> 名 <span class="note">空＝工種の人数。社員が行かなければ 0</span></div>
       <!-- 従業員の名前は将来の仕様（2026-10-07 ユーザー指定：いまは何人必要かだけ）。SHOW_EMP で出す -->
@@ -291,10 +293,10 @@
 
 <script src="lib/msal-browser.min.js"></script>
 <script src="common/master.js"></script>
-<script src="config.js?v=Vr002 11/18 20:36"></script>
-<script src="app.js?v=Vr002 11/18 20:36"></script>
-<script src="weekxlsx.js?v=Vr002 11/18 20:36"></script>
-<script src="chartxlsx.js?v=Vr002 11/18 20:36"></script>
+<script src="config.js?v=Vr002 11/18 22:18"></script>
+<script src="app.js?v=Vr002 11/18 22:18"></script>
+<script src="weekxlsx.js?v=Vr002 11/18 22:18"></script>
+<script src="chartxlsx.js?v=Vr002 11/18 22:18"></script>
 <script src="common/appmenu.js"></script>
 </body>
 </html>

@@ -572,8 +572,16 @@ function lblW(html) { return Math.max(...html.split("<br>").map(t => textW(t.rep
 const noSpace = n => String(n).replace(/[\s　]+/g, "");
 // 名字だけ。社員に同じ名字が2人以上いれば空白を省いた氏名
 function shortStaff(n) { const sn = surname(n), list = namesFor("社員"); return list.filter(x => surname(x) === sn).length > 1 ? noSpace(n) : sn; }
+/* 2026-11-18 夜 ユーザー：日にちを動かせない工程に印（人が足りない時に、動かせる工程と見分ける）。バー.確定＝true
+   工程表＝線に赤い枠・文字の頭に【確定】／人の流れ＝その期間に赤い枠。確定の工程はドラッグで動かさない（小窓では直せる） */
+const FIX_TAG = "【確定】";
 function barLabel(b, avail, ln) {
-  const w = b.作業 || "", pl = peopleLabel(b, ln), hl = headLabel(b, ln);
+  const r = barLabel0(b, avail, ln);
+  if (b.確定) r.html = r.html.replace(esc(FIX_TAG), `<b class="fx">${FIX_TAG}</b>`);
+  return r;
+}
+function barLabel0(b, avail, ln) {
+  const w = (b.確定 ? FIX_TAG : "") + (b.作業 || ""), pl = peopleLabel(b, ln), hl = headLabel(b, ln);
   const fmt = c => [esc(w), esc(c)].filter(Boolean).join(" ");
   for (const c of [pl, hl]) if (c && textW([w, c].filter(Boolean).join(" ")) <= avail) return { html: fmt(c), two: false };
   // 1行に入らないときは、人数を2行目へ（2026-10-14 ユーザー：短い工程で人数が消えた）。その工種の行は少し高くなる
@@ -585,7 +593,7 @@ function barTitle(s, b) {
   let work = 0;
   for (let k = b.開始; k <= b.終了; k = dayAdd(k, 1)) if (barWorks(ln, b, k)) work++;
   return `${nm(s)}／${b.作業 || ""}\n${md(b.開始)}〜${md(b.終了)}（${dayDiff(b.開始, b.終了) + 1}日・うち作業 ${work}日）` +
-    peopleTitle(b, ln) + (b.メモ ? "\n" + b.メモ : "");
+    (b.確定 ? "\n確定（日にちを動かせない）" : "") + peopleTitle(b, ln) + (b.メモ ? "\n" + b.メモ : "");
 }
 function peopleTitle(b, ln) {
   const st = staffOwn(b) ? b.社員.length : staffBaseN(b, ln), sOwn = staffOwn(b) || (b.社員数 != null && b.社員数 !== "");
@@ -754,7 +762,7 @@ function renderChart() {
           const g = gaps[gaps.length - 1];
           if (g && g.i + g.n === i) g.n++; else gaps.push({ i, n: 1 });
         }
-        h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.id === selBar ? "sel" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
+        h.push(`<div class="bar ${isLight(b.色) ? "dark" : ""} ${b.id === selBar ? "sel" : ""} ${b.確定 ? "fixed" : ""} ${b.開始 < from ? "cut-l" : ""} ${b.終了 > end ? "cut-r" : ""}" data-bar="${esc(b.id)}" ` +
           `style="left:${x}px;top:${pos[b.id] * lrh + Math.max(3, (rh - 26) / 2)}px;width:${w}px;--bc:${colorOf(b.色)}" title="${esc(barTitle(s, b))}">` +
           `<span class="stripe"></span>` +
           gaps.map(g => `<span class="gap" style="left:${g.i * dw}px;width:${g.n * dw}px"></span>`).join("") +
@@ -920,7 +928,7 @@ function renderFlow() {
     `</tr><tr>` + days.map(k => `<th class="${dayClass(k)}" title="${esc(holidayOf(k))}">${isRest(k) ? "休" : WD[dayDow(k)]}</th>`).join("") + `</tr></thead>`;
   const cols = days.length + 2;
   const h = [`<table class="fl pdf${S.print ? " prt" : ""}">`, head, `<tbody>`];   // prt：印刷用の字（app.css）
-  const cell = (k, v, extra = "") => `<td class="${v ? "" : "n0"} ${dayClass(k)} ${extra}">${v || ""}</td>`;
+  const cell = (k, v, extra = "", fx = "") => `<td class="${v ? "" : "n0"} ${dayClass(k)} ${extra}">${v || ""}${fx}</td>`;
 
   // 1. 現場ごと：工程の流れ（工程線）＋ 労務人数（従業員）・労務人数（社員）
   list.forEach((s, i) => {
@@ -933,6 +941,11 @@ function renderFlow() {
     const lanes = laneIds.length ? T.order.filter(l => used.has(l.id)) : T.order.filter(l => !laneDoneTree(T, l));
     const kb = siteKubun(s), mx = masterOf(s), moto = mx ? (mx.元請 || mx.発注者 || "") : "";
     const mixed = kb === "昼夜";
+    // 確定の工程がある日（2026-11-18 夜 ユーザー：人の流れでも、その期間に赤い枠）
+    const fxOn = k => bars.some(b => b.確定 && k >= b.開始 && k <= b.終了);
+    const fxi = (k, top, bot) => { if (!fxOn(k)) return "";
+      const p = dayAdd(k, -1), n = dayAdd(k, 1), w = "2px solid #d32f2f";
+      return `<i class="fxbox" style="${top ? "border-top:" + w + ";" : ""}${bot ? "border-bottom:" + w + ";" : ""}${p < from || !fxOn(p) ? "border-left:" + w + ";" : ""}${n > end || !fxOn(n) ? "border-right:" + w + ";" : ""}"></i>`; };
     const siteTh = `<th class="nm sc" rowspan="${rows + 2}"><span class="sno">${i + 1}</span><div class="sbody">` +
       `<div class="scode">${esc(s.コード || "")}</div><div class="snm">${esc(nm(s))}${kb ? `<small>（${kb}）</small>` : ""}${s.完了 ? ` <small class="donemk">完了</small>` : ""}</div>` +
       `<div class="smeta">${esc(moto)}${s.担当 ? `　担当：${esc(s.担当)}` : ""}</div></div></th>`;
@@ -948,11 +961,12 @@ function renderFlow() {
       for (const k of days) {
         const on = bars.filter(x => k >= x.開始 && k <= x.終了).sort((a, b) => pk.pos[a.id] - pk.pos[b.id]);
         if (!on.length) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
-        const tip = hmd(k) + " " + nm(s) + "\n" + on.map(b => { const ln = s.段.find(l => l.id === b.段); return (ln ? laneWork(ln) || laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (barWorks(ln, b, k) ? "" : "（休工）"); }).join("\n");
+        const fx = fxi(k, true, false);
+        const tip = hmd(k) + " " + nm(s) + "\n" + on.map(b => { const ln = s.段.find(l => l.id === b.段); return (ln ? laneWork(ln) || laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (barWorks(ln, b, k) ? "" : "（休工）") + (b.確定 ? "【確定】" : ""); }).join("\n");
         h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(on[0].id)}" title="${esc(tip)}">` + on.map(b => {
           const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
           return `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)};height:${lh}px;margin-top:${((pk.pos[b.id] - R / 2) * (lh + 1)).toFixed(1)}px"></i>`;
-        }).join("") + `</td>`);
+        }).join("") + fx + `</td>`);
       }
       h.push(`</tr>`);
     }
@@ -960,15 +974,15 @@ function renderFlow() {
       h.push(`<tr class="fb${r === 0 ? " stop" : ""}">` + (r === 0 ? siteTh + kindTh : ""));
       for (const k of days) {
         const b = bars.find(x => pk.pos[x.id] === r && k >= x.開始 && k <= x.終了);
-        if (!b) { h.push(`<td class="${dayClass(k)}"></td>`); continue; }
+        if (!b) { h.push(`<td class="${dayClass(k)}">${fxi(k, r === 0, false)}</td>`); continue; }
         const ln = s.段.find(l => l.id === b.段), w = barWorks(ln, b, k);
         h.push(`<td class="${dayClass(k)}" data-site="${esc(s.id)}" data-bar="${esc(b.id)}" title="${esc(hmd(k) + " " + nm(s) + "／" + (ln ? laneName(ln) : "") + (b.作業 ? "／" + b.作業 : "") + (w ? "" : "（休工）"))}">` +
-          `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)}"></i></td>`);
+          `<i class="fbar${w ? "" : " gap"}${k === b.開始 ? " a" : ""}${k === b.終了 ? " z" : ""}" style="--c:${colorOf(b.色)}"></i>${fxi(k, r === 0, false)}</td>`);
       }
       h.push(`</tr>`);
     }
-    h.push(`<tr class="cnt"><th class="nm kc lb">労務人数（従業員）</th>` + days.map(k => cell(k, empAt(k, x => x.s === s))).join("") + `</tr>`);
-    h.push(`<tr class="cnt send"><th class="nm kc lb">労務人数（社員）</th>` + days.map(k => cell(k, stfAt(k, x => x.s === s))).join("") + `</tr>`);
+    h.push(`<tr class="cnt"><th class="nm kc lb">労務人数（従業員）</th>` + days.map(k => cell(k, empAt(k, x => x.s === s), "", fxi(k, false, false))).join("") + `</tr>`);
+    h.push(`<tr class="cnt send"><th class="nm kc lb">労務人数（社員）</th>` + days.map(k => cell(k, stfAt(k, x => x.s === s), "", fxi(k, false, true))).join("") + `</tr>`);
   });
   if (!list.length) h.push(`<tr><th class="nm note" colspan="2">（この期間に作業する現場はありません）</th>${days.map(k => `<td class="${dayClass(k)}"></td>`).join("")}</tr>`);
   const idle = all.length - list.length;
@@ -1150,6 +1164,12 @@ function dragMove(e) {
   if (!drag.moved) return;
   if (e.pointerType === "mouse" || e.pointerType === undefined) setDragCopy(!!(e.ctrlKey || e.metaKey));
   const b = drag.b;
+  // 確定の工程は動かさない（Ctrl を押したコピーはできる）
+  if (b.確定 && !drag.copyEl) {
+    drag.a = b.開始; drag.z = b.終了;
+    if (!drag.warned) { drag.warned = true; toast("確定の工程は動かせません。動かすときは、工程の小窓で「確定」を外してください", 2600); }
+    return;
+  }
   let a = b.開始, z = b.終了;
   if (drag.mode === "move") { a = dayAdd(b.開始, dd); z = dayAdd(b.終了, dd); }
   else if (drag.mode === "l") { a = dayAdd(b.開始, dd); if (a > z) a = z; }
@@ -1300,6 +1320,11 @@ function openCtx(track, barEl, cx, cy) {
     ["同じ期間で工種を足す", () => openBar(site, null, { 段: b.段, 開始: b.開始, 終了: b.終了 })],
     [`${md(day)} から工種を足す`, () => openBar(site, null, { 段: lane, 開始: day, 終了: day })],
     ["休工日を設定", () => { openBar(site, b); $("bOffBtn").click(); }],
+    [b.確定 ? `「${b.作業 || "工程"}」の確定を外す` : `「${b.作業 || "工程"}」を確定にする（動かせない）`, () => {
+      const id = b.id, on = !b.確定;
+      mutate(fileOfSite(site.id), doc => { const x = doc.バー.find(y => y.id === id); if (x) { if (on) x.確定 = true; else delete x.確定; stamp(x); } });
+      toast(on ? "確定にしました（ドラッグで動きません）" : "確定を外しました");
+    }],
     laneDoneItem(),
     ["-"],
     [`「${b.作業 || "工程"}」を消す`, () => {
@@ -1450,6 +1475,7 @@ function openBar(site, b, init) {
   drawPick("従業員");
   (document.querySelector(`#bColors input[value="${v.色 || "青"}"]`) || document.querySelector("#bColors input")).checked = true;
   $("bMemo").value = v.メモ || "";
+  $("bFix").checked = !!v.確定;
   $("dBarWho").textContent = b && b.更新 ? `最後に直した人：${b.更新.だれ}（${b.更新.いつ}）` : "";
   $("bBarDel").hidden = !b; $("bBarCopy").hidden = !b;
   openDlg($("dBar"));
@@ -1479,6 +1505,7 @@ function readBarForm() {
     // バー.人数 は前の版・ほかのアプリ向け（外注だけの工種は外注の合計、ほかは作業員）
     人数: gai ? (gaiList ? gaiTot : "") : wk != null ? wk : "", 人数内訳: undefined, 人数日: Object.keys(hd).length ? hd : undefined,
     色: (document.querySelector("#bColors input:checked") || {}).value || "青", メモ: $("bMemo").value.trim(),
+    確定: $("bFix").checked || undefined,
     // 期間の外になった休工日は捨てる
     休み: (barCtx.休み || []).filter(k => k >= a && k <= z).sort(), 出勤: (barCtx.出勤 || []).filter(k => k >= a && k <= z).sort()
   };
