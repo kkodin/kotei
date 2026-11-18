@@ -1022,6 +1022,9 @@ function renderFlow() {
   $("flow").innerHTML = h.join("");
   // 表示の長さが短いときは画面の幅いっぱいに（左の2列の幅を測ってから合わせ直す）
   if (!S.print) { const before = root.getPropertyValue("--fw"); fitFlowWidth(days.length); if (root.getPropertyValue("--fw") !== before) $("flow").innerHTML = h.join(""); }
+  /* 2026-11-18 夜 ユーザー：最下行の 従業員・社員・合計 は画面の下に固定（いつも出す。印刷にも出る：印刷では固定をやめて表の下に） */
+  if (!S.print) { let bt = 0;   // #flow の下の余白は 0 にした（拡大縮小しても画面の下にぴったり）
+    [...$("flow").querySelectorAll("tr.tot")].reverse().forEach(tr => { tr.querySelectorAll("th, td").forEach(c => { c.style.bottom = bt + "px"; }); bt += tr.offsetHeight; }); }
 }
 
 /* 現場名の候補（2026-11-13 ユーザー：完了した物、すでに載っている物は候補に出したくない）

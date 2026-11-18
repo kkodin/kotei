@@ -537,3 +537,10 @@ nav.appjump a:hover { background: #e8eef5; }
 #bGaiRows .grow { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 #bGaiRows .grow .gy { flex: 1; min-width: 0; }
 #bStf, #bNum, #bGaiRows .gn { width: 4em !important; text-align: right; }
+
+/* 2026-11-18 夜 人の流れの最下行（従業員・社員・合計）を画面の下に固定。bottom は app.js が行の高さから入れる。印刷では固定しない */
+#flow { padding-bottom: 0; }
+table.fl tr.tot > th, table.fl tr.tot > td { position: sticky; z-index: 2; }
+table.fl tr.tot > th.nm { left: 0; z-index: 4; }
+table.fl tr.tot.ttop > * { box-shadow: inset 0 2px 0 #888; }
+@media print { table.fl tr.tot > th, table.fl tr.tot > td { position: static !important; box-shadow: none; } }
