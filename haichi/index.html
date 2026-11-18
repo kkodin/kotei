@@ -538,10 +538,16 @@ window.HAICHI_VIEWER = {
   }
 };
 </script>
+<style>/* 左上のアプリ切替（common/appmenu.js）。見るだけ版のときだけ出す */
+.hxTitle{display:none}
+body.viewer .bar .hxTitle{display:inline-flex;flex:none;color:#1f3a5f;border-color:#b7c0c8;font-size:15px;padding:5px 10px}
+body.viewer .bar .hxTitle:hover{background:#e8eef5}
+@media print{.hxTitle{display:none!important}}</style>
 </head>
 <body>
 
 <div class="bar">
+  <button type="button" class="appTitle hxTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">配置表（閲覧のみ）</button>
   <b>配置表 入力</b>
   <button class="btn ver" id="btnVer" title="この画面の版と、これまでに直したことの一覧（更新履歴）を見る"><span class="lamp"></span>版 <span id="verNo"></span><span class="newtxt" hidden>お知らせがあります</span></button>
   <span>日付</span> <input type="date" id="day" hidden>
@@ -6865,5 +6871,6 @@ if(VIEWER){
   });
 })();
 </script>
+<script src="../common/appmenu.js"></script>
 </body>
 </html>
