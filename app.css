@@ -532,3 +532,8 @@ nav.appjump a:hover { background: #e8eef5; }
 .lfoot .hrow.sum > div { background: #eef3f8; }
 .lfoot .lfn.over { background: #d93a36 !important; color: #fff; font-weight: bold; }
 @media print { .lfoot { display: none !important; } .pchart { min-height: 0 !important; } }
+
+/* 2026-11-18 夜 工程の小窓の外注の行 */
+#bGaiRows .grow { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+#bGaiRows .grow .gy { flex: 1; min-width: 0; }
+#bStf, #bNum, #bGaiRows .gn { width: 4em !important; text-align: right; }
