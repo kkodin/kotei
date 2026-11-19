@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 u"""開発フォルダのアプリを、この置き場（kotei-test または kotei）へ写す（2026-11-16 開発環境の整理 2.4：公開の道具を1つに）
 
-    python tools\\公開する.py                 → 共通の部品へ移したアプリを全部写す（common・nippou・shousai・meibo）
+    python tools\\公開する.py                 → 共通の部品へ移したアプリを全部写す（common・nippou・shousai・meibo・spnippou）
     python tools\\公開する.py nippou shousai  → 指定したものだけ
     python tools\\公開する.py --push          → 写したあと、コミットして GitHub へ送る（公開される）
 
@@ -32,6 +32,7 @@ APPS = {
     "nippou": (u"02_日報アプリ/日報Vr*/web", "nippou", {"config.js", "lib"}),
     "shousai": (u"14_常用日報/常用日報Vr*/web", "nippou/shousai", {"config.js", "lib"} | ICONS),
     "meibo": (u"16_名簿/web", "meibo", {"config.js"}),
+    "spnippou": (u"02_日報アプリ/スマホ試作/web", "sp-nippou", {"config.js"}),   # 日報スマホ（2026-11-19 本番へ）
 }
 TEXT = (".js", ".html", ".css", ".json", ".md", ".txt")
 
@@ -67,7 +68,7 @@ def main():
         src, vr = newest(pat)
         if not src:
             sys.exit(u"元が見つかりません：" + pat)
-        label = u"%s %s%s" % (vr or {"common": u"共通", "meibo": u"名簿"}.get(i, i), now.strftime("%m/%d %H:%M"), u"（テスト）" if TEST else "")
+        label = u"%s %s%s" % (vr or {"common": u"共通", "meibo": u"名簿", "spnippou": u"スマホ"}.get(i, i), now.strftime("%m/%d %H:%M"), u"（テスト）" if TEST else "")
         dd = os.path.join(REPO, dest)
         seen = set()
         for root, dirs, files in os.walk(src):
