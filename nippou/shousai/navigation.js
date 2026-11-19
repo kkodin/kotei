@@ -30,7 +30,7 @@ function detailSites() {
     return (!f.query || [s.名前, s.略称, s.コード].some(v => nk(v).includes(nk(f.query)))) &&
       (!f.period || (m.period || "未設定") === f.period) &&
       (!f.area || areaLabel(m.area || "未設定") === f.area) && (!f.gen || genLabelOf(s) === f.gen);   // 2026-11-17：ボタンは見せる名前で絞る（名前を直した・足した候補も）
-  }).sort((a, b) => (!!a.完了 - !!b.完了) || siteLabel(a).localeCompare(siteLabel(b), "ja", { numeric: true }));
+  }).sort((a, b) => (isHonshaSite(b) - isHonshaSite(a)) || (!!a.完了 - !!b.完了) || siteLabel(a).localeCompare(siteLabel(b), "ja", { numeric: true }));   // 本社をいちばん上に
 }
 function detailOptions(id, items, value, all) {
   const values = [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
@@ -233,8 +233,23 @@ function detailRenderBrowse() {
     el.title = r ? `${n < 0 ? "前" : "次"}の日報：${r.date} ${siteLabel(r.s)}（${r.writer}）` : `${n < 0 ? "前" : "次"}の日報はありません`;
   }
 }
+/* 現場名を選んだ日にまだ日報が無ければ、記入者（自分）だけの日報を作る（2026-11-18 ユーザー：現場名と記入者が入っていれば、ほかが空でも保存する）。
+   ほかの人の日報を上書きしないよう、この現場の「使用中」の札が自分のものになり、共有を読み直してもまだ無いときだけ作る */
+async function detailNewDay(sid, k) {
+  const same = () => UI.site === sid && UI.day === k && !day() && !RO;
+  for (let i = 0; i < 40 && signedIn() && !DEMO; i++) {   // 札を待つ（20秒まで）
+    if (!same()) return;
+    if (LOCK.site === sid && LOCK.mine) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  if (!same() || (signedIn() && !DEMO && !(LOCK.site === sid && LOCK.mine))) return;
+  if (signedIn() && !DEMO) { try { await sync(); } catch (e) { return; } if (!same()) return; }
+  if (!myName() || !canEdit()) return;
+  const d = ensureDay(); if (!d || !d.担当者) return;
+  d.更新 = now(); save(); renderTabs(); refreshSheet();
+  toast(`${siteLabel(site())}　${jpDate(k)} の日報を作りました（記入者：${d.担当者}）`, 4000);
+}
 function detailOpenSites() {
-  if (!site() && !UI.newForm) { toast("先に右上の「区分」（常用・請負）を選んでください", 4000); blinkForm(); return; }   // 新規の日報は区分が先
   detailCommit(); detailRenderPickers(); chipBind(); openDlg($("dSite"));
   setTimeout(() => $("siteQuery").focus(), 0);
 }
@@ -264,18 +279,21 @@ function detailInit() {
     const b = $("peopleReload"); b.disabled = true;
     try { await loadMasters(false); detailRenderPeople(); } finally { b.disabled = false; }
   };
-  for (const id of ["hGen", "hSite"]) for (const el of [$(id), $(id).previousElementSibling]) {
+  // 元請業者は押しても選ばない（2026-11-18 ユーザー：現場名を選べば出る）。現場名だけが「現場名を選ぶ」の入口。（本社）✓ を押したときは窓を出さない
+  for (const el of [$("hSite"), $("hSite").previousElementSibling]) {
     el.classList.add("site-trigger"); el.tabIndex = 0; el.setAttribute("role", "button"); el.title = "現場名を選ぶ";
-    el.onclick = detailOpenSites;
-    el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenSites(); } };
+    el.onclick = e => { if (e.target.closest(".honChk")) return; detailOpenSites(); };
+    el.onkeydown = e => { if (e.target.closest(".honChk")) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); detailOpenSites(); } };
   }
+  $("hGen").title = "現場名を選ぶと出ます";
   $("detailChooseSite").onclick = detailOpenSites;
   $("hDate").tabIndex = 0; $("hDate").setAttribute("role", "button");
   $("hDate").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCal(); } };
   $("bPrevD").onclick = () => detailStep(-1); $("bNextD").onclick = () => detailStep(1);
   $("siteResults").onclick = e => {
     const b = e.target.closest("[data-select-site]"); if (!b) return;
-    UI.detailView = "site"; closeDlg($("dSite")); detailSelectSite(b.dataset.selectSite);
+    UI.detailView = "site"; closeDlg($("dSite")); const k = UI.day; detailSelectSite(b.dataset.selectSite);
+    if (!day()) detailNewDay(b.dataset.selectSite, k);
   };
   // 開いたときに「現場名を選ぶ」を自動で出すのはやめた（2026-11-15 ユーザー：入口の工事日報から現場・日を決めて開く）。現場名の欄を押せば今までどおり選べる
 }

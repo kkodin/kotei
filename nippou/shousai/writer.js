@@ -53,10 +53,13 @@ function rowOfDay(s, k, d, old) {
   const mach = [...new Set((d.下 || []).filter(r => r && r[5] && !/通勤/.test(r[5])).map(r => r[5] + (r[6] ? " " + r[6] : "")))];
   const L = (d.上 || []).filter(r => r && (r[1] || r[4])).map(r => ({ 予定: String(r[1] || ""), 報告: String(r[4] || "") }));
   const sh = self ? shiftOf(self, s) : s.勤務 === "夜" ? "夜" : "昼";
-  const row = { ...(old || {}), id: (old && old.id) || uid(), 行先: s.略称 || s.名前, コード: s.コード || "", 始め: self ? self[1] || "" : "", 終わり: self ? self[2] || "" : "", 終日: false, 区分: sh,
+  // 本社（2026-11-18）：現場名が本社 → 行先「本社」。（本社）✓ → 工事日報の「本社＋現場名」と同じ形（行先「本社」・関連現場）
+  const hon = isHonshaSite(s) || !!d.本社, place = hon ? { 行先: "本社", コード: "" } : { 行先: s.略称 || s.名前, コード: s.コード || "" };
+  const row = { ...(old || {}), id: (old && old.id) || uid(), ...place, 始め: self ? self[1] || "" : "", 終わり: self ? self[2] || "" : "", 終日: false, 区分: sh,
     作業行: L.length ? L : [{ 予定: "", 報告: "" }], 作業: L.map(l => l.報告 || l.予定).join("\n"), 予定: (old && old.予定) || { 人: [], 外注: [], 機械: [] },
     人: ppl, 外注: [...gai.values()], 機械: mach, 記入者: w, 書式: { ...JSON.parse(JSON.stringify(d)), 現場id: s.id }, 更新: now() };
   if (self) delete row.本人; else row.本人 = false;   // 記入者が作業員に入っていなければ代理で書いた日報
+  if (hon && !isHonshaSite(s)) row.関連現場 = { 名前: s.略称 || s.名前, コード: s.コード || "" }; else delete row.関連現場;
   return row;
 }
 const isMine = (r, sid) => r && r.書式 && r.書式.現場id === sid;

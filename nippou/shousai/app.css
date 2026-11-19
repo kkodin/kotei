@@ -471,6 +471,17 @@ dialog .btns.hoisted { display: none; }
 .ttlRow .formSel.must select { animation: formBlink 1s ease-in-out infinite; }
 .ttlRow .formSel.blink select { animation: formBlink .35s ease-in-out 4; }
 #hGen:empty::before, #hSite:empty::before { content: "押して選ぶ"; color: #b0b7bf; font-size: 12px; }
+/* 2026-11-18 ユーザー：元請業者は現場名から出る（押して選ばない）。常用 ✓・（本社）✓ */
+#hGen:empty::before { content: "現場名を選ぶと出ます"; }
+.ttlRow .formSel { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; padding: 2px 8px; border: 1px solid #b7c0c8; border-radius: 4px; cursor: pointer; user-select: none; }
+.ttlRow .formSel input { width: 16px; height: 16px; margin: 0; cursor: pointer; }
+.ttlRow .formSel.on { background: #e3f2fd; border-color: #0072B2; color: #0b4f7c; font-weight: bold; }
+.ttlRow .formSel.hide { display: none; }
+#hSite { position: relative; }
+#hSite .honChk { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: normal; color: #444; cursor: pointer; user-select: none; }
+#hSite .honChk input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
+#hSite .honChk.on { color: #0b4f7c; font-weight: bold; }
+@media print { .ttlRow .formSel:not(.on), #hSite .honChk:not(.on) { display: none; } .ttlRow .formSel input, #hSite .honChk input { display: none; } .ttlRow .formSel { border: 0; background: none; } }
 .ttlRow .copyWork { position: absolute; left: 0; top: 2px; font-size: 12px; letter-spacing: 0; font-weight: normal; }
 @media print { #hGen:empty::before, #hSite:empty::before, .ttlRow .copyWork { display: none; } }
 .calgrid button .pp.what { color: #8a5a00; }   /* 人のいない記入済みの日：休工・燃料など（2026-11-17） */

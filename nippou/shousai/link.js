@@ -287,8 +287,8 @@ function linkEntry(n) {
   const q = new URLSearchParams(location.search); if (q.get("open") !== "entry") return;
   if (!q.get("code") && !q.get("name")) {   // 現場を決めずに開く（今日の日報でまだ現場が無いとき）：用紙の上の現場名の欄に入れる
     history.replaceState(null, "", location.pathname + (DEMO ? "?demo" : ""));
-    UI.site = null; UI.gen = null; UI.newForm = ""; UI.day = q.get("d") || ymd(new Date()); UI.pg = 0; saveUI(); showTab("sheet"); renderAll();   // 新規の日報：元請・現場は空欄、区分は選んでから
-    setTimeout(blinkForm, 300); return;
+    UI.site = null; UI.gen = null; UI.newForm = ""; UI.day = q.get("d") || ymd(new Date()); UI.pg = 0; saveUI(); showTab("sheet"); renderAll();   // 新規の日報：元請・現場は空欄（区分を先に選ばせるのは 2026-11-18 にやめた）
+    return;
   }
   const code = q.get("code"), name = q.get("name"), x = DB.現場.find(v => code && String(v.コード) === code) || (name && bestOf(DB.現場, v => siteScore(v, name))[0]);
   if (!x) {   // 現場一覧を読む前かもしれないので、しばらく待ってから探し直す。見つからなければ知らせる

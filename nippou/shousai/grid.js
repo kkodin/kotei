@@ -109,8 +109,8 @@ function createGrid(opt) {
     dd.hidden = !hasDd;
     if (hasDd) Object.assign(dd.style, { left: A.x + A.w - 17 + "px", top: A.y + 1 + "px", height: A.h - 3 + "px" });
     // 見出しの色（選んでいる行・列）
-    table.querySelectorAll(".xlch th.on, .xlrh.on").forEach(x => x.classList.remove("on"));
-    for (let c = lef(); c <= rig(); c++) { const th = table.rows[0].cells[c + 1]; th && th.classList.add("on"); }
+    table.querySelectorAll(".xlch th.on, .xlrh.on, th[data-col].on").forEach(x => x.classList.remove("on"));
+    for (let c = lef(); c <= rig(); c++) { const th = table.querySelector(`th[data-col="${c}"]`); th && th.classList.add("on"); }   // 見出しが2段のとき（燃料・ETC）も列の見出しへ
     for (let r = top(); r <= bot(); r++) { const th = table.rows[r + opt.headRows] && table.rows[r + opt.headRows].cells[0]; th && th.classList.add("on"); }
     if (!st.edit) { ed.value = ""; }
     if (opt.onSelect) opt.onSelect(cellName(st.r, st.c), st.edit ? null : opt.get(st.r, st.c), rangeStat());

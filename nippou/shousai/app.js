@@ -82,6 +82,8 @@ function aliasKou(x, A = DB.職種別名) {
     rowsOf(d).forEach(r => { if (r && A[r[3]]) { r[3] = A[r[3]]; c2 = true; } });
     rowsOf(d).forEach(r => { if (r) [12, 13].forEach(i => { if (r[i] === OLD_SELF) { r[i] = SELF; c2 = true; } }); });
     (d.車 || []).forEach(r => { if (r && r[5] === OLD_SELF) { r[5] = SELF; c2 = true; } });
+    // 燃料・ETC の形（2026-11-19）：前の「高速」の行の実費は ETC の金額へ
+    (d.車 || []).forEach(r => { if (r && r[0] === "高速" && r[4] !== "" && r[4] != null && (r[11] === "" || r[11] == null)) { r[11] = r[4]; r[4] = ""; c2 = true; } });
     d.上.forEach(r => { if (r && A[r[0]]) { r[0] = A[r[0]]; c2 = true; } });
     if (c2) { d.更新 = now(); ch = true; }
   });
@@ -129,9 +131,10 @@ function ensureDay() {
   return s.日[UI.day];
 }
 // 中身のある日か（空の日は保存しない）
+// 2026-11-18 ユーザー：現場名と記入者が入っていれば、ほかに何も書いていなくても保存する（記入者・（本社）✓ も中身に数える）
 function hasData(d) {
   if (!d) return false;
-  if (d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
+  if (d.担当者 || d.本社 || d.天気 || d.気温 || d.備考 || d.サイン || (d.未使用機材 || []).length) return true;
   return [...d.上, ...d.下, ...(d.外注 || []), ...(d.車 || [])].some(r => r && r.some(v => v !== "" && v != null));
 }
 function tidy(d) {
@@ -229,18 +232,21 @@ const DNC = [
 /* 高速・燃料（2026-10-31 ユーザー：高速を使ったか（往路・復路・往復）と区間、燃料を何リットル入れたか（軽油・ガソリン）、
    だれ（会社・名前・車両名・車番）を日報に書き、集計に出す。A4 に収めるため既定は3行）。日[日付].車 = [[列0〜9]] */
 const CAR_ROWS = 3;   // 1ページの行数（PG.car と同じ）
+/* 2026-11-19 ユーザー：燃料カード・ETCカードの所有者別の形に（会社名・名前・車両名・所有者・車番・燃料(L)・ETC 使用区間／金額・メモ）。
+   1行＝1台（燃料と ETC を同じ行に）。データの列の番号は前のまま（前に書いた日報もそのまま読める）、所有者＝10・ETC 金額＝11 を足した。
+   前の 0 種類・1 往復 は画面に出さない（前の行の金額の計算にだけ使う）。前の 4 実費 は、燃料の行の実費として残る（高速の行の実費は開いたときに 11 へ移す） */
 const CARC = [
-  { t: "種類", w: 56, k: "txt", cls: "c", align: "c" },          // 0 高速／軽油／ガソリン
-  { t: "往復", w: 50, k: "txt", cls: "c", align: "c" },          // 1 往路／復路／往復（高速）
-  { t: "高速の区間", w: 150, k: "txt" },                         // 2
-  { t: "給油(L)", w: 54, k: "num", cls: "r", align: "r" },       // 3 燃料のリットル
-  { t: "実費", w: 60, k: "num", cls: "r", align: "r" },          // 4 実際の金額（入れると単価の代わり）
-  { t: "会社", w: 110, k: "txt", cls: "sepL" },                  // 5
-  { t: "名前", w: 110, k: "txt" },                               // 6
-  { t: "車両名", w: 120, k: "txt" },                             // 7
-  { t: "車番", w: 90, k: "txt" },                                // 8
-  { t: "メモ", w: 294, k: "txt" }                                // 9
+  { t: "会社名", w: 110, k: "txt", di: 5 },
+  { t: "名前", w: 110, k: "txt", di: 6 },
+  { t: "車両名", w: 120, k: "txt", di: 7 },
+  { t: "所有者", w: 110, k: "txt", di: 10 },
+  { t: "車番", w: 90, k: "txt", di: 8 },
+  { t: "燃料(L)", w: 60, k: "num", cls: "r", align: "r", di: 3 },
+  { t: "使用区間", w: 160, k: "txt", cls: "sepL", di: 2, grp: "ETC" },
+  { t: "金額", w: 70, k: "num", cls: "r", align: "r", di: 11, grp: "ETC" },
+  { t: "メモ", w: 264, k: "txt", cls: "sepL", di: 9 }
 ];
+const carHas = r => !!r && [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].some(i => r[i] !== "" && r[i] != null);
 CARC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
 const ARR = { up: "上", dn: "下", gai: "外注", car: "車" };   // 表 → 日のデータの名前
 // 外注の欄（2026-11-03 ユーザー：同じ人を作業員の欄に入れれば作業員扱い、外注の欄に入れれば外注扱い。同じ日に重ねない。昼夜がちがえばよい）。
@@ -294,7 +300,7 @@ UPC.forEach((c, i) => c.letter = String.fromCharCode(65 + i));
 // 画面の順のうち、di の無い列はデータの 0〜11 を順に当てる（会社＝12・所有者＝13 は後ろに足した列）
 { let k = 1; DNC.forEach((c, i) => { c.letter = String.fromCharCode(65 + i); if (c.di == null) c.di = k++; }); }   // 作業員名＝0 は上で決めた。始業＝1・終業＝2・工種＝3・残＝4・使用機材＝5・規格＝6
 const GAIC = DNC.slice(0, 7).map(c => ({ ...c }));   // 外注の欄：会社・作業員名〜残（使用機材・材料は作業員の表に書く）
-const di = (key, c) => key === "dn" || key === "gai" ? DNC[c].di : key === "up" ? (UPC[c].di ?? c) : c;   // 画面の列 → データの列
+const di = (key, c) => key === "dn" || key === "gai" ? DNC[c].di : key === "up" ? (UPC[c].di ?? c) : key === "car" ? CARC[c].di : c;   // 画面の列 → データの列
 const SECS = { up: UPC, dn: DNC, gai: GAIC, car: CARC };
 
 // 累計：同じ「使用機材＋規格」（品名）の数量を、締め期間（または工事の始め）からこの日まで足す
@@ -690,7 +696,7 @@ function applyCells(key, ch, noCheck) {
     });
   }
   pushUndo();
-  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : SECS[key].length;
+  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : key === "car" ? 12 : SECS[key].length;
   const touched = new Set();
   for (const { r, c, v } of ch) {
     if (r >= PG[key] * pageCount(d)) continue;
@@ -796,29 +802,36 @@ function carFill(s, row, c0) {
   }
 }
 // 高速・燃料の1行の金額：実費があればそれ。高速＝区間の単価（通勤費の高速代）×回数（往復は2）、燃料＝材料の単価×リットル
+// 2026-11-19：1行に ETC と燃料の両方。ETC＝金額（11）があればそれ、無ければ区間の単価（前の「高速」の行は往復で2回）。燃料＝リットル×材料の単価（種類が無ければ「燃料」）、前の燃料の行の実費（4）があればそれ
 function carAmount(s, r, date) {
-  const jv = han(String(r[4] ?? "")).replace(/[,，円\s]/g, ""), jh = jv !== "" && !isNaN(Number(jv)) ? Number(jv) : null;
-  if (r[0] === "高速") {
-    const n = r[1] === "往復" ? 2 : 1, p = itemPrice(s, ["通勤費"], "高速代" + (r[2] ? "（" + r[2] + "）" : ""), "", "", date);
-    return { 種: "高速", 回: n, L: 0, 金額: jh != null ? jh : p ? p.単価 * n : 0, 単価: p ? p.単価 : null, 実費: jh != null, なし: jh == null && !p };
+  const numv = v => { const t = han(String(v ?? "")).replace(/[,，円\s]/g, ""); return t !== "" && !isNaN(Number(t)) ? Number(t) : null; };
+  let etc = null, fuel = null;
+  const ej = numv(r[11]);
+  if (ej != null || r[2] || r[0] === "高速") {
+    const n = r[0] === "高速" && r[1] === "往復" ? 2 : 1, p = ej == null ? itemPrice(s, ["通勤費"], "高速代" + (r[2] ? "（" + r[2] + "）" : ""), "", "", date) : null;
+    etc = { 区間: r[2] || "", 回: n, 金額: ej != null ? ej : p ? p.単価 * n : 0, 単価: p ? p.単価 : null, 実費: ej != null, なし: ej == null && !p };
   }
-  const L = Number(han(String(r[3] ?? "")).replace(/[,，\s]/g, "")) || 0, p = r[0] ? itemPrice(s, ["材料"], r[0], "", "", date) : null;
-  return { 種: r[0] || "", 回: 0, L, 金額: jh != null ? jh : p ? p.単価 * L : 0, 単価: p ? p.単価 : null, 実費: jh != null, なし: jh == null && !p };
+  const L = Number(han(String(r[3] ?? "")).replace(/[,，\s]/g, "")) || 0, fj = r[0] !== "高速" ? numv(r[4]) : null;
+  if (L || fj != null) {
+    const k = r[0] && r[0] !== "高速" ? r[0] : "燃料", p = fj == null ? itemPrice(s, ["材料"], k, "", "", date) : null;
+    fuel = { 種: k, L, 金額: fj != null ? fj : p ? p.単価 * L : 0, 単価: p ? p.単価 : null, 実費: fj != null, なし: fj == null && !p };
+  }
+  return { etc, fuel, 金額: (etc ? etc.金額 : 0) + (fuel ? fuel.金額 : 0), なし: !!((etc && etc.なし) || (fuel && fuel.なし)) };
 }
-// だれ（会社・名前・車両名・車番）ごと
+// だれ（会社名・名前・車両名・所有者・車番）ごと
 function carByWho(C) {
   const by = new Map();
   for (const x of C) {
-    const k = x.who.join("\t"), v = by.get(k) || { who: x.who, 往路: 0, 復路: 0, 往復: 0, 高速金額: 0, 軽油: 0, ガソリン: 0, 他L: 0, 燃料金額: 0 };
-    if (x.A.種 === "高速") { v[["往路", "復路", "往復"].includes(x.r[1]) ? x.r[1] : "往路"]++; v.高速金額 += x.A.金額; }
-    else { if (x.r[0] === "軽油" || x.r[0] === "ガソリン") v[x.r[0]] += x.A.L; else v.他L += x.A.L; v.燃料金額 += x.A.金額; }
+    const k = x.who.join("\t"), v = by.get(k) || { who: x.who, L: 0, 燃料金額: 0, ETC回: 0, ETC金額: 0 };
+    if (x.A.fuel) { v.L += x.A.fuel.L; v.燃料金額 += x.A.fuel.金額; }
+    if (x.A.etc) { v.ETC回 += x.A.etc.回; v.ETC金額 += x.A.etc.金額; }
     by.set(k, v);
   }
   return [...by.values()].sort((a, b) => a.who.join("\t").localeCompare(b.who.join("\t"), "ja"));
 }
 function carByArea(C) {
   const by = new Map();
-  for (const x of C) if (x.A.種 === "高速") { const k = x.r[2] || "（区間なし）", v = by.get(k) || { 区間: k, 往路: 0, 復路: 0, 往復: 0, 回: 0, 金額: 0 }; v[["往路", "復路", "往復"].includes(x.r[1]) ? x.r[1] : "往路"]++; v.回 += x.A.回; v.金額 += x.A.金額; by.set(k, v); }
+  for (const x of C) if (x.A.etc) { const k = x.A.etc.区間 || "（区間なし）", v = by.get(k) || { 区間: k, 回: 0, 金額: 0 }; v.回 += x.A.etc.回; v.金額 += x.A.etc.金額; by.set(k, v); }
   return [...by.values()];
 }
 function rowOp(key, op, r, n) {
@@ -826,7 +839,7 @@ function rowOp(key, op, r, n) {
   if (key === "up" && op === "insert") { toast("作業予定・完了報告は5行です。足りないときは「＋ ページを足す」"); return; }
   r += pgOff(key);   // 表の行 → データの行（いまのページの分ずらす）
   pushUndo();
-  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : SECS[key].length;
+  const d = ensureDay(), arr = (d[ARR[key]] ||= []), NC = key === "up" ? 5 : key === "gai" ? 15 : key === "car" ? 12 : SECS[key].length;
   if (op === "insert") { while (arr.length < r) arr.push(Array(NC).fill("")); arr.splice(r, 0, ...Array.from({ length: n }, () => Array(NC).fill(""))); if (key === "up") arr.length = Math.min(arr.length, UP_ROWS); }
   else arr.splice(r, n);
   tidy(d); if (!hasData(d)) dropDay(s, UI.day);
@@ -855,8 +868,7 @@ function colWords(key, c, row) {
   if (key === "dn" && c === 6) { s.機材.forEach(m => add(m.規格, 100)); MS.機械.forEach(m => add(m.規格, 50)); }
   if (key === "dn" && c === 14) { add("昼", 1000); add("夜", 999); }
   if (key === "car") {
-    if (c === 0) ["高速", "軽油", "ガソリン"].forEach((k, i) => add(k, 1000 - i));
-    if (c === 1) ["往路", "復路", "往復"].forEach((k, i) => add(k, 1000 - i));
+    if (c === 10) owners(s).forEach(x => add(x, 100));   // 所有者（カードの持ち主）
     if (c === 2) (s.単価 || []).forEach(p => { if (p.分類 === "高速代" && p.名前) add(p.名前, 100); });
     if (c === 5) companies(s).forEach(x => add(x, 100));
     if (c === 6) { s.作業員.forEach(w => add(masterName(w.名前), 100)); MS.社員.forEach(n => add(n, 60)); MS.従業員.forEach(n => add(n, 60)); MS.外注業者.forEach(n => add(n, 20)); }
@@ -870,6 +882,17 @@ function colWords(key, c, row) {
 }
 
 /* ================= 画面：日報 ================= */
+// 燃料・ETC の見出し（2段：ETC の下に 使用区間・金額）
+function carHead(cols) {
+  const th = (c, i, a) => `<th data-col="${i}"${a || ""} class="${(c.cls || "").includes("sepL") ? "sepL" : ""}">${esc(c.t)}</th>`;
+  let r1 = `<tr class="xlhr sh"><th class="xlrh" rowspan="2"></th>`, r2x = `<tr class="xlhr sh">`;
+  cols.forEach((c, i) => {
+    if (!c.grp) { r1 += th(c, i, ' rowspan="2"'); return; }
+    if (!i || cols[i - 1].grp !== c.grp) r1 += `<th colspan="${cols.filter(x => x.grp === c.grp).length}" class="sepL">${esc(c.grp)}</th>`;
+    r2x += th(c, i);
+  });
+  return r1 + "</tr>" + r2x + "</tr>";
+}
 const grids = {};
 let cur = "dn";
 function setCur(k) {
@@ -878,7 +901,7 @@ function setCur(k) {
 }
 function buildSheet() {
   $("sheet").innerHTML = `
-    <div class="ttlRow"><button type="button" class="sub small copyWork" id="bCopyWork" title="ほかの日の 作業予定・作業員・使用機材・材料 をこの日に写す（完了報告は写さない）">作業内容をコピー</button>作　業　日　報<span id="pgNo"></span><label class="formSel" title="この日の仕事が常用か請負か。常用でない日は金額（常用の計算）に入れません">区分 <select id="hForm"></select></label></div>
+    <div class="ttlRow"><button type="button" class="sub small copyWork" id="bCopyWork" title="ほかの日の 作業予定・作業員・使用機材・材料 をこの日に写す（完了報告は写さない）">作業内容をコピー</button>作　業　日　報<span id="pgNo"></span><label class="formSel" title="常用清算で請求を上げる現場（締め日ごとの請求）の日に付けます。付けた日だけ常用の金額に入ります"><input type="checkbox" id="hForm"> 常用</label></div>
     <table class="hd">
       <colgroup><col style="width:90px"><col><col style="width:70px"><col style="width:150px"><col style="width:44px"><col style="width:84px"><col style="width:84px"><col style="width:70px"><col style="width:170px"></colgroup>
       <tr><td class="l">元請業者</td><td class="v" id="hGen"></td><td class="l">日　付</td><td class="v dpick" id="hDate" title="押すとカレンダーから日を選べます"></td><td class="v" id="hWd"></td>
@@ -906,17 +929,17 @@ function buildSheet() {
       <div id="g_gai"></div>
     </div>
     <div class="low sec" data-key="car">
-      <div class="secT"><b>高速・燃料</b><span class="note">高速＝往路・復路・往復と区間／燃料＝軽油・ガソリンと給油(L)。だれ（会社・名前・車両名・車番）も。実費を入れるとその金額</span><span class="cnt" id="cntCar"></span></div>
+      <div class="secT"><b>燃料カード・ETCカードの所有者別</b><span class="note">1行に1台。燃料は入れたリットル、ETC は使用区間と金額</span><span class="cnt" id="cntCar"></span></div>
       <div id="g_car"></div>
     </div>`;
   for (const key of ["up", "dn", "gai", "car"]) {
     const cols = SECS[key];
     grids[key] = createGrid({
-      host: $("g_" + key), scroller: $("sheetWrap"), cols, headRows: 1, tabBlocks: key === "dn" /* 作業員・使用機材・材料名のまとまりごとに Tab で折り返す */, rowBase: 1, rowHeadW: 0, noLetters: true,   // 左端の番号の列は出さない（2026-10-31 ユーザー）
+      host: $("g_" + key), scroller: $("sheetWrap"), cols, headRows: key === "car" ? 2 : 1, tabBlocks: key === "dn" /* 作業員・使用機材・材料名のまとまりごとに Tab で折り返す */, rowBase: 1, rowHeadW: 0, noLetters: true,   // 左端の番号の列は出さない（2026-10-31 ユーザー）
      
       formula: null, isCur: () => cur === key, onFocus: () => setCur(key),
       rows: () => PG[key],   // 1ページの行数。足りなければページを足す
-      head: () => `<tr class="xlhr sh"><th class="xlrh"></th>${cols.map((c, i) => `<th data-col="${i}" class="${(c.cls || "").includes("sepL") ? "sepL" : ""}">${esc(c.t)}</th>`).join("")}</tr>`,
+      head: () => key === "car" ? carHead(cols) : `<tr class="xlhr sh"><th class="xlrh"></th>${cols.map((c, i) => `<th data-col="${i}" class="${(c.cls || "").includes("sepL") ? "sepL" : ""}">${esc(c.t)}</th>`).join("")}</tr>`,
       get: (r, c) => getCell(key, r + pgOff(key), di(key, c)),
       deco: (r, c) => {
         if (key !== "dn" && key !== "gai") return null;
@@ -932,7 +955,7 @@ function buildSheet() {
       // 作業内容（上の欄）は自由記入だけ：選択肢・補い・▾ は出さない（2026-10-31 ユーザー）
       complete: (c, v) => { if (key === "up") return null; const lv = v.toLowerCase(), ws = colWords(key, di(key, c), curRow(key)); if (ws.some(x => x.toLowerCase() === lv)) return null; return ws.find(x => x.toLowerCase().startsWith(lv) && x.length > v.length) || null; },   // Excel と同じく、同じ言葉があれば補わない
       list: c => key === "up" ? [] : colWords(key, di(key, c), curRow(key)),
-      hasList: c => key === "up" ? false : key === "car" ? [0, 1, 2, 5, 6, 7, 8].includes(c) : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
+      hasList: c => key === "up" ? false : key === "car" ? [2, 5, 6, 7, 8, 10].includes(di(key, c)) : [0, 3, 5, 6, 9, 12, 13, 14].includes(di(key, c)),
       apply: ch => applyCells(key, ch.map(x => ({ ...x, r: x.r + pgOff(key), c: di(key, x.c) }))),
       undo, redo,
       onSheet: dir => moveDay(dir),
@@ -946,7 +969,7 @@ function buildSheet() {
       menu: (x, y, sel) => openMenu(key, x, y, sel),
       print: () => printDays([UI.day]),
       toast,
-      cellName: (r, c) => ({ up: "上", dn: "下", gai: "外注", car: "高速・燃料" })[key] + (r + 1) + "・" + cols[c].t,
+      cellName: (r, c) => ({ up: "上", dn: "下", gai: "外注", car: "燃料・ETC" })[key] + (r + 1) + "・" + cols[c].t,
       onSelect: (name, val, stat) => {
         if (cur !== key) return;
         $("stat").textContent = stat || "";
@@ -977,31 +1000,43 @@ function buildSheet() {
     save(); renderTabs(); detailRenderBrowse();
   });
   $("hDate").addEventListener("click", openCal);
+  // 常用 ✓（2026-11-18 ユーザー：区分「選んでください・常用・請負」をやめる。常用清算で請求を上げる現場（締め日ごとの請求）を区別するため、
+  // 常用のときだけ印を付ける。付けない日＝請負（データは前と同じ 日.形態 "常用"／"請負"。集計・金額はそのまま）。先に選ばなくても書ける
   $("hForm").addEventListener("change", () => {
-    const s = site();
-    if (!s) { UI.newForm = $("hForm").value; saveUI(); refreshSheet(); toast("次に「現場名」を押して現場を選んでください", 4000); return; }   // 新規の日報：区分が先（2026-11-17 ユーザー）
+    const s = site(), v = $("hForm").checked ? "常用" : "請負";
+    if (!s) { $("hForm").checked = false; toast("先に「現場名」を押して現場を選んでください", 4000); return; }
     if (!canEdit()) { refreshSheet(); return; }
-    const v = $("hForm").value, d0 = day();
+    const d0 = day();
     if (hasData(d0)) { pushUndo(); d0.形態 = v; d0.更新 = now(); }   // まだ書いていない日は覚えるだけ（書き始めたときに入る）
     s.前回形態 = v; s.設定更新 = now();
-    if (!s.形態) { s.形態 = v; formShare(s); }
     save(); renderPickers(); refreshSheet();
+  });
+  // （本社）✓（2026-11-18 ユーザー：本社勤務だが、この現場の仕事として扱う日。現場名が「本社」のときは出さない）。日.本社 = true
+  document.addEventListener("change", e => {
+    if (e.target.id !== "hHon") return;
+    const s = site(); if (!s) return;
+    if (!canEdit()) { refreshSheet(); return; }
+    pushUndo();
+    const d = ensureDay(); if (e.target.checked) d.本社 = true; else delete d.本社;
+    d.更新 = now(); if (!hasData(d)) dropDay(s, UI.day);
+    save(); renderTabs(); detailRenderBrowse(); refreshSheet();
   });
   hv("hWx", "天気"); hv("hTmp", "気温", v => { v = tmpOnly(v); return v === "-" || v === "." ? "" : normNum(v); }); hv("hTan", "担当者", v => masterName(v.trim()));
 }
 function refreshSheet() {
   detailRenderBrowse();
   const s = site(), d = day();
-  $("hGen").textContent = gen() ? genName(gen()) : "";   // 新規の日報は空欄（2026-11-17 ユーザー）。押すと「現場名を選ぶ」
-  $("hSite").textContent = s ? s.名前 : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）";
+  $("hGen").textContent = gen() ? genName(gen()) : "";   // 元請業者は現場名から出る（2026-11-18 ユーザー：元請は入れなくてよい。押しても何も起きない）
+  // 現場名（押すと「現場名を選ぶ」）。右に（本社）✓（現場名が本社のときは出さない）
+  { const hon = s && !isHonshaSite(s), on = !!(d && d.本社);
+    $("hSite").innerHTML = s ? esc(s.名前) + (hon ? `<label class="honChk${on ? " on" : ""}" title="本社勤務だが、この現場の仕事として扱う日に付けます（工事日報では「本社（${esc(s.略称 || s.名前)}）」）"><input type="checkbox" id="hHon"${on ? " checked" : ""}${RO ? " disabled" : ""}>（本社）</label>` : "") : signedIn() ? "" : "（右上の「サインイン」をすると現場が出ます）"; }
   $("hDate").textContent = jpDate(UI.day);
-  // 区分：現場設定（工事日報で決めた区分）を読み終えるまでは「読み込み中…」（2026-11-17 ユーザー：「選んでください」のあと勝手に常用になったように見えた）。
-  // 現場設定から入った区分は、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる
-  { const v = !s ? (UI.newForm || "") : hasData(d) ? formOf(s, UI.day) : nextForm(s), wait = !!s && !v && signedIn() && !FORM_READY;
-    $("hForm").innerHTML = (v ? "" : `<option value="" selected>${wait ? "読み込み中…" : "選んでください"}</option>`) + ["常用", "請負"].map(a => `<option${a === v ? " selected" : ""}>${a}</option>`).join(""); $("hForm").disabled = wait;   // 現場を選ぶ前でも区分は選べる（新規の日報は区分が先）
+  // 常用 ✓（2026-11-18）。現場設定（工事日報で決めた区分）から入ったときは、どこから入ったかを欄の説明（マウスを乗せると出る）と下の小さな字で知らせる。本社では出さない
+  { const v = !s ? "" : hasData(d) ? formOf(s, UI.day) : nextForm(s);
+    $("hForm").checked = v === "常用"; $("hForm").disabled = !s;
     const from = s && v && !s.前回形態 && s.形態 === v && s.形態の元 ? s.形態の元 : "";
-    $("hForm").title = from ? `${v}：${from} から入りました。この日だけ変えるときはここで選び直してください` : "";
-    const L = $("hForm").closest("label").classList; L.toggle("uke", v === "請負"); L.toggle("must", !v && !wait); document.body.classList.toggle("needForm", !v && !wait);
+    $("hForm").closest("label").title = from ? `${v}：${from} から入りました。この日だけ変えるときは付け直してください` : "常用清算で請求を上げる現場（締め日ごとの請求）の日に付けます。付けた日だけ常用の金額に入ります";
+    const L = $("hForm").closest("label").classList; L.toggle("on", v === "常用"); L.toggle("hide", !!s && isHonshaSite(s)); document.body.classList.remove("needForm");
     let note = $("hFormFrom"); if (!note) { note = document.createElement("small"); note.id = "hFormFrom"; note.className = "formFrom"; $("hForm").closest("label").appendChild(note); }
     note.textContent = from ? "（" + from + "）" : ""; }
   const w = wd(UI.day);
@@ -1019,8 +1054,8 @@ function refreshSheet() {
     $("pgBar").innerHTML = `<button class="sub" data-pg="-1" title="前のページ"${UI.pg ? "" : " disabled"}>◀</button><span class="pgn">${(UI.pg || 0) + 1}／${n}ページ</span><button class="sub" data-pg="1" title="次のページ"${(UI.pg || 0) < n - 1 ? "" : " disabled"}>▶</button><button class="sub" id="pgAdd" title="作業予定・人員・機械が1ページに収まらないとき、この日の入力ページを足す">＋ ページを足す</button>${n > 1 && UI.pg ? `<button class="sub danger" id="pgDel" title="このページの行を消す">このページを消す</button>` : ""}`; }
   grids.up.render(); grids.dn.render(); grids.gai.render(); grids.car.render();
   { const n = ((d && d.外注) || []).filter(r => r && r[0]).length; $("cntGai").textContent = n ? `外注 ${n}名（上の作業員の計に入っています）` : ""; }
-  { const C = ((d && d.車) || []).filter(r => r && r[0]), hw = C.filter(r => r[0] === "高速").length, L = k => C.filter(r => r[0] === k).reduce((a, r) => a + (Number(r[3]) || 0), 0);
-    $("cntCar").textContent = [hw ? `高速 ${hw}件` : "", L("軽油") ? `軽油 ${r2(L("軽油"))}L` : "", L("ガソリン") ? `ガソリン ${r2(L("ガソリン"))}L` : ""].filter(Boolean).join("・"); }
+  { const C = ((d && d.車) || []).filter(carHas), L = C.reduce((a, r) => a + (Number(han(String(r[3] ?? ""))) || 0), 0), ec = C.filter(r => r[2] || (r[11] !== "" && r[11] != null) || r[0] === "高速").length;
+    $("cntCar").textContent = [L ? `燃料 ${r2(L)}L` : "", ec ? `ETC ${ec}件` : ""].filter(Boolean).join("・"); }
   $("kouSum").innerHTML = kouSumHTML(d, true);
   // 人数のまとめ
   const cnt = countByShoku(d), tot = cnt.reduce((a, x) => a + x[1], 0);
@@ -1539,6 +1574,9 @@ function siteMatch(name, m) {
   const f = nk(m.正式名), r = nk(m.名前);
   return a === f || a === r || (r.length >= 3 && a.includes(r)) || (f.length >= 6 && (a.includes(f) || f.includes(a)));
 }
+// 本社の「現場」（どの端末でも同じ id。共有の 現場_c_honsha.json になる）
+const HONSHA_ID = "c_honsha";
+const isHonshaSite = s => !!s && (s.id === HONSHA_ID || (!s.コード && nk(s.名前) === nk("本社")));
 // 現場一覧の現場を、このブラウザの元請・現場に入れる（日報のある現場は名前で結び付ける。入っている値は変えない）
 function syncMasterSites() {
   const lim = addD(ymd(new Date()), -400);
@@ -1549,8 +1587,10 @@ function syncMasterSites() {
     if (!g) { g = { id: "g_" + k, 名前: name || "（元請なし）" }; DB.元請.push(g); changed = true; }
     return g;
   };
+  // 本社（2026-11-18 ユーザー：本社勤務の日報も書けるように、現場名に「本社」を置く。元請は「自社」）
+  if (!DB.現場.some(isHonshaSite)) { DB.現場.push(fixSite({ id: HONSHA_ID, 元請id: genOf("自社").id, 名前: "本社", 略称: "本社", 設定更新: now() })); changed = true; }
   for (const m of MS.現場) {
-    let s = DB.現場.find(x => x.コード && x.コード === m.コード) || DB.現場.find(x => !x.コード && siteMatch(x.名前, m));
+    let s = DB.現場.find(x => x.コード && x.コード === m.コード) || DB.現場.find(x => !x.コード && !isHonshaSite(x) && siteMatch(x.名前, m));
     const recent = !m.工期至 || m.工期至 >= lim;
     if (!s && !recent) continue;
     const g = genOf(m.元請);
@@ -1639,6 +1679,7 @@ async function formLoad() {
 // 区分を決めていない現場を開いたら選ばせる（見るだけのとき・完了した現場は聞かない）
 let FORM_READY = false;
 function askForm() {
+  return;   // 2026-11-18 ユーザー：区分を選ばせる窓はやめた（常用 ✓ だけ）
   const s = site(), D = $("dForm");
   if (!s || s.形態 || s.完了 || D.open || !canEdit() || (signedIn() && !FORM_READY)) return;
   $("fmSite").textContent = siteLabel(s);
@@ -1848,7 +1889,8 @@ const myKey = () => { const a = msalApp && msalApp.getActiveAccount(); return a 
 const samePerson = by => !!by && (by.端末 === ME.端末 || (by.人 ? by.人 === myKey() : nk(by.名前) === nk(ME.名前)));
 const hm = t => { const d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
 // 区分が決まっていない日は、区分を先に選ぶ（2026-11-17 ユーザー：区分を最初に指定しないと何もいじれない。点滅で目立たせる）
-function formMissing() { const s = site(), d = day(); if (!s) return !UI.newForm; return !(hasData(d) ? formOf(s, UI.day) : nextForm(s)); }
+// 2026-11-18 ユーザー：区分を先に選ばせるのをやめた（常用 ✓ だけ。付けなければ請負）→ いつも「決まっている」
+function formMissing() { return false; }
 function blinkForm() { const L = $("hForm").closest("label"); L.classList.remove("blink"); void L.offsetWidth; L.classList.add("blink"); }
 function canEdit() {
   if (formMissing() && (site() ? FORM_READY || !signedIn() : true)) { toast("先に右上の「区分」（常用・請負）を選んでください", 4000); blinkForm(); return false; }
@@ -2115,8 +2157,8 @@ function openCal(mode) {
 function calWhat(d) {
   const up = (d.上 || []).filter(r => r && (r[1] || r[4])).map(r => String(r[1] || r[4]));
   if (up.some(t => /休工|休み|中止/.test(t))) return "休工";
-  const car = (d.車 || []).filter(r => r && r[0]).map(r => r[0]);
-  if (car.length) return [...new Set(car.map(c => c === "高速" ? "高速" : "燃料"))].join("・");
+  const car = (d.車 || []).filter(carHas);
+  if (car.length) return [car.some(r => Number(han(String(r[3] ?? "")))) ? "燃料" : "", car.some(r => r[2] || (r[11] !== "" && r[11] != null) || r[0] === "高速") ? "ETC" : ""].filter(Boolean).join("・") || "燃料・ETC";
   if (up.length) return "予定";
   if (d.天気 || d.気温) return "天気";
   return "記入あり";
@@ -2195,7 +2237,7 @@ function summarize(s, a, b, form = UI.sumForm) {
   const money = { 労務: new Map(), 残業: new Map(), 機械: new Map(), 材料: new Map(), 通勤費: new Map() };
   const byShoku = new Map();
   const order = k => { const base = String(k).replace(/（夜）$/, ""), i = DB.職種.indexOf(base); return (i < 0 ? 99 : i) * 2 + (k !== base ? 1 : 0); };
-  const car = [];   // 高速・燃料の行：{ date, r, A：carAmount, who：[会社, 名前, 車両名, 車番] }
+  const car = [];   // 燃料・ETC の行：{ date, r, A：carAmount, who：[会社名, 名前, 車両名, 所有者, 車番] }
   const otRows = [];   // 残業のあった行：{ date, 名前, 会社, 工種, 昼夜, 始業, 終業, 早出, 残業, 計, 金額 }
   const perDay = dates.map(x => {
     const d = s.日[x], c = new Map(), paid = formOf(s, x) === "常用"; let ot = 0, n = 0, nDay = 0, nNight = 0;
@@ -2255,17 +2297,20 @@ function summarize(s, a, b, form = UI.sumForm) {
       }
     });
     (d.車 || []).forEach(r => {
-      if (!r || !r[0]) return;
+      if (!carHas(r)) return;
       const A = carAmount(s, r, x);
-      if (!paid) A.金額 = 0;
-      car.push({ date: x, r, A, who: [r[5] || "", r[6] || "", r[7] || "", r[8] || ""] });
+      if (!paid) { A.金額 = 0; if (A.etc) A.etc.金額 = 0; if (A.fuel) A.fuel.金額 = 0; }
+      car.push({ date: x, r, A, who: [r[5] || "", r[6] || "", r[7] || "", r[10] || "", r[8] || ""] });
       if (!paid) return;
-      // 金額：高速 → 通勤費（高速代・区間ごと）、燃料 → 材料（軽油・ガソリン）
-      const MM = A.種 === "高速" ? money.通勤費 : money.材料, k = A.種 === "高速" ? "高速代（" + (r[2] || "区間なし") + "）" : r[0];
-      const Z = MM.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: A.種 === "高速" ? "高速代" : "固定単価" };
-      Z.数量 += A.種 === "高速" ? A.回 : A.L; Z.金額 += A.金額;
-      if (A.実費) Z.実費 = (Z.実費 || 0) + 1; else if (A.単価 != null) Z.単価.add(A.単価); else Z.なし++;
-      MM.set(k, Z);
+      // 金額：ETC → 通勤費（高速代・区間ごと）、燃料 → 材料
+      const put = (MM, k, P, q, cls) => {
+        const Z = MM.get(k) || { 数量: 0, 金額: 0, 単価: new Set(), なし: 0, 分類: cls };
+        Z.数量 += q; Z.金額 += P.金額;
+        if (P.実費) Z.実費 = (Z.実費 || 0) + 1; else if (P.単価 != null) Z.単価.add(P.単価); else Z.なし++;
+        MM.set(k, Z);
+      };
+      if (A.etc) put(money.通勤費, "高速代（" + (A.etc.区間 || "区間なし") + "）", A.etc, A.etc.回, "高速代");
+      if (A.fuel) put(money.材料, A.fuel.種, A.fuel, A.fuel.L, "固定単価");
     });
     return { date: x, 形態: formOf(s, x) || "未定", 天気: d.天気, 気温: d.気温, c, n, ot, 作業: workSummary(d), 昼: nDay, 夜: nNight };
   });
@@ -2357,7 +2402,7 @@ function renderSum(all) {
   mark("使用機材");
   mt("使用機材", S.kizai); mt("材料", S.hin);
   if (!S.kizai.size && !S.hin.size) h.push(`<h3 class="sh">使用機材・材料</h3><p class="note">この期間に使用機材・材料の記入はありません。</p>`);
-  mark("高速・燃料");
+  mark("燃料・ETC");
   h.push(SM ? carHTML(S, dl) : dropMoneyCols(carHTML(S, dl)));
   mark("金額");
   if (SM) h.push(moneyHTML(S));   // 金額を隠すときは金額の表を出さない（印刷にも出ない）
@@ -2366,20 +2411,21 @@ function renderSum(all) {
   SECT.forEach(([n, i], k) => { if (all || n === tab) out.push(...h.slice(i, k + 1 < SECT.length ? SECT[k + 1][1] : h.length)); });
   $("sumBody").innerHTML = out.join("");
 }
-// 高速・燃料の集計（2026-10-31 ユーザー）：だれごと・高速の区間ごと・日ごとの記録
+// 燃料・ETC の集計（2026-10-31 ユーザー。2026-11-19 燃料カード・ETCカードの所有者別の形に）：だれごと・ETC の区間ごと・日ごとの記録
 function carHTML(S, dl) {
-  const C = S.car, h = [`<h3 class="sh">高速・燃料</h3>`];
-  if (!C.length) { h.push(`<p class="note">この期間に高速・燃料の記録はありません（日報の「高速・燃料」の表に書きます）。</p>`); return h.join(""); }
-  const rows = carByWho(C), sum = f => rows.reduce((a, v) => a + f(v), 0), hasO = sum(v => v.他L) > 0;
-  h.push(`<h4 class="mh">だれが（会社・名前・車両名・車番ごと）</h4><table class="sm"><thead><tr><th>会社</th><th>名前</th><th>車両名</th><th>車番</th><th>高速 往路</th><th>復路</th><th>往復</th><th>高速代</th><th>軽油(L)</th><th>ガソリン(L)</th>${hasO ? "<th>ほかの燃料(L)</th>" : ""}<th>燃料代</th><th>計</th></tr></thead><tbody>` +
-    rows.map(v => `<tr>${v.who.map(w => `<td>${esc(w)}</td>`).join("")}<td class="r">${v.往路 || ""}</td><td class="r">${v.復路 || ""}</td><td class="r">${v.往復 || ""}</td><td class="r">${v.高速金額 ? yen(v.高速金額) : ""}</td><td class="r">${v.軽油 ? r2(v.軽油) : ""}</td><td class="r">${v.ガソリン ? r2(v.ガソリン) : ""}</td>${hasO ? `<td class="r">${v.他L ? r2(v.他L) : ""}</td>` : ""}<td class="r">${v.燃料金額 ? yen(v.燃料金額) : ""}</td><td class="r"><b>${yen(v.高速金額 + v.燃料金額)}</b></td></tr>`).join("") +
-    `</tbody><tfoot><tr><td colspan="4">計</td><td class="r">${sum(v => v.往路)}</td><td class="r">${sum(v => v.復路)}</td><td class="r">${sum(v => v.往復)}</td><td class="r">${yen(sum(v => v.高速金額))}</td><td class="r">${r2(sum(v => v.軽油))}</td><td class="r">${r2(sum(v => v.ガソリン))}</td>${hasO ? `<td class="r">${r2(sum(v => v.他L))}</td>` : ""}<td class="r">${yen(sum(v => v.燃料金額))}</td><td class="r"><b>${yen(sum(v => v.高速金額 + v.燃料金額))}</b></td></tr></tfoot></table>`);
+  const C = S.car, h = [`<h3 class="sh">燃料・ETC</h3>`];
+  if (!C.length) { h.push(`<p class="note">この期間に燃料・ETC の記録はありません（日報の「燃料カード・ETCカードの所有者別」の表に書きます）。</p>`); return h.join(""); }
+  const rows = carByWho(C), sum = f => rows.reduce((a, v) => a + f(v), 0);
+  h.push(`<h4 class="mh">所有者別（会社名・名前・車両名・所有者・車番ごと）</h4><table class="sm"><thead><tr><th>会社名</th><th>名前</th><th>車両名</th><th>所有者</th><th>車番</th><th>燃料(L)</th><th>燃料代</th><th>ETC 回数</th><th>ETC 金額</th><th>計</th></tr></thead><tbody>` +
+    rows.map(v => `<tr>${v.who.map(w => `<td>${esc(w)}</td>`).join("")}<td class="r">${v.L ? r2(v.L) : ""}</td><td class="r">${v.燃料金額 ? yen(v.燃料金額) : ""}</td><td class="r">${v.ETC回 || ""}</td><td class="r">${v.ETC金額 ? yen(v.ETC金額) : ""}</td><td class="r"><b>${yen(v.燃料金額 + v.ETC金額)}</b></td></tr>`).join("") +
+    `</tbody><tfoot><tr><td colspan="5">計</td><td class="r">${r2(sum(v => v.L))}</td><td class="r">${yen(sum(v => v.燃料金額))}</td><td class="r">${sum(v => v.ETC回)}</td><td class="r">${yen(sum(v => v.ETC金額))}</td><td class="r"><b>${yen(sum(v => v.燃料金額 + v.ETC金額))}</b></td></tr></tfoot></table>`);
   const ar = carByArea(C);
-  if (ar.length) h.push(`<h4 class="mh">高速の区間ごと</h4><table class="sm"><thead><tr><th>区間</th><th>往路</th><th>復路</th><th>往復</th><th>回数（往復は2）</th><th>金額</th></tr></thead><tbody>` +
-    ar.map(v => `<tr><td>${esc(v.区間)}</td><td class="r">${v.往路 || ""}</td><td class="r">${v.復路 || ""}</td><td class="r">${v.往復 || ""}</td><td class="r">${v.回}</td><td class="r"><b>${yen(v.金額)}</b></td></tr>`).join("") +
-    `</tbody><tfoot><tr><td>計</td><td class="r">${ar.reduce((a, v) => a + v.往路, 0)}</td><td class="r">${ar.reduce((a, v) => a + v.復路, 0)}</td><td class="r">${ar.reduce((a, v) => a + v.往復, 0)}</td><td class="r">${ar.reduce((a, v) => a + v.回, 0)}</td><td class="r">${yen(ar.reduce((a, v) => a + v.金額, 0))}</td></tr></tfoot></table>`);
-  h.push(`<h4 class="mh">記録（日ごと）</h4><table class="sm"><thead><tr><th>日付</th><th>種類</th><th>往復</th><th>区間</th><th>給油(L)</th><th>会社</th><th>名前</th><th>車両名</th><th>車番</th><th>金額</th><th>メモ</th></tr></thead><tbody>` +
-    C.map(x => `<tr class="${x.A.なし ? "nocomp" : ""}"><td><a data-go="${x.date}">${dl(x.date)}</a></td><td>${esc(x.r[0])}</td><td>${esc(x.r[1] || "")}</td><td>${esc(x.r[2] || "")}</td><td class="r">${x.A.種 === "高速" ? "" : r2(x.A.L)}</td>${x.who.map(w => `<td>${esc(w)}</td>`).join("")}<td class="r">${x.A.なし ? '<span class="ng">単価なし</span>' : yen(x.A.金額) + (x.A.実費 ? '<span class="note">（実費）</span>' : "")}</td><td>${esc(x.r[9] || "")}</td></tr>`).join("") + `</tbody></table>`);
+  if (ar.length) h.push(`<h4 class="mh">ETC の使用区間ごと</h4><table class="sm"><thead><tr><th>使用区間</th><th>回数</th><th>金額</th></tr></thead><tbody>` +
+    ar.map(v => `<tr><td>${esc(v.区間)}</td><td class="r">${v.回}</td><td class="r"><b>${yen(v.金額)}</b></td></tr>`).join("") +
+    `</tbody><tfoot><tr><td>計</td><td class="r">${ar.reduce((a, v) => a + v.回, 0)}</td><td class="r">${yen(ar.reduce((a, v) => a + v.金額, 0))}</td></tr></tfoot></table>`);
+  const amt = P => !P ? "" : P.なし ? '<span class="ng">単価なし</span>' : yen(P.金額) + (P.実費 ? "" : '<span class="note">（単価）</span>');
+  h.push(`<h4 class="mh">記録（日ごと）</h4><table class="sm"><thead><tr><th>日付</th><th>会社名</th><th>名前</th><th>車両名</th><th>所有者</th><th>車番</th><th>燃料(L)</th><th>燃料代</th><th>ETC 使用区間</th><th>ETC 金額</th><th>メモ</th></tr></thead><tbody>` +
+    C.map(x => `<tr class="${x.A.なし ? "nocomp" : ""}"><td><a data-go="${x.date}">${dl(x.date)}</a></td>${x.who.map(w => `<td>${esc(w)}</td>`).join("")}<td class="r">${x.A.fuel && x.A.fuel.L ? r2(x.A.fuel.L) : ""}</td><td class="r">${amt(x.A.fuel)}</td><td>${esc(x.A.etc ? x.A.etc.区間 : "")}</td><td class="r">${amt(x.A.etc)}</td><td>${esc(x.r[9] || "")}</td></tr>`).join("") + `</tbody></table>`);
   return h.join("");
 }
 // 残業の集計（2026-10-31 ユーザー：もっと分かりやすく）
@@ -2431,7 +2477,7 @@ function moneyHTML(S) {
   if (M.なし) h.push(`<p class="note ng">単価の無い項目が ${M.なし} 件あります（薄い黄色）。「現場・名簿」の単価マスタで「日報から項目を足す」と、足りない項目が並びます。</p>`);
   return h.join("");
 }
-const SUM_TABLES = ["日別", "会社別", "職種別", "作業員名別", "使用機材", "高速・燃料", "金額"];
+const SUM_TABLES = ["日別", "会社別", "職種別", "作業員名別", "使用機材", "燃料・ETC", "金額"];
 const sumTab = () => SUM_TABLES.includes(UI.sumTab) && !(UI.hideMoney && UI.sumTab === "金額") ? UI.sumTab : "日別";
 // 表の中の金額の列を消す（高速・燃料の表。見出しの最後の段で「金額・高速代・燃料代・計」の列）
 function dropMoneyCols(html) {
@@ -3273,10 +3319,11 @@ function daySheetPage(wb, s, x, d, full, pi, pn) {
   UI.day = keep;
   {
     const hr = 18 + nDn, numx = v => v === "" || v == null ? "" : isNaN(Number(v)) ? v : Number(v);
-    [["A", "種類"], ["B", "往復"], ["C", "高速の区間", "E"], ["F", "給油(L)"], ["G", "実費"], ["H", "会社", "I"], ["J", "名前", "K"], ["L", "車両名", "M"], ["N", "車番", "O"], ["P", "メモ"]].forEach(([a, v, e]) => put(a + hr, v, e ? `${a}${hr}:${e}${hr}` : null));
+    // 燃料カード・ETCカードの所有者別（2026-11-19）：A4 に収めるため見出しは1段（ETC 使用区間・ETC 金額）
+    [["A", "会社名", "B"], ["C", "名前", "D"], ["E", "車両名", "F"], ["G", "所有者", "H"], ["I", "車番"], ["J", "燃料(L)"], ["K", "ETC 使用区間", "M"], ["N", "ETC 金額"], ["O", "メモ", "P"]].forEach(([a, v, e]) => put(a + hr, v, e ? `${a}${hr}:${e}${hr}` : null));
     for (let i = 0; i < nCar; i++) {
       const rr = hr + 1 + i, x = (d.車 || [])[i] || [];
-      [["A", x[0]], ["B", x[1]], ["C", x[2], "E"], ["F", numx(x[3])], ["G", numx(x[4])], ["H", x[5], "I"], ["J", x[6], "K"], ["L", x[7], "M"], ["N", x[8], "O"], ["P", x[9]]].forEach(([a, v, e]) => put(a + rr, v ?? "", e ? `${a}${rr}:${e}${rr}` : null));
+      [["A", x[5], "B"], ["C", x[6], "D"], ["E", x[7], "F"], ["G", x[10], "H"], ["I", x[8]], ["J", numx(x[3])], ["K", x[2], "M"], ["N", numx(x[11])], ["O", x[9], "P"]].forEach(([a, v, e]) => { const cl = put(a + rr, v ?? "", e ? `${a}${rr}:${e}${rr}` : null); if (a === "N" && typeof cl.value === "number") cl.numFmt = "#,##0"; });
     }
   }
   for (let r = 3; r <= last; r++) for (let c = 1; c <= 16; c++) {
@@ -3364,14 +3411,15 @@ function sumSheet(wb, s, a, b) {
     const hm = !!UI.hideMoney, drop = (vals, idx) => hm ? vals.filter((_, i) => !idx.includes(i)) : vals;
     const rowx0 = (vals, o = {}) => { vals.forEach((v, i) => { const cl = cellAt(r, i + 1, v, { h: typeof v === "number" ? "right" : "left", ...o }); if (typeof v === "number" && !o.raw) cl.numFmt = "#,##0.##"; }); r++; };
     const rowx = (vals, o = {}, idx = []) => rowx0(drop(vals, idx), o);   // 金額を隠すときは idx の列を出さない
-    r += 1; title("高速・燃料（だれごと）");
-    rowx(["会社", "名前", "車両名", "車番", "高速 往路", "復路", "往復", "高速代", "軽油(L)", "ガソリン(L)", "ほかの燃料(L)", "燃料代", "計"], { fill: "FFEEF3F8", h: "center" }, [7, 11, 12]);
-    for (const v of carByWho(S.car)) rowx([...v.who, v.往路 || null, v.復路 || null, v.往復 || null, Math.round(v.高速金額) || null, v.軽油 || null, v.ガソリン || null, v.他L || null, Math.round(v.燃料金額) || null, Math.round(v.高速金額 + v.燃料金額)], {}, [7, 11, 12]);
+    r += 1; title("燃料・ETC（所有者別）");
+    rowx(["会社名", "名前", "車両名", "所有者", "車番", "燃料(L)", "燃料代", "ETC 回数", "ETC 金額", "計"], { fill: "FFEEF3F8", h: "center" }, [6, 8, 9]);
+    for (const v of carByWho(S.car)) rowx([...v.who, v.L || null, Math.round(v.燃料金額) || null, v.ETC回 || null, Math.round(v.ETC金額) || null, Math.round(v.燃料金額 + v.ETC金額)], {}, [6, 8, 9]);
     const ar = carByArea(S.car);
-    if (ar.length) { r += 1; title("高速の区間ごと"); rowx(["区間", "往路", "復路", "往復", "回数（往復は2）", "金額"], { fill: "FFEEF3F8", h: "center" }, [5]); ar.forEach(v => rowx([v.区間, v.往路 || null, v.復路 || null, v.往復 || null, v.回, Math.round(v.金額)], {}, [5])); }
-    r += 1; title("高速・燃料（記録）");
-    rowx(["日付", "種類", "往復", "区間", "給油(L)", "会社", "名前", "車両名", "車番", "金額", "メモ"], { fill: "FFEEF3F8", h: "center" }, [9]);
-    for (const x of S.car) { rowx([x.date.slice(5).replace("-", "/"), x.r[0], x.r[1] || "", x.r[2] || "", x.A.種 === "高速" ? null : x.A.L, ...x.who, x.A.なし ? "単価なし" : Math.round(x.A.金額), x.r[9] || ""], {}, [9]); }
+    if (ar.length) { r += 1; title("ETC の使用区間ごと"); rowx(["使用区間", "回数", "金額"], { fill: "FFEEF3F8", h: "center" }, [2]); ar.forEach(v => rowx([v.区間, v.回, Math.round(v.金額)], {}, [2])); }
+    r += 1; title("燃料・ETC（記録）");
+    const am = P => !P ? null : P.なし ? "単価なし" : Math.round(P.金額);
+    rowx(["日付", "会社名", "名前", "車両名", "所有者", "車番", "燃料(L)", "燃料代", "ETC 使用区間", "ETC 金額", "メモ"], { fill: "FFEEF3F8", h: "center" }, [7, 9]);
+    for (const x of S.car) { rowx([x.date.slice(5).replace("-", "/"), ...x.who, x.A.fuel && x.A.fuel.L ? x.A.fuel.L : null, am(x.A.fuel), x.A.etc ? x.A.etc.区間 : "", am(x.A.etc), x.r[9] || ""], {}, [7, 9]); }
   }
   // 金額
   const M = S.money;
@@ -3421,9 +3469,9 @@ function dayPageHTML(s, x, d, full, pi, pn) {
     const r = d.下[i] || [];
     h.push(`<tr class="a">${c(r[0] || "", "", sp(2))}${c(r[0] ? r[1] || "" : "")}${c(r[0] ? r[2] || "" : "")}${c(r[3] || "")}${c(r[4] || "", "ot")}${c(r[5] ? (r[13] ? "（" + abbrOf(r[13]) + "）" : "") + r[5] : "", "", sp(2))}${c(r[6] || "")}${c(r[7] || "")}${c(r[9] || "", "", sp(3))}${c(r[10] || "")}${c(r[15] !== "" && r[15] != null && !isNaN(Number(r[15])) ? yen(Number(r[15])) : r[15] || "", "", sp(2))}</tr>`);
   }
-  // 高速・燃料
-  h.push(`<tr class="b2">${c("種類")}${c("往復")}${c("高速の区間", "", sp(3))}${c("給油(L)")}${c("実費")}${c("会社", "", sp(2))}${c("名前", "", sp(2))}${c("車両名", "", sp(2))}${c("車番", "", sp(2))}${c("メモ")}</tr>`);
-  for (let i = 0; i < nCar; i++) { const r = (d.車 || [])[i] || [], jv = r[4] !== "" && r[4] != null && !isNaN(Number(r[4])) ? yen(Number(r[4])) : r[4] || ""; h.push(`<tr class="a">${c(r[0] || "")}${c(r[1] || "")}${c(r[2] || "", "", sp(3))}${c(r[3] || "")}${c(jv)}${c(r[5] || "", "", sp(2))}${c(r[6] || "", "", sp(2))}${c(r[7] || "", "", sp(2))}${c(r[8] || "", "", sp(2))}${c(r[9] || "", "sm")}</tr>`); }
+  // 燃料カード・ETCカードの所有者別（2026-11-19）：A4 に収めるため見出しは1段（ETC 使用区間・ETC 金額）
+  h.push(`<tr class="b2">${c("会社名", "", sp(2))}${c("名前", "", sp(2))}${c("車両名", "", sp(2))}${c("所有者", "", sp(2))}${c("車番")}${c("燃料(L)")}${c("ETC 使用区間", "", sp(3))}${c("ETC 金額")}${c("メモ", "", sp(2))}</tr>`);
+  for (let i = 0; i < nCar; i++) { const r = (d.車 || [])[i] || [], ev = r[11] !== "" && r[11] != null && !isNaN(Number(r[11])) ? yen(Number(r[11])) : r[11] || ""; h.push(`<tr class="a">${c(r[5] || "", "", sp(2))}${c(r[6] || "", "", sp(2))}${c(r[7] || "", "", sp(2))}${c(r[10] || "", "", sp(2))}${c(r[8] || "")}${c(r[3] || "")}${c(r[2] || "", "", sp(3))}${c(ev)}${c(r[9] || "", "sm", sp(2))}</tr>`); }
   h.push(`</table></div>`);
   UI.day = keep;
   return h.join("");
