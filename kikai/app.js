@@ -535,10 +535,21 @@ function renderChart() {
   h.push(`<div id="cols" style="left:calc(var(--nw) + var(--kw))">${days.map((k, i) => {
     const c = k === today ? "today" : dayClass(k); return c ? `<div class="${c}" style="left:${i * dw}px"></div>` : ""; }).join("")}</div>`);
 
+  /* 分類ごとにたたむ（2026-11-19 ユーザー）。分類で絞った・機械名で絞ったときはたためない（全部出す） */
+  const canFold = !S.cat && !S.q.trim(), fold = S.fold || {};
+  const nIn = {}, badIn = {};
+  ms.forEach(m => { const c = catOf(m); nIn[c] = (nIn[c] || 0) + 1; });
+  inRange.forEach(r => { if (bad.has(r.id)) { const m = D.機械.find(x => x.id === r.機械); if (m) badIn[catOf(m)] = true; } });
   let lastCat = null;
   ms.forEach(m => {
-    const cat = catOf(m);
-    if (!S.cat && cat !== lastCat) { h.push(`<div class="grp"><div class="gh">${esc(cat)}</div></div>`); lastCat = cat; }
+    const cat = catOf(m), shut = canFold && fold[cat];
+    if (!S.cat && cat !== lastCat) {
+      h.push(`<div class="grp${shut ? " shut" : ""}" data-cat="${esc(cat)}"><div class="gh"${canFold ? ` title="${shut ? "押すと開きます" : "押すとたたみます"}"` : ""}>` +
+        `${canFold ? `<span class="tw">${shut ? "▶" : "▼"}</span>` : ""}${esc(cat)}` +
+        `${shut ? `<span class="gn">${nIn[cat]}台${badIn[cat] ? `<span class="gw">⚠ 二重の予約</span>` : ""}</span>` : ""}</div></div>`);
+      lastCat = cat;
+    }
+    if (shut) return;
     const lanes = ["昼", "夜"].map(k => { const list = byLane[m.id + "|" + k] || []; return { k, list, ...laneRows(list) }; });
     /* 稼働率（表示の期間の平日のうち、どちらかの区分で現場にいる日） */
     let wd = 0, used = 0; const idle = [];
@@ -1674,6 +1685,15 @@ $("vToday").onclick = () => { S.from = dayAdd(todayKey(), -((dayDow(todayKey()) 
   requestAnimationFrame(() => { $("wrap").scrollLeft = 0; }); };
 $("vCat").onchange = () => { S.cat = $("vCat").value; saveView(); renderAll(); };
 $("vQ").oninput = () => { S.q = $("vQ").value; saveView(); renderAll(); };
+/* 分類をぜんぶたたむ／ぜんぶ開く（分類や機械名で絞っているときは絞りを外してから） */
+function foldAll(on) {
+  S.fold = {};
+  if (on) D.機械.forEach(m => { S.fold[catOf(m)] = true; });
+  if (S.cat || S.q.trim()) { S.cat = ""; S.q = ""; saveView(); renderAll(); return; }
+  saveView(); if (S.tab === "chart") renderChart();
+}
+$("vFoldAll").onclick = () => foldAll(true);
+$("vOpenAll").onclick = () => foldAll(false);
 $("vUnused").onchange = () => { S.unused = $("vUnused").checked; saveView(); renderAll(); };
 $("vPaint").onchange = () => {
   const n = $("vPaint").value.trim();
@@ -1713,7 +1733,21 @@ document.addEventListener("touchstart", e => {
 document.addEventListener("touchmove", e => { if (e.touches.length >= 2 && e.cancelable) e.preventDefault(); }, { passive: false });
 let resizeT = 0;
 addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { applyFont(); if (S.tab === "chart") renderChart(); }, 150); });
-$("warn").onclick = () => { const b = document.querySelector(".bar.conf"); if (b) b.scrollIntoView({ block: "center", inline: "center" }); };
+$("warn").onclick = () => {
+  if (!document.querySelector(".bar.conf") && document.querySelector(".grp.shut .gw")) {   // 二重の予約がたたんだ分類の中だけ → その分類を開く
+    document.querySelectorAll(".grp.shut").forEach(g => { if (g.querySelector(".gw")) delete S.fold[g.dataset.cat]; });
+    saveView(); renderChart();
+  }
+  const b = document.querySelector(".bar.conf"); if (b) b.scrollIntoView({ block: "center", inline: "center" });
+};
+/* 分類の見出しを押すと、その分類をたたむ／開く */
+$("chart").addEventListener("click", e => {
+  const g = e.target.closest(".grp");
+  if (!g || S.cat || S.q.trim()) return;
+  S.fold = S.fold || {};
+  if (S.fold[g.dataset.cat]) delete S.fold[g.dataset.cat]; else S.fold[g.dataset.cat] = true;
+  saveView(); renderChart();
+});
 
 /* ---------- データの読み書き ---------- */
 function download(name, text, type = "application/json") {

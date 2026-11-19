@@ -12,11 +12,11 @@
 <meta name="theme-color" content="#1f4e79">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="自社機械">
-<link rel="stylesheet" href="app.css?v=Vr001 11/17 20:50">
+<link rel="stylesheet" href="app.css?v=Vr001 11/19 21:29">
 </head>
 <body>
 <header>
-  <h1><button type="button" class="appTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">自社機械稼働表</button> <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 11/17 20:50</small></h1>
+  <h1><button type="button" class="appTitle" data-appmenu title="押すとほかのアプリへ切り替え（同じ窓）">自社機械稼働表</button> <small id="ver" title="いま開いている版。押すと新しい版があるか確かめます">Vr001 11/19 21:29</small></h1>
   <!-- 左上のタイトルを押すと、アプリを切り替えるプルダウン（2026-11-17 ユーザー。common/appmenu.js。帯の移動ボタンはやめた） -->
 
   <nav id="tabs">
@@ -45,6 +45,8 @@
   <button class="sub" id="vPrev">◀</button><button class="sub" id="vToday" title="今週の月曜から表示します（今日の列は黄色）">今週</button><button class="sub" id="vNext">▶</button>
   <span class="sep"></span>
   <select id="vCat"><option value="">分類：全部</option></select>
+  <button type="button" class="sub" id="vFoldAll" title="分類をぜんぶたたむ（見出しだけにする）">ぜんぶたたむ</button>
+  <button type="button" class="sub" id="vOpenAll" title="たたんだ分類をぜんぶ開く">ぜんぶ開く</button>
   <input id="vQ" placeholder="機械名で絞る" size="10">
   <label class="ck"><input type="checkbox" id="vUnused"> 使わない機械も</label>
   <span class="sep chartOnly"></span>
@@ -175,10 +177,10 @@
 <div id="toast" hidden></div>
 
 <script src="lib/msal-browser.min.js"></script>
-<script src="config.js?v=Vr001 11/17 20:50"></script>
-<script src="app.js?v=Vr001 11/17 20:50"></script>
-<script src="excel.js?v=Vr001 11/17 20:50"></script>
-<script src="bill.js?v=Vr001 11/17 20:50"></script>
+<script src="config.js?v=Vr001 11/19 21:29"></script>
+<script src="app.js?v=Vr001 11/19 21:29"></script>
+<script src="excel.js?v=Vr001 11/19 21:29"></script>
+<script src="bill.js?v=Vr001 11/19 21:29"></script>
 <script src="../common/appmenu.js"></script>
 </body>
 </html>

@@ -65,6 +65,13 @@ main { flex: 1; min-height: 0; position: relative; }
 #cols .today { background: var(--today); opacity: .65; }
 
 .grp { position: relative; z-index: 1; display: flex; align-items: stretch; background: #e9eef4; border-bottom: 1px solid #9aa5b1; }
+.grp { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.grp:hover .gh, .grp:hover { background: #dde5ee; }
+.grp .tw { display: inline-block; width: 1.2em; font-size: .8em; color: #5a6b7c; }
+.grp .gn { margin-left: .8em; font-weight: 400; font-size: .9em; color: #5a6b7c; white-space: nowrap; }
+.grp .gw { margin-left: .6em; color: #c0392b; font-weight: 700; }
+.grp.shut { border-bottom-color: #c3ccd6; }
+.grp .gh { white-space: nowrap; overflow: visible; }
 .grp .gh { position: sticky; left: 0; width: calc(var(--nw) + var(--kw)); padding: 2px 6px; font-weight: 700; font-size: calc(12.5px * var(--fs, 1)); color: var(--head); background: #e9eef4; }
 .mach { position: relative; z-index: 1; display: flex; border-bottom: 1px solid #c3cad2; }
 .mach.unused .mname { color: #999; }
