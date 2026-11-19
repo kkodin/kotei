@@ -239,3 +239,35 @@ function paintWriterBar() {
 const wRS0 = refreshSheet;
 refreshSheet = function () { wRS0(); paintWriterBar(); };
 paintWriterBar();
+
+/* ---------- 開いたときは、今日の自分の日報（2026-11-19 ユーザー：前に見ていた現場（塩浜立体）の日報が出てしまう） ----------
+   ふつうに開いたとき（?open=entry・?from が無い）：今日・自分が記入者の日報を開く。まだ書いていなければ空欄（現場名を選ぶ前）で開く。
+   共有を読み終わったあと・名前を入れたあとにも探し直す（開いたままで、まだ何も触っていないときだけ。2分まで）。 */
+const MINE = (() => { const q = new URLSearchParams(location.search); return { on: q.get("open") !== "entry" && !q.has("from"), t: Date.now(), site: null, day: "" }; })();
+function myReportOn(k) {
+  const me = nk(myName()); if (!me) return null;
+  let hit = null;
+  for (const s of DB.現場) {
+    const d = s.日[k];
+    if (d && hasData(d) && nk(d.担当者 || "") === me && (!hit || String(d.更新 || "") > String(hit.d.更新 || ""))) hit = { s, d };
+  }
+  return hit;
+}
+function openMine(first) {
+  if (!MINE.on) return;
+  if (!first) {   // 探し直し：開いたときのまま（空欄の日報）で、2分以内のときだけ
+    if (Date.now() - MINE.t > 120000 || UI.site !== MINE.site || UI.day !== MINE.day || site() || $("pSheet").hidden) { MINE.on = false; return; }
+  }
+  const k = ymd(new Date()), hit = myReportOn(k);
+  if (hit) { MINE.on = false; UI.detailView = "site"; detailSelectSite(hit.s.id, k); return; }
+  if (first) {
+    UI.site = null; UI.gen = null; UI.newForm = ""; UI.day = k; UI.pg = 0; UNDO = []; REDO = [];
+    saveUI(); showTab("sheet"); renderAll();
+    MINE.site = null; MINE.day = k;
+  }
+}
+openMine(true);
+const mineSync0 = sync;
+sync = async function () { const r = await mineSync0.apply(this, arguments); try { openMine(); } catch (e) { console.warn(e); } return r; };
+const mineName0 = $("nmOk").onclick;
+$("nmOk").onclick = function () { const r = mineName0.apply(this, arguments); try { openMine(); } catch (e) { console.warn(e); } return r; };
