@@ -2289,6 +2289,8 @@ $("inSort").value = sortBy;
 $("inSort").onchange = e => { sortBy = e.target.value; try { localStorage.setItem("kotei_sort", sortBy); } catch (x) { } render(); };
 $("inShowDone").onchange = e => { showDone = e.target.checked; try { localStorage.setItem("kotei_showDone", showDone ? "1" : "0"); } catch (x) { } render(); };
 $("inListRange").onchange = renderList;
+/* 2026-11-19 人の流れの案内の「工程表」ボタン：工程表タブへ切り替える */
+if ($("bToChart")) $("bToChart").onclick = () => document.querySelector("#tabs [data-tab=chart]").click();
 $("inFlowIdle").checked = flowIdle; $("inFlowPeople").checked = flowPeople; $("inFlowLanes").checked = flowLanes;
 $("inFlowLanes").onchange = e => { flowLanes = e.target.checked; try { localStorage.setItem("kotei_flowLanes", flowLanes ? "1" : "0"); } catch (x) { } render(); };
 $("inFlowIdle").onchange = e => { flowIdle = e.target.checked; try { localStorage.setItem("kotei_flowIdle", flowIdle ? "1" : "0"); } catch (x) { } render(); };
@@ -2822,8 +2824,8 @@ async function start() {
   await pull();
   $("loading").hidden = true;
   showSync();
+  // 2026-11-19 ユーザー：開いたときは必ず工程表（前に開いたタブ kotei_tab は使わない。人の流れで開いて「線が引けない」となったため）
   let tab = "chart";
-  try { tab = localStorage.getItem("kotei_tab") || "chart"; } catch (e) { }
   const requestedSite = new URLSearchParams(location.search).get("site");
   if (requestedSite && sites().some(s => s.id === requestedSite)) { setOnly([requestedSite]); tab="chart"; }
   (document.querySelector(`#tabs [data-tab="${tab}"]`) || document.querySelector("#tabs [data-tab=chart]")).click();

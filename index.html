@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="社内工程">
-<link rel="stylesheet" href="app.css?v=Vr002 11/18 22:18">
+<link rel="stylesheet" href="app.css?v=Vr002 11/19 09:08">
 </head>
 <body>
 <header id="top">
@@ -60,7 +60,7 @@
     <span id="sync" class="sync"></span>
     <button id="bReload" class="sub" title="ほかの人の書き込みを読み直す">↻ 最新にする</button>
     <span id="who"></span>
-    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/18 22:18</span>
+    <span id="ver" class="ver" title="いま開いている版。新しい版が出たら Ctrl+F5">Vr002 11/19 09:08</span>
   </span>
 </header>
 
@@ -80,6 +80,8 @@
 
 <main id="pFlow" hidden>
   <div class="listbar">
+    <!-- 2026-11-19 ユーザー：人の流れで線を引こうとして「引けない」となった → 工程表タブへの案内 -->
+    <span class="flowhint">この表は見るだけです。工程の線を引く・直す・右クリックは <button type="button" id="bToChart" class="sub small">工程表</button> タブで</span>
     <label title="表示している期間に作業する日が1日も無い現場も出す（自分の画面だけ）"><input type="checkbox" id="inFlowIdle"> 作業の無い現場も出す</label>
     <label title="ふだんは1現場1行（工種をたたむ）。チェックすると工種ごとに行を分けて出す"><input type="checkbox" id="inFlowLanes"> 工種ごとに分ける</label>
     <label title="社員1人ずつの行き先の表を下に出す（2現場以上の日は赤）"><input type="checkbox" id="inFlowPeople"> 社員の行き先も出す</label>
@@ -293,10 +295,10 @@
 
 <script src="lib/msal-browser.min.js"></script>
 <script src="common/master.js"></script>
-<script src="config.js?v=Vr002 11/18 22:18"></script>
-<script src="app.js?v=Vr002 11/18 22:18"></script>
-<script src="weekxlsx.js?v=Vr002 11/18 22:18"></script>
-<script src="chartxlsx.js?v=Vr002 11/18 22:18"></script>
+<script src="config.js?v=Vr002 11/19 09:08"></script>
+<script src="app.js?v=Vr002 11/19 09:08"></script>
+<script src="weekxlsx.js?v=Vr002 11/19 09:08"></script>
+<script src="chartxlsx.js?v=Vr002 11/19 09:08"></script>
 <script src="common/appmenu.js"></script>
 </body>
 </html>
