@@ -2285,7 +2285,7 @@ const r2 = x => String(Math.round(x * 100) / 100);
 // その日の作業の要約（2026-10-31 ユーザー：日別に作業内容を要約した列）：作業予定（全部のページ）を重ねずに「・」でつなぐ。完了報告があれば（ ）で
 function workSummary(d) {
   const seen = new Set(), out = [];
-  (d.上 || []).forEach(r => { const w = String((r && r[1]) || "").trim(), k = String((r && r[4]) || "").trim(); if (!w || seen.has(w)) return; seen.add(w); out.push(w + (k ? `（${k}）` : "")); });
+  (d.上 || []).forEach(r => { const w = String((r && r[1]) || "").replace(/[\s　]+/g, " ").trim(), k = String((r && r[4]) || "").replace(/[\s　]+/g, " ").trim(); /* 続く空白は1つに（2026-11-19 ユーザー：はみ出す） */ if (!w || seen.has(w)) return; seen.add(w); out.push(w + (k ? `（${k}）` : "")); });
   return out.join("・");
 }
 function renderSum(all) {
@@ -2301,15 +2301,15 @@ function renderSum(all) {
   // 出す表を選べる（2026-10-31 ユーザー：職種別も出せるように・残業の集計の欄は不要）。区切りの位置を覚えて、最後に選んだ表だけ出す
   const SECT = [], mark = n => SECT.push([n, h.length]);
   mark("日別");
-  h.push(`<h3 class="sh">日別（${esc(s.名前)}　${jpDate(a)}〜${jpDate(b)}${UI.sumForm ? "　" + esc(UI.sumForm) + "だけ" : "　常用＋請負"}）</h3>`);
+  h.push(`<div class="sumDay"><h3 class="sh">日別（${esc(s.名前)}　${jpDate(a)}〜${jpDate(b)}${UI.sumForm ? "　" + esc(UI.sumForm) + "だけ" : "　常用＋請負"}）</h3>`);
   const NT = S.hasNight || s.勤務 !== "昼";
   h.push(`<table class="sm"><thead><tr><th>日付</th><th>曜</th><th>区分</th><th>天気</th><th>気温</th>${S.shoku.map(k => `<th>${esc(k)}</th>`).join("")}${NT ? "<th>昼</th><th>夜</th>" : ""}<th>人員計</th><th>残業計(h)</th><th>作業（作業予定の要約）</th></tr></thead><tbody>`);
   const tot = new Map(); let tn = 0, tot_ot = 0;
   for (const p of S.perDay) {
-    h.push(`<tr class="${wcls(p.date)}"><td><a data-go="${p.date}">${dl(p.date)}</a></td><td class="c">${WD[wd(p.date)]}</td><td class="c${p.形態 === "請負" ? " uke" : ""}">${esc(p.形態)}</td><td class="c">${esc(p.天気)}</td><td class="r">${esc(p.気温)}</td>${S.shoku.map(k => `<td class="r">${p.c.get(k) || ""}</td>`).join("")}${NT ? `<td class="r">${p.昼 || ""}</td><td class="r night">${p.夜 || ""}</td>` : ""}<td class="r"><b>${p.n}</b></td><td class="r">${p.ot ? r2(p.ot) : ""}</td><td class="wsum" title="${esc(p.作業)}">${esc(p.作業)}</td></tr>`);
+    h.push(`<tr class="${wcls(p.date)}"><td><a data-go="${p.date}">${dl(p.date)}</a></td><td class="c">${WD[wd(p.date)]}</td><td class="c${p.形態 === "請負" ? " uke" : ""}">${esc(p.形態)}</td><td class="c">${esc(p.天気)}</td><td class="r">${esc(p.気温)}</td>${S.shoku.map(k => `<td class="r">${p.c.get(k) || ""}</td>`).join("")}${NT ? `<td class="r">${p.昼 || ""}</td><td class="r night">${p.夜 || ""}</td>` : ""}<td class="r"><b>${p.n}</b></td><td class="r">${p.ot ? r2(p.ot) : ""}</td><td class="wsum" title="${esc(p.作業)}"><div class="wsx">${esc(p.作業)}</div></td></tr>`);
     S.shoku.forEach(k => tot.set(k, (tot.get(k) || 0) + (p.c.get(k) || 0))); tn += p.n; tot_ot += p.ot;
   }
-  h.push(`</tbody><tfoot><tr><td colspan="5">計（${S.dates.length}日）</td>${S.shoku.map(k => `<td class="r">${tot.get(k)}</td>`).join("")}${NT ? `<td class="r">${S.perDay.reduce((a2, p) => a2 + p.昼, 0)}</td><td class="r">${S.perDay.reduce((a2, p) => a2 + p.夜, 0)}</td>` : ""}<td class="r">${tn}</td><td class="r">${r2(tot_ot)}</td><td></td></tr></tfoot></table>`);
+  h.push(`</tbody><tfoot><tr><td colspan="5">計（${S.dates.length}日）</td>${S.shoku.map(k => `<td class="r">${tot.get(k)}</td>`).join("")}${NT ? `<td class="r">${S.perDay.reduce((a2, p) => a2 + p.昼, 0)}</td><td class="r">${S.perDay.reduce((a2, p) => a2 + p.夜, 0)}</td>` : ""}<td class="r">${tn}</td><td class="r">${r2(tot_ot)}</td><td></td></tr></tfoot></table></div>`);
 
   mark("会社別");
   // 会社ごとの集計（日ごとの人数＝人工）
@@ -3434,7 +3434,12 @@ function printDays(dates, sumRange) {
   if (sumRange) {
     const keepF = $("sumFrom").value, keepT = $("sumTo").value;
     $("sumFrom").value = sumRange[0]; $("sumTo").value = sumRange[1]; renderSum(true);   // PDF は全部の表
-    h.push(`<div class="pg sum"><h3>常用 集計表　${esc(genName(gen()))}　${esc(s.名前)}　${jpDate(sumRange[0])}〜${jpDate(sumRange[1])}</h3>${$("sumBody").innerHTML.replace(/<h3 class="sh">/g, "<h3>")}</div>`);
+    // 日別の表は A4 縦の1ページに（2026-11-19 ユーザー：作業の要約が はみ出す → 折り返して A4 縦に）。ほかの表は日付が横に並ぶので A4 横のまま
+    const ttl = `<h3>常用 集計表　${esc(genName(gen()))}　${esc(s.名前)}　${jpDate(sumRange[0])}〜${jpDate(sumRange[1])}</h3>`;
+    const box = document.createElement("div"); box.innerHTML = $("sumBody").innerHTML.replace(/<h3 class="sh">/g, "<h3>");
+    const day = box.querySelector(".sumDay"); if (day) day.remove();
+    if (day) h.push(`<div class="pg sum tate">${ttl}${day.innerHTML}</div>`);
+    if (box.textContent.trim()) h.push(`<div class="pg sum">${ttl}${box.innerHTML}</div>`);
     if (keepF) { $("sumFrom").value = keepF; $("sumTo").value = keepT; renderSum(); }
   }
   $("printArea").innerHTML = h.join("");
